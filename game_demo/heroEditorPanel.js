@@ -420,7 +420,8 @@
         listEl = document.getElementById('heroEditorList');
         if (!panelEl || !listEl) return;
 
-        const openBtn = document.getElementById('openHeroEditorBtn');
+        // STG 顶栏为 #stgOpenHeroEditorBtn；旧塔防页曾用 #openHeroEditorBtn
+        const openBtn = document.getElementById('stgOpenHeroEditorBtn') || document.getElementById('openHeroEditorBtn');
         const closeBtn = document.getElementById('heroEditorCloseBtn');
         const applyBtn = document.getElementById('heroEditorApplyBtn');
 

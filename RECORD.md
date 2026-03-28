@@ -1,5 +1,11 @@
 # 开发记录
 
+## [2026-03-28] 移除塔防玩法脚本与页面，保留 STG 共用启动链
+
+- **类型**：重构
+- **涉及文件**：`game_demo/index.html`（删塔防相关 `<script>`、`#towerUpgradeMenu`；`#gameEconomyDomStub` 隐藏桩保留；STG 顶栏增加「英雄编辑器」、标题纯 STG；`?v=20260328a`）、`game_demo/pageManager.js`（精简为仅 STG）、`game_demo/game.js`（去掉塔防延迟初始化与塔防专用编辑器 init；`MonsterEditorPanel.init(null)`；怪物编辑器按钮不再依赖塔防）、`game_demo/stgWaveFormationPanel.js`（打开阵型前不再调用已删除的 `ensureTowerDefenseStart`）、`game_demo/heroEditorPanel.js`（支持 `#stgOpenHeroEditorBtn`）、`game_demo/monsterEditorPanel.js`（空列表提示去塔防依赖）
+- **说明**：已物理删除的 `towerDefense.js`、`gameMap.js`、`enemySystem.js`、`towerAttackSystem.js` 及塔防编辑面板脚本不再引用。保留 `game.js` 物品池、`GameState`、`UIManager`、隐藏经济 DOM 桩，供 STG 与 Debug 商店刷新等逻辑；`window.towerDefenseGame` 相关调用保留为可选分支（无实例时不执行）。
+
 ## [2026-03-27] STG：武器独立基础攻击力 + 强化攻击力乘区（不再用英雄 baseAttack）
 
 - **类型**：修改功能

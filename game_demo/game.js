@@ -2381,14 +2381,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.gameState = gameState;
     window.uiManager = uiManager;
 
-    // 不依赖塔防 Canvas 的编辑器：在 TowerDefenseGame 构造前初始化，避免 runTowerDefense 抛错时面板无法打开
-    if (window.TowerEditorPanel && typeof window.TowerEditorPanel.init === 'function') window.TowerEditorPanel.init();
-    if (window.InventoryEditorPanel && typeof window.InventoryEditorPanel.init === 'function') window.InventoryEditorPanel.init();
+    // 英雄 / 怪物编辑器不依赖塔防 Canvas（塔防脚本已移除）
     if (window.HeroEditorPanel && typeof window.HeroEditorPanel.init === 'function') window.HeroEditorPanel.init();
-    if (window.PowerEfficiencyEditorPanel && typeof window.PowerEfficiencyEditorPanel.init === 'function') {
-        window.PowerEfficiencyEditorPanel.init();
+    if (window.MonsterEditorPanel && typeof window.MonsterEditorPanel.init === 'function') {
+        window.MonsterEditorPanel.init(null);
     }
-    if (window.TowerLoadoutPanel && typeof window.TowerLoadoutPanel.init === 'function') window.TowerLoadoutPanel.init();
     
     // 绑定 Debug 工具栏：增加指定数量金币
     const debugCoinsInput = document.getElementById('debugCoinsInput');
@@ -2512,52 +2509,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.StgUiI18n.init();
     }
 
-    /**
-     * 塔防模式延迟初始化：仅在用户进入「塔防模式」时构造，避免与 STG 抢首屏性能
-     */
-    window.ensureTowerDefenseStart = function ensureTowerDefenseStart() {
-        if (window._towerDefenseInitialized) return;
-        const gameCanvas = document.getElementById('gameCanvas');
-        if (!gameCanvas) {
-            console.warn('[塔防] 未找到 #gameCanvas');
-            return;
-        }
-        if (typeof window.TowerDefenseGame === 'undefined') {
-            console.error('[塔防] TowerDefenseGame 未定义，请检查 towerDefense.js 是否已加载');
-            return;
-        }
-        window._towerDefenseInitialized = true;
-        window.towerDefenseGame = new window.TowerDefenseGame(gameCanvas, gameState, playerStats, 20, 15);
-        window.towerDefenseGame.start();
-        if (window.MonsterEditorPanel) window.MonsterEditorPanel.init(window.towerDefenseGame);
-        if (window.MapEditorPanel) window.MapEditorPanel.init(window.towerDefenseGame);
-        console.log('[塔防] 已初始化 TowerDefenseGame（延迟加载）');
-        // 若当前仍在 STG 首页（例如仅从 STG 打开波次/怪物面板），暂停塔防循环避免后台空跑
-        if (window.pageManager && typeof window.pageManager.getCurrentPage === 'function' &&
-            window.pageManager.getCurrentPage() === 'stg') {
-            window.towerDefenseGame.pause();
-        }
-    };
-
-    const gameCanvas = document.getElementById('gameCanvas');
-    if (!gameCanvas) {
-        console.warn('未找到游戏 Canvas #gameCanvas（塔防模式需从此进入后才会运行主循环）');
-    }
-
-    // 塔防顶栏：波次阵型编辑器（与 STG 共用同一入口逻辑）
-    const openWaveFormationFromTd = document.getElementById('openWaveConfigBtn');
-    if (openWaveFormationFromTd) {
-        openWaveFormationFromTd.addEventListener('click', () => {
-            window.ensureTowerDefenseStart();
-            if (window.StgWaveFormationPanel && typeof window.StgWaveFormationPanel.open === 'function') {
-                window.StgWaveFormationPanel.open();
-            }
-        });
-    }
     const stgMonBtn = document.getElementById('stgOpenMonsterEditorBtn');
     if (stgMonBtn) {
         stgMonBtn.addEventListener('click', () => {
-            window.ensureTowerDefenseStart();
             if (window.MonsterEditorPanel && typeof window.MonsterEditorPanel.open === 'function') {
                 window.MonsterEditorPanel.open();
             }

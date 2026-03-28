@@ -553,7 +553,7 @@
         const types = { ...fromDisk, ...fromGame };
         let ids = Object.keys(types);
         if (ids.length === 0) {
-            listEl.innerHTML = '<p class="monster-editor-empty">暂无种类。可在上方输入新种类 ID 并点击「添加种类」，或先进入塔防以加载内置种类。</p>';
+            listEl.innerHTML = '<p class="monster-editor-empty">暂无种类。可在上方输入新种类 ID 并点击「添加种类」；首次使用时会从默认模板生成条目。</p>';
             return;
         }
         ids = sortMonsterTypeIds(ids);

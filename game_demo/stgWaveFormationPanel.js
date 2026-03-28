@@ -1,6 +1,6 @@
 /**
  * 波次阵型编辑器（唯一波次配置入口）：上/左/右 三块与 STG 同格数棋盘；
- * 种类与数量仅由格子决定；塔防侧由同阵型推导 enemies 列表；存档 tower_defense_wave_config。
+ * 种类与数量仅由格子决定；存档键 tower_defense_wave_config（与旧塔防共用键名，塔防脚本已移除时仅本地读写）。
  */
 (function () {
     'use strict';
@@ -518,7 +518,6 @@
         const openBtn = document.getElementById('stgOpenWaveFormationBtn');
         const openBtnLegacy = document.getElementById('stgOpenWaveConfigBtn');
         const openHandler = () => {
-            if (window.ensureTowerDefenseStart) window.ensureTowerDefenseStart();
             open();
         };
         if (openBtn) openBtn.addEventListener('click', openHandler);
