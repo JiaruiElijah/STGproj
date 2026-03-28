@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STG 纵版射击 · 塔防构筑</title>
+    <!-- ?v= 用于破坏浏览器缓存；修改 JS/CSS 后请改版本号否则可能一直用旧文件 -->
+    <link rel="stylesheet" href="styles.css?v=20260327w">
+</head>
+<body>
+    <!-- STG 纵版射击（默认首页） -->
+    <div id="stgPage" class="page active">
+        <div class="stg-container">
+            <div class="stg-toolbar">
+                <button type="button" class="open-shop-btn" id="enterTowerDefenseModeBtn" title="切换到塔防主玩法">🗼 塔防模式（旧玩法）</button>
+                <button type="button" class="open-shop-btn" id="stgOpenWaveFormationBtn" title="波次与阵型（唯一配置入口）">📋 波次阵型</button>
+                <button type="button" class="open-shop-btn" id="stgOpenMonsterEditorBtn" title="与塔防共用怪物数值">👹 怪物编辑器</button>
+                <button type="button" class="open-shop-btn" id="stgOpenPlayerEditorBtn" title="移动判定与武器参数（普通/慢速/大招）">🎮 玩家与武器编辑器</button>
+                <button type="button" class="open-shop-btn" id="stgOpenScenePropsEditorBtn" title="P 点轨迹等场景道具">🧩 场景道具</button>
+                <button type="button" class="open-shop-btn stg-primary-btn" id="stgStartBtn">▶ 开始游戏</button>
+                <button type="button" class="open-shop-btn hidden" id="stgRestartBtn">🔄 重新开始</button>
+                <button type="button" class="open-shop-btn" id="stgLangToggleBtn" title="切换界面语言 / UI language">English</button>
+            </div>
+            <div class="stg-body-row">
+                <aside id="stgAttackBuildPanel" class="stg-attack-build-aside" aria-label="当前攻击构筑与数值">
+                    <h3 id="stgAttackBuildTitle" class="stg-attack-build-title">攻击构筑</h3>
+                    <div data-stg-attack-section="spread" class="stg-attack-section">
+                        <div id="stgAttackSpreadHeading" class="stg-attack-section-heading">扩散攻击（Z）</div>
+                        <ul id="stgAttackSpreadStats" class="stg-attack-stats"></ul>
+                        <div id="stgAttackSpreadUpgLabel" class="stg-attack-upgrades-label">已选构筑</div>
+                        <div id="stgAttackSpreadUpgrades" class="stg-attack-upgrade-icons" role="list"></div>
+                    </div>
+                    <div data-stg-attack-section="focus" class="stg-attack-section">
+                        <div id="stgAttackFocusHeading" class="stg-attack-section-heading">集中攻击（慢速）</div>
+                        <ul id="stgAttackFocusStats" class="stg-attack-stats"></ul>
+                        <div id="stgAttackFocusUpgLabel" class="stg-attack-upgrades-label">已选构筑</div>
+                        <div id="stgAttackFocusUpgrades" class="stg-attack-upgrade-icons" role="list"></div>
+                    </div>
+                    <div data-stg-attack-section="ult" class="stg-attack-section">
+                        <div id="stgAttackUltHeading" class="stg-attack-section-heading">大招（X）</div>
+                        <ul id="stgAttackUltStats" class="stg-attack-stats"></ul>
+                        <div id="stgAttackUltUpgLabel" class="stg-attack-upgrades-label">已选构筑</div>
+                        <div id="stgAttackUltUpgrades" class="stg-attack-upgrade-icons" role="list"></div>
+                    </div>
+                </aside>
+                <div class="stg-center-column">
+                    <div class="stg-main">
+                        <!-- 棋盘区单独一层：宽度仅由 canvas 决定，与下方 HUD 文案换行无关 -->
+                        <div class="stg-board-slot">
+                            <div class="stg-canvas-wrap">
+                                <canvas id="stgCanvas" width="540" height="765"></canvas>
+                            </div>
+                        </div>
+                        <div class="stg-meta-panel">
+                            <div id="stgHudBar" class="stg-hud-bar">
+                                <span id="stgHpText" class="stg-hud-item">HP —</span>
+                                <span id="stgExpText" class="stg-hud-item">Lv.1 经验 —</span>
+                                <span id="stgWaveText" class="stg-hud-item">波次 —</span>
+                                <span id="stgNextWaveText" class="stg-hud-item">下一波 —</span>
+                                <span id="stgTimeText" class="stg-hud-item">时间 —</span>
+                            </div>
+                            <p id="stgHintBar" class="stg-hint-bar">方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 技能弹幕 · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · 升级三选一</p>
+                        </div>
+                    </div>
+                </div>
+                <aside class="stg-player-aside" aria-label="博丽灵梦 STG 新属性加成一览">
+                    <h3 class="stg-aside-title">博丽灵梦 · 新属性（加成）</h3>
+                    <div id="stgPlayerStatsList" class="player-stats-list stg-reimu-stats-list"></div>
+                </aside>
+            </div>
+        </div>
+        <div id="stgUpgradeOverlay" class="stg-overlay hidden" aria-label="升级三选一">
+            <div class="stg-overlay-inner">
+                <h3 class="stg-overlay-title">升级 — 三选一（博丽灵梦 · 构筑）</h3>
+                <div id="stgUpgradeCards" class="stg-upgrade-cards"></div>
+            </div>
+        </div>
+        <div id="stgResultOverlay" class="stg-overlay hidden" aria-label="结算">
+            <div class="stg-overlay-inner stg-result-inner">
+                <h3 id="stgResultTitle" class="stg-overlay-title">本局结束</h3>
+                <p id="stgResultMsg" class="stg-result-msg"></p>
+                <button type="button" class="open-shop-btn stg-primary-btn stg-result-restart-btn" id="stgResultRestartBtn">🔄 重新开始</button>
+                <p class="stg-result-hint">也可点击顶栏「重新开始」</p>
+            </div>
+        </div>
+        <div id="stgPlayerEditorPanel" class="wave-config-panel hidden" aria-label="STG 玩家编辑器">
+            <div class="wave-config-panel-inner stg-player-editor-inner stg-player-editor-scroll">
+                <div class="wave-config-header">
+                    <h3>玩家与武器编辑器</h3>
+                    <button type="button" id="stgPlayerEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+                </div>
+                <p class="wave-config-hint">保存到本地；点「应用」后当前局立即生效。「恢复默认」清除存档并按英雄模板重建自机（保留位置）。强化三选一仍叠加在射速/弹速/移速上。慢速武器未单独填写时沿用普通模式对应项。</p>
+                <div class="stg-player-editor-section-title">移动与判定</div>
+                <div class="stg-player-editor-fields">
+                    <label class="stg-player-editor-label">移速（px/s，60–520）<input type="number" id="stgPlayerEditMoveSpeed" min="60" max="520" step="10" value="200" /></label>
+                    <label class="stg-player-editor-label">慢速倍率（按住 Shift，0.05–0.98，越小越慢）<input type="number" id="stgPlayerEditFocusMult" min="0.05" max="0.98" step="0.01" value="0.34" title="在移速×局内强化后再乘此系数" /></label>
+                    <label class="stg-player-editor-label">判定点半径（px，2–48）<input type="number" id="stgPlayerEditHitRadius" min="2" max="48" step="1" value="24" /></label>
+                </div>
+                <div class="stg-player-editor-section-title">武器编辑器</div>
+                <p class="stg-player-editor-weapon-intro">每套武器填写<strong>基础攻击力</strong>；局内会再乘<strong>属性强化</strong>中的攻击力加成（如 attack_damage_bonus、总伤%、元素等）与<strong>三选一</strong>伤害加成。单发/扇形/环形<strong>发射参数</strong>仅在对应发射模式下显示。</p>
+                <div class="stg-player-editor-weapon-sub">普通模式（Z，不按 Shift）</div>
+                <div class="stg-player-editor-fields">
+                    <label class="stg-player-editor-label">武器攻击力（基础值，0.5–9999）<input type="number" id="stgPlayerEditMainAttack" min="0.5" max="9999" step="0.5" value="10" title="再乘强化攻击力加成与局内三选一" /></label>
+                    <label class="stg-player-editor-label">子弹半径（px，碰撞与大体尺寸，2–24）<input type="number" id="stgPlayerEditBulletRadius" min="2" max="24" step="1" value="4" /></label>
+                    <label class="stg-player-editor-label">子弹外观
+                        <select id="stgPlayerEditBulletVisual">
+                            <option value="circle">圆形</option>
+                            <option value="diamond">菱形</option>
+                            <option value="square">方形</option>
+                        </select>
+                    </label>
+                    <label class="stg-player-editor-label">射速间隔（ms，40–400，越小越快）<input type="number" id="stgPlayerEditFireInterval" min="40" max="400" step="10" value="160" /></label>
+                    <label class="stg-player-editor-label">弹幕速度（px/s，120–900）<input type="number" id="stgPlayerEditBulletSpeed" min="120" max="900" step="10" value="420" /></label>
+                    <label class="stg-player-editor-label">发射模式（决定下列可选参数）
+                        <select id="stgPlayerEditEmitStyle">
+                            <option value="single">单发（竖直）</option>
+                            <option value="fan">扇形</option>
+                            <option value="ring">环形</option>
+                        </select>
+                    </label>
+                    <div id="stgPlayerMainSingleRow" class="stg-player-editor-fields">
+                        <label class="stg-player-editor-label">子弹数量（单发并列，1–5）<input type="number" id="stgPlayerEditSingleCount" min="1" max="5" step="1" value="1" /></label>
+                    </div>
+                    <div id="stgPlayerMainFanRow" class="stg-player-editor-fields hidden">
+                        <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditFanCount" min="2" max="24" value="5" /></label>
+                        <label class="stg-player-editor-label">扇形张角（°，10–180）<input type="number" id="stgPlayerEditFanSpread" min="10" max="180" value="60" /></label>
+                    </div>
+                    <div id="stgPlayerMainRingRow" class="stg-player-editor-fields hidden">
+                        <label class="stg-player-editor-label">环形发数（3–36）<input type="number" id="stgPlayerEditRingCount" min="3" max="36" value="12" /></label>
+                    </div>
+                </div>
+                <div class="stg-player-editor-weapon-sub">慢速模式（Z + 按住 Shift，集中移动）</div>
+                <div class="stg-player-editor-fields">
+                    <label class="stg-player-editor-label">武器攻击力（基础值）<input type="number" id="stgPlayerEditFocusAttack" min="0.5" max="9999" step="0.5" value="10" /></label>
+                    <label class="stg-player-editor-label">子弹半径（px，2–24）<input type="number" id="stgPlayerEditFocusBulletRadius" min="2" max="24" step="1" value="4" /></label>
+                    <label class="stg-player-editor-label">子弹外观
+                        <select id="stgPlayerEditFocusBulletVisual">
+                            <option value="circle">圆形</option>
+                            <option value="diamond">菱形</option>
+                            <option value="square">方形</option>
+                        </select>
+                    </label>
+                    <label class="stg-player-editor-label">射速间隔（ms，40–400）<input type="number" id="stgPlayerEditFocusFireInterval" min="40" max="400" step="10" value="160" title="默认与普通模式一致；可单独改" /></label>
+                    <label class="stg-player-editor-label">弹幕速度（px/s，120–900）<input type="number" id="stgPlayerEditFocusBulletSpeed" min="120" max="900" step="10" value="420" /></label>
+                    <label class="stg-player-editor-label">发射模式
+                        <select id="stgPlayerEditFocusEmitStyle">
+                            <option value="single">单发（竖直）</option>
+                            <option value="fan">扇形</option>
+                            <option value="ring">环形</option>
+                        </select>
+                    </label>
+                    <div id="stgPlayerFocusSingleRow" class="stg-player-editor-fields">
+                        <label class="stg-player-editor-label">子弹数量（1–5）<input type="number" id="stgPlayerEditFocusSingleCount" min="1" max="5" step="1" value="1" /></label>
+                    </div>
+                    <div id="stgPlayerFocusFanRow" class="stg-player-editor-fields hidden">
+                        <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditFocusFanCount" min="2" max="24" value="5" /></label>
+                        <label class="stg-player-editor-label">扇形张角（°）<input type="number" id="stgPlayerEditFocusFanSpread" min="10" max="180" value="60" /></label>
+                    </div>
+                    <div id="stgPlayerFocusRingRow" class="stg-player-editor-fields hidden">
+                        <label class="stg-player-editor-label">环形发数（3–36）<input type="number" id="stgPlayerEditFocusRingCount" min="3" max="36" value="12" /></label>
+                    </div>
+                </div>
+                <div class="stg-player-editor-weapon-sub">大招（X 按住连射）</div>
+                <div class="stg-player-editor-fields">
+                    <label class="stg-player-editor-label">武器攻击力（基础值）<input type="number" id="stgPlayerEditSkillAttack" min="0.5" max="9999" step="0.5" value="10" /></label>
+                    <label class="stg-player-editor-label">子弹半径（px，2–24）<input type="number" id="stgPlayerEditSkillBulletRadius" min="2" max="24" step="1" value="4" /></label>
+                    <label class="stg-player-editor-label">子弹外观
+                        <select id="stgPlayerEditSkillBulletVisual">
+                            <option value="circle">圆形</option>
+                            <option value="diamond">菱形</option>
+                            <option value="square">方形</option>
+                        </select>
+                    </label>
+                    <label class="stg-player-editor-label">射速间隔（ms，40–400）<input type="number" id="stgPlayerEditSkillFireIv" min="40" max="400" step="10" value="120" title="按住 X 时两次发射的最短间隔" /></label>
+                    <label class="stg-player-editor-label">额外冷却（ms，0 关闭）<input type="number" id="stgPlayerEditSkillCooldown" min="0" max="60000" step="100" value="0" title="每次技能齐射后追加等待，防爆发过高" /></label>
+                    <label class="stg-player-editor-label">弹幕速度（px/s）<input type="number" id="stgPlayerEditSkillBulletSpeed" min="120" max="900" step="10" value="420" /></label>
+                    <label class="stg-player-editor-label">发射模式
+                        <select id="stgPlayerEditSkillEmitStyle">
+                            <option value="single">单发（竖直）</option>
+                            <option value="fan">扇形</option>
+                            <option value="ring">环形</option>
+                        </select>
+                    </label>
+                    <div id="stgPlayerSkillSingleRow" class="stg-player-editor-fields">
+                        <label class="stg-player-editor-label">子弹数量（1–5）<input type="number" id="stgPlayerEditSkillSingleCount" min="1" max="5" step="1" value="1" /></label>
+                    </div>
+                    <div id="stgPlayerSkillFanRow" class="stg-player-editor-fields hidden">
+                        <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditSkillFanCount" min="2" max="24" value="5" /></label>
+                        <label class="stg-player-editor-label">扇形张角（°）<input type="number" id="stgPlayerEditSkillFanSpread" min="10" max="180" value="60" /></label>
+                    </div>
+                    <div id="stgPlayerSkillRingRow" class="stg-player-editor-fields hidden">
+                        <label class="stg-player-editor-label">环形发数（3–36）<input type="number" id="stgPlayerEditSkillRingCount" min="3" max="36" value="12" /></label>
+                    </div>
+                </div>
+                <div class="wave-config-actions stg-player-editor-actions">
+                    <button type="button" id="stgPlayerEditorResetBtn" class="open-shop-btn">恢复默认</button>
+                    <button type="button" id="stgPlayerEditorApplyBtn" class="open-shop-btn">应用并关闭</button>
+                </div>
+            </div>
+        </div>
+        <div id="stgScenePropsEditorPanel" class="wave-config-panel hidden" aria-label="STG 场景道具编辑器">
+            <div class="wave-config-panel-inner stg-scene-props-editor-inner">
+                <div class="wave-config-header">
+                    <h3>场景道具编辑器</h3>
+                    <button type="button" id="stgScenePropsEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+                </div>
+                <p class="wave-config-hint">配置<strong>怪物死亡掉落的 P 点</strong>运动方式。保存到本地；「应用」后<strong>新产生</strong>的 P 点生效，已存在的 P 点保持原轨迹。</p>
+                <div class="stg-player-editor-section-title">P 点轨迹</div>
+                <div class="stg-player-editor-fields">
+                    <label class="stg-player-editor-label">轨迹类型
+                        <select id="stgScenePropsTrajectory">
+                            <option value="straight_down">直线向下</option>
+                            <option value="arc_up_down">先向上再向下</option>
+                        </select>
+                    </label>
+                    <div id="stgScenePropsStraightRow" class="stg-player-editor-fields">
+                        <label class="stg-player-editor-label">下落速度（px/s，20–400）<input type="number" id="stgScenePropsStraightVy" min="20" max="400" step="5" value="80" /></label>
+                    </div>
+                    <div id="stgScenePropsArcRow" class="stg-player-editor-fields hidden">
+                        <label class="stg-player-editor-label">上抛速度（px/s，40–400）<input type="number" id="stgScenePropsArcUpSpeed" min="40" max="400" step="10" value="120" /></label>
+                        <label class="stg-player-editor-label">弧顶高度（像素，相对出生点向上，10–220）<input type="number" id="stgScenePropsArcPeakPx" min="10" max="220" step="5" value="55" /></label>
+                        <label class="stg-player-editor-label">下落速度（px/s，40–600）<input type="number" id="stgScenePropsArcDownSpeed" min="40" max="600" step="5" value="85" /></label>
+                    </div>
+                </div>
+                <div class="wave-config-actions stg-player-editor-actions">
+                    <button type="button" id="stgScenePropsEditorResetBtn" class="open-shop-btn">恢复默认</button>
+                    <button type="button" id="stgScenePropsEditorApplyBtn" class="open-shop-btn">应用并关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏主页面（塔防，由按钮呼出） -->
+    <div id="gamePage" class="page hidden">
+        <div class="game-container">
+            <!-- 顶部工具栏 -->
+            <div class="game-toolbar">
+                <button type="button" class="open-shop-btn" id="backToStgBtn" title="返回 STG 纵版射击">🎮 STG 纵版射击</button>
+                <button class="open-shop-btn" id="openShopBtn" title="打开商店">
+                    🛒 打开商店
+                </button>
+                <button type="button" class="open-shop-btn" id="openEnhanceBtn" title="强化：免费四选一">
+                    ⬆️ 强化
+                </button>
+                <button class="open-shop-btn" id="openWaveConfigBtn" title="波次与阵型（唯一配置入口）">
+                    📋 波次阵型
+                </button>
+                <button class="open-shop-btn" id="openMonsterEditorBtn" title="怪物编辑器">
+                    👹 怪物编辑器
+                </button>
+                <button class="open-shop-btn" id="openTowerEditorBtn" title="防御塔编辑器">
+                    🏰 防御塔编辑器
+                </button>
+                <button class="open-shop-btn" id="openInventoryEditorBtn" title="物品栏编辑器">
+                    📦 物品栏编辑器
+                </button>
+                <button class="open-shop-btn" id="openHeroEditorBtn" title="英雄编辑器">
+                    🦸 英雄编辑器
+                </button>
+                <button class="open-shop-btn" id="openPowerEfficiencyEditorBtn" title="编辑威能消耗、战场升级与英雄技能效果">
+                    ⚡ 威能节能编辑器
+                </button>
+                <button type="button" class="open-shop-btn" id="openMapEditorBtn" title="编辑石块、基地、出怪口、矿石与矿机">
+                    🗺️ 地图编辑器
+                </button>
+                <button type="button" class="open-shop-btn hidden" id="openTowerLoadoutBtn" title="配装系统已暂缓，入口隐藏">
+                    🧩 防御塔配装
+                </button>
+            </div>
+            <p id="mapEditorHint" class="base-placement-hint hidden">地图编辑：打开面板选择工具后在棋盘上点击。出怪口编号 0、1… 与波次配置中「口0/口1」对应；无出怪口时怪物仍从地图边缘随机生成。</p>
+
+            <!-- 地图编辑器（悬浮面板） -->
+            <div id="mapEditorPanel" class="map-editor-panel hidden">
+                <div class="map-editor-inner">
+                    <h3 class="map-editor-title">地图编辑器</h3>
+                    <p class="map-editor-desc">选择工具后在地图上点击。石块/矿石/矿机/出怪口会保存到本地；矿石需填<strong>条数</strong>与<strong>每命生命值(HP)</strong>（每条命血量相同），可对已有矿石格再点「矿石」覆盖保存。战斗中打出的矿机<strong>不会</strong>写入存档，刷新后仍按蓝图恢复为满状态矿石。</p>
+                    <div class="map-editor-tools">
+                        <button type="button" class="map-editor-tool-btn" data-map-tool="stone" title="点击放置石块">🪨 石块</button>
+                        <button type="button" class="map-editor-tool-btn" data-map-tool="erase" title="擦除石块、出怪口或矿石/矿机">🧹 擦除</button>
+                        <button type="button" class="map-editor-tool-btn" data-map-tool="spawn" title="怪物从此格中心生成，编号0起递增">🚪 出怪口</button>
+                        <button type="button" class="map-editor-tool-btn" data-map-tool="ore" title="放置矿石（塔/英雄优先打敌人再打矿）">⛏️ 矿石</button>
+                        <button type="button" class="map-editor-tool-btn" data-map-tool="miner" title="直接放置矿机（周期性产灵力）">⚙️ 矿机</button>
+                        <button type="button" class="map-editor-tool-btn" data-map-tool="base" title="点击作为基地2×2左上角">📍 放置基地(2×2)</button>
+                    </div>
+                    <div class="map-editor-ore-fields" title="条数=有几条命；每命生命值=每条命要打掉多少伤害才会少一条命（各条相同）。同一格再点「矿石」可覆盖保存。">
+                        <label class="map-editor-ore-label">条数(命) <input type="number" id="mapEditorOreLives" min="1" value="3" step="1" title="矿石有多少条命" /></label>
+                        <label class="map-editor-ore-label">每命生命值(HP) <input type="number" id="mapEditorOreHpPerLife" min="1" value="100" step="1" title="每条命的血量，各条相同；塔的伤害先扣当前命HP" /></label>
+                        <label class="map-editor-ore-label">每命灵力 <input type="number" id="mapEditorOreSpiritPerLife" min="0" value="5" step="1" /></label>
+                        <label class="map-editor-ore-label">矿机间隔(秒) <input type="number" id="mapEditorMinerIntervalSec" min="0.1" value="3" step="0.5" /></label>
+                        <label class="map-editor-ore-label">矿机每次灵力 <input type="number" id="mapEditorMinerSpiritPerTick" min="0" value="2" step="1" /></label>
+                    </div>
+                    <button type="button" class="map-editor-close-btn" id="closeMapEditorBtn">关闭面板</button>
+                </div>
+            </div>
+            
+            <!-- 塔防游戏主区域 -->
+            <div class="game-main-area">
+                <!-- 左侧防御塔物品栏 -->
+                <div class="tower-inventory-panel">
+                    <h3 class="panel-title">防御塔物品栏</h3>
+                    <div class="tower-inventory-spirit-wrap" id="spiritBarWrap" title="当前可用灵力，部署塔/英雄时消耗">
+                        <span class="spirit-bar-label">灵力</span>
+                        <span class="spirit-bar-value" id="spiritBarValue">40</span>
+                    </div>
+                    <div class="tower-inventory-list" id="towerInventoryList">
+                        <!-- 防御塔物品将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+                
+                <!-- 右侧游戏画布（威能改为每座塔头顶/脚下小条，无全局威能条） -->
+                <div class="game-canvas-container">
+                    <canvas id="gameCanvas" width="1600" height="900"></canvas>
+                    <!-- 英雄大招：名称、灵力、冷却（由 towerDefense.js 刷新） -->
+                    <div id="heroUltimateHud" class="hero-ultimate-hud hidden" aria-label="英雄大招">
+                        <div class="hero-ult-inner">
+                            <span class="hero-ult-hero-name" id="heroUltHeroName">英雄</span>
+                            <div class="hero-ult-skill-col">
+                                <button type="button" class="hero-ult-skill-btn" id="heroUltSkill1Btn" data-hero-ult-skill="1" title="发动技能1">
+                                    <span class="hero-ult-skill-title" id="heroUltSkill1Name">技能1</span>
+                                    <span class="hero-ult-skill-cost" id="heroUltSkill1Cost">灵力 0</span>
+                                    <span class="hero-ult-skill-cd" id="heroUltSkill1Cd"></span>
+                                    <span class="hero-ult-cd-track" aria-hidden="true"><span class="hero-ult-cd-bar" id="heroUltSkill1CdBar"></span></span>
+                                </button>
+                                <button type="button" class="hero-ult-skill-btn" id="heroUltSkill2Btn" data-hero-ult-skill="2" title="发动技能2">
+                                    <span class="hero-ult-skill-title" id="heroUltSkill2Name">技能2</span>
+                                    <span class="hero-ult-skill-cost" id="heroUltSkill2Cost">灵力 0</span>
+                                    <span class="hero-ult-skill-cd" id="heroUltSkill2Cd"></span>
+                                    <span class="hero-ult-cd-track" aria-hidden="true"><span class="hero-ult-cd-bar" id="heroUltSkill2CdBar"></span></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 下一波按钮 -->
+                    <button class="next-wave-btn" id="nextWaveBtn" title="开始下一波">
+                        ⚔️ 下一波
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 悬浮窗 -->
+            <div id="towerTooltip" class="tower-tooltip">
+                <!-- 内容将通过JavaScript动态生成 -->
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- 商店页面 -->
+    <div id="shopPage" class="page">
+        <div class="game-container shop-page-container">
+            <!-- 顶部工具栏：关闭按钮在左上角 -->
+            <div class="shop-toolbar">
+                <button class="close-shop-btn" id="closeShopBtn" title="关闭商店">
+                    ✕ 关闭商店
+                </button>
+            </div>
+            
+            <!-- 商店主内容区：左侧防御塔 | 中间商店+下方持有道具 | 右侧玩家属性 -->
+            <div class="shop-content">
+                <!-- 左侧：仅防御塔物品栏 -->
+                <div class="shop-left-section">
+                    <div class="tower-inventory-panel shop-tower-panel">
+                        <h3 class="panel-title">防御塔物品栏</h3>
+                        <div class="tower-inventory-list" id="shopTowerInventoryList">
+                            <!-- 与游戏页同步，由 JS 渲染 -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 中间：上方物品商店，下方持有道具 -->
+                <div class="shop-main-section">
+                    <div class="shop-section">
+                        <div class="shop-header">
+                            <div class="header-left">
+                                <h2 class="section-title">物品商店</h2>
+                                <div class="coins-display" id="coinsDisplay">
+                                    💰 <span id="coinsAmount">0</span> 金币
+                                </div>
+                            </div>
+                            <button class="refresh-btn" id="refreshBtn" title="刷新商店物品">
+                                🔄 刷新商店
+                            </button>
+                        </div>
+                        <div class="shop-grid" id="shopGrid">
+                            <!-- 物品卡片将通过JavaScript动态生成 -->
+                        </div>
+                    </div>
+                    <div class="inventory-section">
+                        <h2 class="section-title">持有道具</h2>
+                        <div class="inventory-list" id="inventoryList">
+                            <div class="empty-inventory">暂无道具</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右侧：玩家属性 -->
+                <div class="player-stats-section">
+                    <div class="player-stats-header">
+                        <h2 class="section-title">玩家属性</h2>
+                    </div>
+                    <div class="player-stats-list" id="playerStatsListShop">
+                        <!-- 玩家属性将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 强化页面：布局类似商店，免费四选一，可刷新 -->
+    <div id="enhancePage" class="page hidden">
+        <div class="game-container shop-page-container">
+            <div class="shop-toolbar">
+                <button type="button" class="close-shop-btn" id="closeEnhanceBtn" title="关闭强化">
+                    ✕ 关闭强化
+                </button>
+            </div>
+            <div class="shop-content">
+                <div class="shop-left-section">
+                    <div class="tower-inventory-panel shop-tower-panel">
+                        <h3 class="panel-title">防御塔物品栏</h3>
+                        <div class="tower-inventory-list" id="enhanceTowerInventoryList"></div>
+                    </div>
+                </div>
+                <div class="shop-main-section">
+                    <div class="shop-section">
+                        <div class="shop-header">
+                            <div class="header-left">
+                                <h2 class="section-title">强化</h2>
+                                <p class="enhance-hint">免费四选一，不消耗金币；选择后自动抽取下一组选项。可刷新重新随机。</p>
+                            </div>
+                            <button type="button" class="refresh-btn enhance-refresh-free" id="enhanceRefreshBtn" title="免费刷新四个选项">
+                                🔄 刷新选项
+                            </button>
+                        </div>
+                        <div class="shop-grid enhance-grid" id="enhanceGrid"></div>
+                    </div>
+                </div>
+                <div class="player-stats-section">
+                    <div class="player-stats-header">
+                        <h2 class="section-title">玩家属性</h2>
+                    </div>
+                    <div class="player-stats-list" id="enhancePlayerStatsList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 波次通关气泡：单波结束后显示，约 2 秒后自动消失 -->
+    <div id="waveClearPanel" class="result-bubble hidden">
+        <div class="result-bubble-inner">
+            <span class="result-bubble-title">波次通关</span>
+            <span class="result-bubble-msg">第 <span id="waveClearWaveNum">1</span> 波通过！</span>
+        </div>
+    </div>
+
+    <!-- 关卡通过气泡：本关最后一波通过后显示，约 2 秒后自动消失 -->
+    <div id="levelClearPanel" class="result-bubble hidden">
+        <div class="result-bubble-inner">
+            <span class="result-bubble-title">关卡通过</span>
+            <span class="result-bubble-msg">恭喜通过第 <span id="levelClearLevelNum">1</span> 关！</span>
+        </div>
+    </div>
+
+    <!-- 关卡失败：基地被摧毁，约 4 秒后自动隐藏；可点「下一波」回满基地生命并继续 -->
+    <div id="levelFailPanel" class="result-bubble result-bubble--fail hidden">
+        <div class="result-bubble-inner">
+            <span class="result-bubble-title">关卡失败</span>
+            <span class="result-bubble-msg">基地已被摧毁！可点击「下一波」重新开始战斗。</span>
+        </div>
+    </div>
+
+    <!-- 防御塔编辑器弹窗 -->
+    <div id="towerEditorPanel" class="wave-config-panel hidden">
+        <div class="wave-config-panel-inner tower-editor-inner">
+            <div class="wave-config-header">
+                <h3>防御塔编辑器</h3>
+                <button type="button" id="towerEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+            </div>
+            <p class="wave-config-hint">编辑防御塔属性，应用后会保存到本地并刷新页面内所有展示（物品栏、商店、悬浮窗、已放置的塔）。</p>
+            <datalist id="tower-category-list">
+                <option value="防御塔"><option value="箭塔"><option value="法师塔"><option value="炮塔"><option value="兵营">
+            </datalist>
+            <div id="towerEditorList" class="wave-config-list"></div>
+            <div class="wave-config-actions">
+                <button type="button" id="towerEditorApplyBtn">应用并保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 英雄编辑器弹窗 -->
+    <div id="heroEditorPanel" class="wave-config-panel hidden">
+        <div class="wave-config-panel-inner tower-editor-inner">
+            <div class="wave-config-header">
+                <h3>英雄编辑器</h3>
+                <button type="button" id="heroEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+            </div>
+            <p class="wave-config-hint">编辑英雄名称、图标与属性；同时可设置英雄加入玩家物品栏的数量并保存。</p>
+            <div class="hero-editor-base-block" id="heroEditorBaseBlock">
+                <div class="tower-editor-attack-modes-title">基地产灵力（全局）</div>
+                <p class="wave-config-hint" style="margin:4px 0 8px;">战斗中基地上方显示进度条，满一条周期后增加灵力；与具体英雄配置无关。</p>
+                <label title="进度条填满所需毫秒数">周期(ms)</label>
+                <input type="number" id="baseSpiritIntervalMs" min="500" step="100" value="10000" style="width:90px;padding:4px 6px;">
+                <label title="每满一条周期增加的灵力">每周期灵力</label>
+                <input type="number" id="baseSpiritPerCycle" min="1" value="20" style="width:60px;padding:4px 6px;">
+            </div>
+            <div id="heroEditorList" class="wave-config-list"></div>
+            <div class="wave-config-actions">
+                <button type="button" id="heroEditorApplyBtn">应用并保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 防御塔配装：选塔 + 槽位 + 配装道具列表 -->
+    <div id="towerLoadoutPanel" class="wave-config-panel tower-loadout-panel hidden">
+        <div class="wave-config-panel-inner tower-loadout-inner">
+            <div class="wave-config-header">
+                <h3>防御塔配装</h3>
+                <button type="button" id="towerLoadoutCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+            </div>
+            <p class="wave-config-hint"><strong>特斯拉</strong>专属：中间为 <strong>3 个槽位</strong>（局内 1/2/3 级累计生效）；右侧为<strong>随机 3 个被动候选</strong>，可花<strong>金币刷新</strong>；底部为<strong>大招三选一</strong>（效果待接入）。配置自动保存。</p>
+            <div class="tower-loadout-body">
+                <aside class="tower-loadout-col tower-loadout-towers" id="towerLoadoutTowerList"></aside>
+                <main class="tower-loadout-col tower-loadout-center" id="towerLoadoutDetail"></main>
+                <aside class="tower-loadout-col tower-loadout-equips">
+                    <h4 class="tl-equip-title">配装道具</h4>
+                    <div id="towerLoadoutEquipList" class="tower-loadout-equip-list"></div>
+                </aside>
+            </div>
+        </div>
+    </div>
+
+    <!-- 物品栏编辑器弹窗 -->
+    <div id="inventoryEditorPanel" class="wave-config-panel hidden">
+        <div class="wave-config-panel-inner">
+            <div class="wave-config-header">
+                <h3>物品栏编辑器</h3>
+                <button type="button" id="inventoryEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+            </div>
+            <p class="wave-config-hint">设置各防御塔在玩家物品栏中的数量，应用后会保存到本地；刷新页面后仍按此配置恢复。<strong>左侧「防御塔物品栏」只显示数量 &gt; 0 的塔</strong>，新塔请在本面板把数量设为 ≥1 并应用。下方第一组为<strong>局内 Lv.4 分支五类基底塔</strong>（含弹珠 marble_tower、寒冰 frost_tower）。</p>
+            <div id="inventoryEditorList" class="wave-config-list"></div>
+            <div class="wave-config-actions">
+                <button type="button" id="inventoryEditorApplyBtn">应用并保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 威能节能编辑器：全局威能 + 防御塔战场升级 + 英雄技能 -->
+    <div id="powerEfficiencyEditorPanel" class="wave-config-panel hidden">
+        <div class="wave-config-panel-inner tower-editor-inner power-eff-editor-inner">
+            <div class="wave-config-header">
+                <h3>威能节能编辑器</h3>
+                <button type="button" id="powerEfficiencyEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+            </div>
+            <p class="wave-config-hint">集中调整<strong>威能上限</strong>、<strong>攻击命中获得的威能</strong>、<strong>防御塔战场升级（过载/防御）的消耗与数值</strong>、<strong>英雄手动技能的威能消耗与范围/伤害倍率</strong>。应用后会写入本地并与防御塔/英雄编辑器数据合并，刷新物品栏与战场逻辑。</p>
+            <div id="powerEfficiencyGlobal" class="pe-global-wrap"></div>
+            <h4 class="pe-section-title">防御塔 · 威能获取与战场升级</h4>
+            <div id="powerEfficiencyTowerList" class="wave-config-list pe-list"></div>
+            <h4 class="pe-section-title">英雄 · 技能威能消耗与效果</h4>
+            <div id="powerEfficiencyHeroList" class="wave-config-list pe-list"></div>
+            <div class="wave-config-actions">
+                <button type="button" id="powerEfficiencyApplyBtn">应用并保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 怪物编辑器弹窗 -->
+    <div id="monsterEditorPanel" class="wave-config-panel hidden">
+        <div class="wave-config-panel-inner">
+            <div class="wave-config-header">
+                <h3>怪物编辑器</h3>
+                <button type="button" id="monsterEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+            </div>
+            <p class="wave-config-hint"><strong>此处为全局最高优先级：</strong>敌人生命、攻击、移速、金币、检测范围、<strong>碰撞半径</strong>等均由本面板决定，并保存到本地；战斗中生成敌人时<strong>只读此处</strong>，波次配置不再覆盖数值。<strong>STG 纵版射击</strong>另可编辑每种怪的<strong>弹幕类型</strong>（瞄准玩家 / 直线向下 / 随机 / <strong>无弹幕</strong>）、弹幕冷却与敌弹速度。</p>
+            <div class="monster-editor-add-bar">
+                <label class="monster-editor-add-label" for="monsterEditorNewIdInput">新种类 ID</label>
+                <input type="text" id="monsterEditorNewIdInput" class="monster-editor-new-id-input" maxlength="32" placeholder="英文/数字/下划线，如 elite_1" autocomplete="off" />
+                <button type="button" id="monsterEditorAddTypeBtn" class="open-shop-btn">＋ 添加种类</button>
+            </div>
+            <div id="monsterEditorList" class="wave-config-list"></div>
+            <div class="wave-config-actions">
+                <button type="button" id="monsterEditorApplyBtn">应用</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 波次阵型编辑器：唯一波次配置（取代旧「波次配置」弹窗） -->
+    <div id="stgWaveFormationPanel" class="wave-config-panel hidden" aria-label="波次阵型编辑器">
+        <div class="wave-config-panel-inner stg-formation-inner">
+            <div class="wave-config-header">
+                <h3>波次阵型编辑器</h3>
+                <button type="button" id="stgWaveFormationCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+            </div>
+            <p class="wave-config-hint"><strong>种类与数量仅由下方格子决定</strong>（塔防/STG 共用本配置）。三块棋盘为主战场上/左/右延伸；<strong>左键按住拖动</strong>可连续摆放；<strong>右键</strong>擦除一格。同一格多只怪可写 <code>type1|type2</code>（需分次填入或导入）。「出兵间隔 / 灵力 / 下一波」为全局节奏参数；塔防出怪顺序与格子遍历顺序一致（同类型合并为连续组）。旧存档仅有种类+数量时，会尝试摆到上棋盘以便编辑。</p>
+            <div class="stg-formation-toolbar">
+                <label class="stg-formation-label">当前波次
+                    <select id="stgFormationWaveSelect" class="stg-formation-select"></select>
+                </label>
+                <button type="button" id="stgFormationAddWaveBtn" class="open-shop-btn">＋ 添加波次</button>
+                <button type="button" id="stgFormationRemoveWaveBtn" class="open-shop-btn">删除当前波</button>
+            </div>
+            <div class="stg-formation-toolbar stg-formation-wave-meta">
+                <label class="stg-formation-label">本波出兵间隔（ms，仅无阵型时的 STG 备用 / 塔防逐只间隔）
+                    <input type="number" id="stgFormationSpawnInterval" class="stg-formation-num" min="0" value="400" />
+                </label>
+                <label class="stg-formation-label">本波结束灵力
+                    <input type="number" id="stgFormationSpiritReward" class="stg-formation-num" min="0" value="10" />
+                </label>
+                <label class="stg-formation-label">下一波倒计时（秒）
+                    <input type="number" id="stgFormationNextDelaySec" class="stg-formation-num" min="0" value="15" />
+                </label>
+            </div>
+            <div class="stg-formation-toolbar">
+                <label class="stg-formation-label">笔刷（种类）
+                    <select id="stgFormationBrushSelect" class="stg-formation-select"></select>
+                </label>
+                <button type="button" id="stgFormationClearBoardBtn" class="open-shop-btn">清空本波三棋盘</button>
+            </div>
+            <div class="stg-formation-boards-wrap">
+                <div class="stg-formation-board-block">
+                    <div class="stg-formation-board-title">上（主棋盘上方；最下一行与主棋盘第 0 行相邻）</div>
+                    <div id="stgFormationGridTop" class="stg-formation-grid" role="grid"></div>
+                </div>
+                <div class="stg-formation-board-block">
+                    <div class="stg-formation-board-title">左（主棋盘左侧；最右列与主棋盘第 0 列相邻）</div>
+                    <div id="stgFormationGridLeft" class="stg-formation-grid" role="grid"></div>
+                </div>
+                <div class="stg-formation-board-block">
+                    <div class="stg-formation-board-title">右（主棋盘右侧；最左列与主棋盘最右列相邻）</div>
+                    <div id="stgFormationGridRight" class="stg-formation-grid" role="grid"></div>
+                </div>
+            </div>
+            <div class="wave-config-actions">
+                <button type="button" id="stgFormationApplyBtn" class="open-shop-btn stg-primary-btn">应用并保存全部波次</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 休整期点击防御塔：升级 / 4 级分支 / 移动（内容由 towerDefense.js 填充） -->
+    <div id="towerUpgradeMenu" class="tower-upgrade-menu hidden" aria-label="防御塔升级"></div>
+
+    <script src="pageManager.js?v=20260327w"></script>
+    <script src="stgUiI18n.js?v=20260327w"></script>
+    <script src="stgMode.js?v=20260327w"></script>
+    <script src="stgPlayerEditorPanel.js?v=20260327w"></script>
+    <script src="stgScenePropsEditorPanel.js?v=20260327w"></script>
+    <script src="stgWaveFormationPanel.js?v=20260327w"></script>
+    <script src="gameMap.js?v=20260327w"></script>
+    <script src="enemySystem.js?v=20260327w"></script>
+    <script src="towerAttackSystem.js?v=20260327w"></script>
+    <script src="towerDefense.js?v=20260327w"></script>
+    <script src="monsterEditorPanel.js?v=20260327w"></script>
+    <script src="towerEditorPanel.js?v=20260327w"></script>
+    <script src="heroEditorPanel.js?v=20260327w"></script>
+    <script src="inventoryEditorPanel.js?v=20260327w"></script>
+    <script src="mapEditorPanel.js?v=20260327w"></script>
+    <script src="powerEfficiencyEditorPanel.js?v=20260327w"></script>
+    <script src="towerLoadoutPanel.js?v=20260327w"></script>
+    <script src="game.js?v=20260327w"></script>
+    <!-- Debug 工具栏：固定定位，不参与文档流，不影响游戏布局 -->
+    <div id="debugToolbar" class="debug-toolbar">
+        <span class="debug-toolbar-label">Debug</span>
+        <input type="number" id="debugCoinsInput" class="debug-coins-input" value="100" min="1" step="1" title="要增加的金币数量">
+        <button type="button" id="debugAddCoinsBtn" class="debug-add-coins-btn" title="给玩家增加指定数量金币">+ 金币</button>
+        <input type="number" id="debugSpiritInput" class="debug-coins-input" value="20" min="1" step="1" title="要增加的灵力数量">
+        <button type="button" id="debugAddSpiritBtn" class="debug-add-spirit-btn" title="给玩家增加指定数量灵力">+ 灵力</button>
+        <button type="button" id="debugRefreshShopFreeBtn" class="debug-add-coins-btn" title="免费刷新商店">刷新(免费)</button>
+        <button type="button" id="debugResetRefreshCostBtn" class="debug-add-coins-btn" title="重置商店刷新费用为首次 5 金币">重置刷新费用</button>
+    </div>
+</body>
+</html>

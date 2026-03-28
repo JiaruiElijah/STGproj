@@ -1,0 +1,142 @@
+[
+  {
+    "id": "knight_tower",
+    "name": "骑士塔",
+    "icon": "⚔️",
+    "category": "兵营",
+    "attributes": {
+      "baseAttack": 10,
+      "baseHealth": 50,
+      "attackSpeed": 10,
+      "range": 5,
+      "unitCount": 3,
+      "evolveTo": "knight_tower_elite"
+    },
+    "scaling": {
+      "physical_damage": 0.50,
+      "soldier_health": 0.50
+    },
+    "quality": 1,
+    "price": 100,
+    "description": "物理防御较高的兵营"
+  },
+  {
+    "id": "ranger_camp",
+    "name": "游侠大营",
+    "icon": "🏕️",
+    "category": "兵营",
+    "attributes": {
+      "baseAttack": 10,
+      "baseHealth": 30,
+      "attackSpeed": 10,
+      "range": 5,
+      "unitCount": 2,
+      "evolveTo": "ranger_camp_elite"
+    },
+    "scaling": {
+      "physical_damage": 0.20,
+      "soldier_health": 0.50
+    },
+    "specialEffects": [
+      { "type": "remote_attack", "description": "远程攻击" }
+    ],
+    "quality": 2,
+    "price": 100,
+    "description": "吃远程攻击的兵营"
+  },
+  {
+    "id": "demon_summoner",
+    "name": "恶魔召唤所",
+    "icon": "👹",
+    "category": "兵营",
+    "attributes": {
+      "baseAttack": 15,
+      "baseHealth": 30,
+      "attackSpeed": 10,
+      "range": 10,
+      "unitCount": 2,
+      "evolveTo": "demon_summoner_elite"
+    },
+    "scaling": {
+      "explosion_damage": 0.20,
+      "physical_damage": 0.20,
+      "soldier_health": 0.50
+    },
+    "specialEffects": [
+      { "type": "death_rattle", "effect": "explode", "description": "死后自爆" }
+    ],
+    "quality": 3,
+    "price": 100,
+    "description": "吃爆炸的兵营"
+  },
+  {
+    "id": "knight_tower_elite",
+    "name": "精英骑士塔",
+    "icon": "⚔️",
+    "category": "兵营",
+    "buyable": false,
+    "attributes": {
+      "baseAttack": 11,
+      "baseHealth": 50,
+      "attackSpeed": 11,
+      "range": 5,
+      "unitCount": 3
+    },
+    "scaling": {
+      "physical_damage": 0.50,
+      "soldier_health": 0.50
+    },
+    "quality": 1,
+    "price": 100,
+    "description": "精英化后的骑士塔，攻击与攻速略有提升"
+  },
+  {
+    "id": "ranger_camp_elite",
+    "name": "精英游侠大营",
+    "icon": "🏕️",
+    "category": "兵营",
+    "buyable": false,
+    "attributes": {
+      "baseAttack": 11,
+      "baseHealth": 30,
+      "attackSpeed": 11,
+      "range": 5,
+      "unitCount": 2
+    },
+    "scaling": {
+      "physical_damage": 0.20,
+      "soldier_health": 0.50
+    },
+    "specialEffects": [
+      { "type": "remote_attack", "description": "远程攻击" }
+    ],
+    "quality": 2,
+    "price": 100,
+    "description": "精英化后的游侠大营，攻击与攻速略有提升"
+  },
+  {
+    "id": "demon_summoner_elite",
+    "name": "精英恶魔召唤所",
+    "icon": "👹",
+    "category": "兵营",
+    "buyable": false,
+    "attributes": {
+      "baseAttack": 16.5,
+      "baseHealth": 30,
+      "attackSpeed": 11,
+      "range": 10,
+      "unitCount": 2
+    },
+    "scaling": {
+      "explosion_damage": 0.20,
+      "physical_damage": 0.20,
+      "soldier_health": 0.50
+    },
+    "specialEffects": [
+      { "type": "death_rattle", "effect": "explode", "description": "死后自爆" }
+    ],
+    "quality": 3,
+    "price": 100,
+    "description": "精英化后的恶魔召唤所，攻击与攻速略有提升"
+  }
+]

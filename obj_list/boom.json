@@ -1,0 +1,124 @@
+[
+  {
+    "id": "dwarf_cannon",
+    "name": "矮人大炮",
+    "icon": "💣",
+    "category": "炮塔",
+    "attributes": {
+      "baseAttack": 10,
+      "attackSpeed": 10,
+      "range": 5,
+      "evolveTo": "dwarf_cannon_elite"
+    },
+    "scaling": {
+      "explosion_damage": 0.50
+    },
+    "quality": 1,
+    "price": 0,
+    "description": "基本炮塔"
+  },
+  {
+    "id": "hedgehog",
+    "name": "刺猬",
+    "icon": "🦔",
+    "category": "炮塔",
+    "attributes": {
+      "baseAttack": 10,
+      "attackSpeed": 10,
+      "range": 5,
+      "evolveTo": "hedgehog_elite"
+    },
+    "scaling": {
+      "explosion_damage": 0.50
+    },
+    "specialEffects": [
+      { "type": "aoe", "description": "同时攻击范围内敌人，伤害较低，清杂和控制专用" }
+    ],
+    "quality": 2,
+    "price": 100,
+    "description": "清杂型炮塔"
+  },
+  {
+    "id": "tesla",
+    "name": "特斯拉",
+    "icon": "⚡",
+    "category": "炮塔",
+    "attributes": {
+      "baseAttack": 10,
+      "attackSpeed": 10,
+      "range": 5,
+      "evolveTo": "tesla_elite"
+    },
+    "scaling": {
+      "explosion_damage": 0.50,
+      "magic_damage": 0.50
+    },
+    "specialEffects": [
+      { "type": "chain", "description": "连锁攻击敌人（取决于连锁个数）" }
+    ],
+    "quality": 3,
+    "price": 100,
+    "description": "连锁伤害的炮塔"
+  },
+  {
+    "id": "dwarf_cannon_elite",
+    "name": "精英矮人大炮",
+    "icon": "💣",
+    "category": "炮塔",
+    "buyable": false,
+    "attributes": {
+      "baseAttack": 11,
+      "attackSpeed": 11,
+      "range": 5
+    },
+    "scaling": {
+      "explosion_damage": 0.50
+    },
+    "quality": 1,
+    "price": 0,
+    "description": "精英化后的炮塔，攻击与攻速略有提升"
+  },
+  {
+    "id": "hedgehog_elite",
+    "name": "精英刺猬",
+    "icon": "🦔",
+    "category": "炮塔",
+    "buyable": false,
+    "attributes": {
+      "baseAttack": 11,
+      "attackSpeed": 11,
+      "range": 5
+    },
+    "scaling": {
+      "explosion_damage": 0.50
+    },
+    "specialEffects": [
+      { "type": "aoe", "description": "同时攻击范围内敌人，伤害较低，清杂和控制专用" }
+    ],
+    "quality": 2,
+    "price": 100,
+    "description": "精英化后的清杂炮塔，攻击与攻速略有提升"
+  },
+  {
+    "id": "tesla_elite",
+    "name": "精英特斯拉",
+    "icon": "⚡",
+    "category": "炮塔",
+    "buyable": false,
+    "attributes": {
+      "baseAttack": 11,
+      "attackSpeed": 11,
+      "range": 5
+    },
+    "scaling": {
+      "explosion_damage": 0.50,
+      "magic_damage": 0.50
+    },
+    "specialEffects": [
+      { "type": "chain", "description": "连锁攻击敌人（取决于连锁个数）" }
+    ],
+    "quality": 3,
+    "price": 100,
+    "description": "精英化后的连锁炮塔，攻击与攻速略有提升"
+  }
+]

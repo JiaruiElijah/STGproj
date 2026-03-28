@@ -1,0 +1,32 @@
+{
+  "waves": [
+    {
+      "waveNumber": 1,
+      "spawnInterval": 400,
+      "spiritReward": 10,
+      "nextWaveDelaySec": 15,
+      "enemies": [
+        { "type": "normal", "count": 5, "spawnIndex": 0 }
+      ]
+    },
+    {
+      "waveNumber": 2,
+      "spawnInterval": 400,
+      "spiritReward": 10,
+      "nextWaveDelaySec": 15,
+      "enemies": [
+        { "type": "normal", "count": 8 }
+      ]
+    },
+    {
+      "waveNumber": 3,
+      "spawnInterval": 400,
+      "spiritReward": 12,
+      "nextWaveDelaySec": 15,
+      "enemies": [
+        { "type": "normal", "count": 6 },
+        { "type": "fast", "count": 4 }
+      ]
+    }
+  ]
+}

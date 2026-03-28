@@ -1,0 +1,75 @@
+[
+  {
+    "id": "loadout_chip_precision",
+    "name": "精密芯片",
+    "category": "配装",
+    "quality": 1,
+    "icon": "💠",
+    "description": "示例：略微提升命中相关属性（后续接入战斗公式）。",
+    "attributes": {
+      "loadoutAttackPercent": 0.05,
+      "loadoutAttackSpeedPercent": 0
+    },
+    "price": null,
+    "buyable": false,
+    "shopVisible": false
+  },
+  {
+    "id": "loadout_lens_basic",
+    "name": "初级瞄准镜",
+    "category": "配装",
+    "quality": 1,
+    "icon": "🔭",
+    "description": "示例：与射程或索敌相关的配装。",
+    "price": null,
+    "buyable": false,
+    "shopVisible": false
+  },
+  {
+    "id": "loadout_core_overclock",
+    "name": "过载核心",
+    "category": "配装",
+    "quality": 2,
+    "icon": "⚡",
+    "description": "示例：与攻速或威能相关的配装。",
+    "attributes": {
+      "loadoutAttackSpeedPercent": 0.08
+    },
+    "price": null,
+    "buyable": false,
+    "shopVisible": false
+  },
+  {
+    "id": "loadout_plate_barrier",
+    "name": "屏障插板",
+    "category": "配装",
+    "quality": 2,
+    "icon": "🛡",
+    "description": "示例：与护盾或减伤相关的配装。",
+    "price": null,
+    "buyable": false,
+    "shopVisible": false
+  },
+  {
+    "id": "loadout_module_tactical",
+    "name": "战术模块",
+    "category": "配装",
+    "quality": 3,
+    "icon": "🧩",
+    "description": "示例：高级配装槽适用。",
+    "price": null,
+    "buyable": false,
+    "shopVisible": false
+  },
+  {
+    "id": "loadout_relay_signal",
+    "name": "信号中继器",
+    "category": "配装",
+    "quality": 3,
+    "icon": "📡",
+    "description": "示例：与范围或召唤物相关的配装。",
+    "price": null,
+    "buyable": false,
+    "shopVisible": false
+  }
+]

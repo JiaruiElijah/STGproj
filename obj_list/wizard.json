@@ -1,0 +1,116 @@
+[
+  {
+    "id": "mage_tower",
+    "name": "法师塔",
+    "icon": "🪄",
+    "category": "防御塔",
+    "attributes": {
+      "baseAttack": 10,
+      "attackSpeed": 10,
+      "range": 5,
+      "evolveTo": "mage_tower_elite"
+    },
+    "scaling": {
+      "magic_damage": 0.50
+    },
+    "quality": 1,
+    "price": 100,
+    "description": "射程近，普通的法师塔"
+  },
+  {
+    "id": "frost_mage_tower",
+    "name": "冰霜塔",
+    "icon": "❄️",
+    "category": "防御塔",
+    "attributes": {
+      "baseAttack": 10,
+      "attackSpeed": 10,
+      "range": 5,
+      "evolveTo": "frost_mage_tower_elite"
+    },
+    "scaling": {
+      "magic_damage": 0.50
+    },
+    "quality": 2,
+    "price": 100,
+    "description": "附带减速效果的法师塔（与 arrow 寒冰塔 frost_tower 不同 id，避免池合并覆盖）"
+  },
+  {
+    "id": "ruby_mage_tower",
+    "name": "红钻",
+    "icon": "💎",
+    "category": "防御塔",
+    "attributes": {
+      "baseAttack": 5,
+      "attackSpeed": 10,
+      "range": 5,
+      "evolveTo": "ruby_mage_tower_elite"
+    },
+    "scaling": {
+      "magic_damage": 0.30
+    },
+    "specialEffects": [
+      { "type": "ramp_up", "description": "攻击时间越长，伤害越高" }
+    ],
+    "quality": 3,
+    "price": 100,
+    "description": "锁定型高额伤害法师塔（与 arrow 弹珠塔 marble_tower 不同 id，避免池合并覆盖）"
+  },
+  {
+    "id": "mage_tower_elite",
+    "name": "精英法师塔",
+    "icon": "🪄",
+    "category": "防御塔",
+    "buyable": false,
+    "attributes": {
+      "baseAttack": 11,
+      "attackSpeed": 11,
+      "range": 5
+    },
+    "scaling": {
+      "magic_damage": 0.50
+    },
+    "quality": 1,
+    "price": 100,
+    "description": "精英化后的法师塔，攻击与攻速略有提升"
+  },
+  {
+    "id": "frost_mage_tower_elite",
+    "name": "精英冰霜塔",
+    "icon": "❄️",
+    "category": "防御塔",
+    "buyable": false,
+    "attributes": {
+      "baseAttack": 11,
+      "attackSpeed": 11,
+      "range": 5
+    },
+    "scaling": {
+      "magic_damage": 0.50
+    },
+    "quality": 2,
+    "price": 100,
+    "description": "精英化后的冰霜塔，攻击与攻速略有提升"
+  },
+  {
+    "id": "ruby_mage_tower_elite",
+    "name": "精英红钻",
+    "icon": "💎",
+    "category": "防御塔",
+    "buyable": false,
+    "attributes": {
+      "baseAttack": 5.5,
+      "attackSpeed": 11,
+      "range": 5
+    },
+    "scaling": {
+      "magic_damage": 0.30
+    },
+    "specialEffects": [
+      { "type": "ramp_up", "description": "攻击时间越长，伤害越高" }
+    ],
+    "quality": 3,
+    "price": 100,
+    "description": "精英化后的红钻，攻击与攻速略有提升"
+  }
+]

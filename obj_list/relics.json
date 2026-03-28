@@ -1,0 +1,38 @@
+[
+  {"id": "relic_aura_heal","name": "圣泉徽记","category": "遗物","icon": "💠","rarity": "稀有","basePrice": 45,"description": "【光环】范围内防御塔获得持续治疗意向（占位：+生命恢复加成）","effects": { "health_regen_bonus": 0.02 }},
+  {"id": "relic_aura_atkspd","name": "战鼓残片","category": "遗物","icon": "🥁","rarity": "普通","basePrice": 35,"description": "【光环】范围内防御塔攻速提升（占位：+射速加成）","effects": { "attack_speed_bonus": 0.04 }},
+  {"id": "relic_aura_pierce_count","name": "穿心棱镜","category": "遗物","icon": "🔷","rarity": "史诗","basePrice": 80,"description": "【光环】范围内穿透次数+1 意向（占位：+攻击力加成）","effects": { "attack_damage_bonus": 0.03 }},
+  {"id": "relic_aura_bleed_amp","name": "血契石板","category": "遗物","icon": "🩸","rarity": "稀有","basePrice": 50,"description": "【光环】【穿血】穿透弹伤害+10% 意向（占位：+物伤后台）","effects": { "physical_damage": 3 }},
+  {"id": "relic_aura_frenzy_stack","name": "狂热符印","category": "遗物","icon": "🔥","rarity": "史诗","basePrice": 75,"description": "【光环】【亢奋】每10击+2%攻速 意向（占位：+射速）","effects": { "attack_speed_bonus": 0.05 }},
+  {"id": "relic_aura_sharp","name": "无限锋刃","category": "遗物","icon": "⚔️","rarity": "传说","basePrice": 120,"description": "【光环】【锋利】概率无限穿透弹（占位：+暴击）","effects": { "crit_chance_bonus": 0.05 }},
+  {"id": "relic_aura_miner","name": "矿脉之心","category": "遗物","icon": "⛏️","rarity": "稀有","basePrice": 55,"description": "【光环】矿机产量增加（占位：+基地产出加成）","effects": { "base_spirit_output_bonus": 0.08 }},
+  {"id": "relic_aura_ore_fragile","name": "碎岩护符","category": "遗物","icon": "🪨","rarity": "普通","basePrice": 30,"description": "【光环】矿石更加脆弱（占位：+金币收益）","effects": { "gold_income_bonus": 0.03 }},
+  {"id": "relic_aura_split","name": "裂变核心","category": "遗物","icon": "✳️","rarity": "史诗","basePrice": 90,"description": "【光环】【裂变】分裂次数+1 意向（占位：+元素伤害）","effects": { "elemental_damage_bonus": 0.04 }},
+  {"id": "relic_aura_rapid","name": "连射齿轮","category": "遗物","icon": "⚙️","rarity": "史诗","basePrice": 85,"description": "【光环】【超级连射】连射次数+1 意向（占位：+射速）","effects": { "attack_speed_bonus": 0.06 }},
+
+  {"id": "relic_ult_bleed","name": "嗜血铭文","category": "遗物","icon": "🩸","rarity": "稀有","basePrice": 48,"description": "【大招】为敌人附加流血（占位：+持续伤害后台）","effects": { "burn_damage": 5 }},
+  {"id": "relic_ult_double","name": "双发扳机","category": "遗物","icon": "🔫","rarity": "传说","basePrice": 130,"description": "【大招】生效两次意向（占位：+全伤后台）","effects": { "total_damage_percent": 0.05 }},
+  {"id": "relic_ult_wide","name": "广角瞄准镜","category": "遗物","icon": "🔭","rarity": "稀有","basePrice": 52,"description": "【大招】范围加大（占位：+英雄光环范围加成）","effects": { "hero_aura_range_bonus": 0.06 }},
+  {"id": "relic_ult_armor_ignore","name": "破阵令","category": "遗物","icon": "📜","rarity": "史诗","basePrice": 88,"description": "【大招】无视护甲意向（占位：+破甲后台）","effects": { "armor_pierce_percent": 0.08 }},
+  {"id": "relic_ult_harvest_spirit","name": "丰收之契","category": "遗物","icon": "🌾","rarity": "稀有","basePrice": 50,"description": "【大招】击杀获更多灵力（占位：+基地产出）","effects": { "base_spirit_output_bonus": 0.05 }},
+  {"id": "relic_ult_quick_cd","name": "快速装填·遗物","category": "遗物","icon": "⚡","rarity": "普通","basePrice": 38,"description": "【大招】冷却降低（占位：+技能冷却缩减后台）","effects": { "skill_cooldown": 0.04 }},
+
+  {"id": "relic_pass_ore","name": "矿镐祝福","category": "遗物","icon": "⛏️","rarity": "普通","basePrice": 32,"description": "【被动】矿石特攻：矿石更脆（占位：+物伤）","effects": { "physical_damage": 4 }},
+  {"id": "relic_pass_wave_heal","name": "休整圣杯","category": "遗物","icon": "🏆","rarity": "稀有","basePrice": 46,"description": "【被动】波次结束塔回血增多（占位：+生命加成）","effects": { "max_health_bonus": 0.05 }},
+  {"id": "relic_pass_bleed_armor","name": "狂热血印","category": "遗物","icon": "🩸","rarity": "史诗","basePrice": 82,"description": "【被动】流血降低敌人护甲意向（占位：+破甲）","effects": { "armor_pierce_percent": 0.05 }},
+  {"id": "relic_pass_pierce_return","name": "回转矢","category": "遗物","icon": "↩️","rarity": "史诗","basePrice": 78,"description": "【被动】穿透弹返回1次意向（占位：+爆炸伤）","effects": { "explosion_damage": 6 }},
+  {"id": "relic_pass_pierce_first","name": "锋矢首击","category": "遗物","icon": "🎯","rarity": "传说","basePrice": 125,"description": "【被动】穿透首击1.5倍后衰减意向（占位：+总伤）","effects": { "total_damage_percent": 0.04 }},
+  {"id": "relic_pass_bleed_stack","name": "伤痕刻印","category": "遗物","icon": "💢","rarity": "稀有","basePrice": 44,"description": "【被动】穿透叠流血（占位：+持续伤）","effects": { "burn_damage": 4 }},
+  {"id": "relic_pass_bleed_slow","name": "痛苦锁链","category": "遗物","icon": "⛓️","rarity": "稀有","basePrice": 42,"description": "【被动】流血减速意向（占位：+元素效果）","effects": { "elemental_effect_bonus": 0.03 }},
+  {"id": "relic_pass_split_bleed","name": "聚变血滴","category": "遗物","icon": "🧬","rarity": "史诗","basePrice": 92,"description": "【被动】分裂弹叠流血（占位：+元素伤）","effects": { "elemental_damage_bonus": 0.05 }},
+  {"id": "relic_pass_bounce_dmg","name": "弹力增幅器","category": "遗物","icon": "🔩","rarity": "稀有","basePrice": 48,"description": "【被动】反弹弹伤害增加（占位：+法伤）","effects": { "magic_damage": 5 }},
+  {"id": "relic_pass_bounce_knock","name": "弹簧足靴","category": "遗物","icon": "👢","rarity": "普通","basePrice": 36,"description": "【被动】反弹击退意向（占位：+士兵生命后台）","effects": { "soldier_health": 3 }},
+
+  {"id": "relic_ops_spirit","name": "基地灵脉图","category": "遗物","icon": "🗺️","rarity": "稀有","basePrice": 54,"description": "【运营】基地产灵效率增加","effects": { "base_spirit_output_bonus": 0.1 }},
+  {"id": "relic_ops_ore_soft","name": "脆化炸药包","category": "遗物","icon": "🧨","rarity": "普通","basePrice": 34,"description": "【运营】矿石更加脆弱（占位：+物伤）","effects": { "physical_damage": 3 }},
+  {"id": "relic_ops_gold","name": "贪婪指环","category": "遗物","icon": "💍","rarity": "史诗","basePrice": 95,"description": "【运营】金币收益（占位：+金币收益加成）","effects": { "gold_income_bonus": 0.08 }},
+  {"id": "relic_ops_xp","name": "学者手稿","category": "遗物","icon": "📖","rarity": "稀有","basePrice": 47,"description": "【运营】英雄经验获取（占位：+英雄经验加成）","effects": { "hero_xp_gain_bonus": 0.07 }},
+
+  {"id": "relic_buff_shield","name": "缓冲圣契","category": "遗物","icon": "🛡️","rarity": "稀有","basePrice": 49,"description": "【Buff】减伤意向（占位：+生命加成）","effects": { "max_health_bonus": 0.06 }},
+  {"id": "relic_fx_chain","name": "连锁火花","category": "遗物","icon": "⚡","rarity": "史诗","basePrice": 86,"description": "【攻击特效】连锁意向（占位：+法伤）","effects": { "magic_damage": 6 }}
+]

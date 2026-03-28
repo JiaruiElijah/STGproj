@@ -1,0 +1,63 @@
+{
+  "_comment": "levelSpiritCosts：升级消耗灵力（1→2、2→3、3→4 各档）。maxLevel=4 需 branches 含 3 项。弹珠塔=marble_tower，飞刀塔=knife_tower（与旧 red_diamond/sniper_tower 已拆分）。",
+  "ranger_tower": {
+    "displayName": "游侠塔",
+    "levelSpiritCosts": [50, 80, 120],
+    "levelAttackMult": [1, 1.1, 1.2, 1.32],
+    "levelAttackSpeedMult": [1, 1.06, 1.12, 1.2],
+    "levelRangeGridAdd": [0, 0.15, 0.25, 0.35],
+    "branches": [
+      { "id": "ranger_b1", "title": "选项1", "description": "射程增加，穿透次数+1", "effectPending": false },
+      { "id": "ranger_b2", "title": "选项2", "description": "攻速增加，暴击率增加", "effectPending": false },
+      { "id": "ranger_b3", "title": "选项3", "description": "周围每有一个游侠塔，增加自身射速0.2", "effectPending": false }
+    ]
+  },
+  "boomerang_tower": {
+    "displayName": "飞镖塔",
+    "levelSpiritCosts": [50, 80, 120],
+    "levelAttackMult": [1, 1.1, 1.2, 1.3],
+    "levelAttackSpeedMult": [1, 1.05, 1.1, 1.18],
+    "levelRangeGridAdd": [0, 0, 0.2, 0.2],
+    "branches": [
+      { "id": "boomerang_b1", "title": "选项1", "description": "杀死敌人有概率掉落更多金币", "effectPending": false },
+      { "id": "boomerang_b2", "title": "选项2", "description": "多发射2个飞镖", "effectPending": false },
+      { "id": "boomerang_b3", "title": "选项3", "description": "飞镖穿透次数+1，伤害降低25%", "effectPending": false }
+    ]
+  },
+  "marble_tower": {
+    "displayName": "弹珠塔",
+    "levelSpiritCosts": [55, 90, 130],
+    "levelAttackMult": [1, 1.08, 1.16, 1.26],
+    "levelAttackSpeedMult": [1, 1.06, 1.12, 1.2],
+    "levelRangeGridAdd": [0, 0.1, 0.2, 0.3],
+    "branches": [
+      { "id": "marble_b1", "title": "选项1", "description": "弹射次数+2，伤害降低25%", "effectPending": false },
+      { "id": "marble_b2", "title": "选项2", "description": "连射+1", "effectPending": false },
+      { "id": "marble_b3", "title": "选项3", "description": "分裂个数+1，伤害降低25%", "effectPending": false }
+    ]
+  },
+  "frost_tower": {
+    "displayName": "寒冰塔（冰霜塔）",
+    "levelSpiritCosts": [50, 85, 125],
+    "levelAttackMult": [1, 1.1, 1.18, 1.28],
+    "levelAttackSpeedMult": [1, 1.08, 1.15, 1.25],
+    "levelRangeGridAdd": [0, 0, 0.15, 0.25],
+    "branches": [
+      { "id": "frost_b1", "title": "选项1", "description": "元素效果+1，连射+2", "effectPending": false },
+      { "id": "frost_b2", "title": "选项2", "description": "连射+4", "effectPending": false },
+      { "id": "frost_b3", "title": "选项3", "description": "射程+0.25 格，伤害+6%，命中附带约 18% 减速 2.5 秒", "effectPending": false }
+    ]
+  },
+  "knife_tower": {
+    "displayName": "飞刀塔",
+    "levelSpiritCosts": [60, 95, 140],
+    "levelAttackMult": [1, 1.12, 1.22, 1.34],
+    "levelAttackSpeedMult": [1, 1.05, 1.1, 1.16],
+    "levelRangeGridAdd": [0, 0.25, 0.5, 0.75],
+    "branches": [
+      { "id": "knife_b1", "title": "选项1", "description": "连射+3，攻速增加", "effectPending": false },
+      { "id": "knife_b2", "title": "选项2", "description": "分裂次数+1，分裂个数+1，伤害降低25%", "effectPending": false },
+      { "id": "knife_b3", "title": "选项3", "description": "射程+0.35 格，暴击率+12%（局内额外加在玩家暴击上）", "effectPending": false }
+    ]
+  }
+}

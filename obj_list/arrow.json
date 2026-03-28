@@ -1,0 +1,205 @@
+[
+    {
+      "id": "ranger_tower",
+      "name": "游侠塔",
+      "icon": "🏹",
+      "category": "防御塔",
+      "attributes": {
+        "baseAttack": 15,
+        "attackSpeed": 10,
+        "range": 5,
+        "evolveTo": "ranger_tower_elite"
+      },
+      "scaling": {
+        "physical_damage": 0.50
+      },
+      "quality": 1,
+      "price": 100,
+      "description": "最基础的箭塔。依靠稳定属性和后期质变技能"
+    },
+    {
+      "id": "boomerang_tower",
+      "name": "飞镖塔",
+      "icon": "🪃",
+      "category": "防御塔",
+      "attributes": {
+        "baseAttack": 10,
+        "attackSpeed": 10,
+        "range": 5,
+        "evolveTo": "boomerang_tower_elite"
+      },
+      "scaling": {
+        "physical_damage": 0.50
+      },
+      "specialEffects": [
+        { "type": "bounce", "value": 3, "description": "在每次攻击敌人之间弹射3次" }
+      ],
+      "quality": 2,
+      "price": 100,
+      "description": "属性偏低，但能够同时攻击多个目标的箭塔。前中期清理杂毛好用。"
+    },
+    {
+      "id": "marble_tower",
+      "name": "弹珠塔",
+      "icon": "🔴",
+      "category": "防御塔",
+      "attributes": {
+        "baseAttack": 12,
+        "attackSpeed": 9,
+        "range": 5,
+        "evolveTo": "marble_tower_elite"
+      },
+      "scaling": {
+        "physical_damage": 0.45
+      },
+      "specialEffects": [
+        { "type": "bounce", "value": 2, "description": "命中后在敌人间弹射（局内分支可再强化弹射/连射/分裂）" }
+      ],
+      "quality": 2,
+      "price": 120,
+      "description": "弹珠塔：独立 id「marble_tower」，与旧「红钻/red_diamond」无关；局内 Lv.4 分支见 tower_upgrade_branches.json。"
+    },
+    {
+      "id": "frost_tower",
+      "name": "寒冰塔",
+      "icon": "❄️",
+      "category": "防御塔",
+      "attributes": {
+        "baseAttack": 14,
+        "attackSpeed": 8,
+        "range": 5,
+        "evolveTo": "frost_tower_elite"
+      },
+      "scaling": {
+        "physical_damage": 0.40,
+        "magic_damage": 0.15
+      },
+      "quality": 2,
+      "price": 130,
+      "description": "冰霜伤害与减速；局内 4 级分支强化元素连射或减速（frost_tower）。"
+    },
+    {
+      "id": "knife_tower",
+      "name": "飞刀塔",
+      "icon": "🗡️",
+      "category": "防御塔",
+      "attributes": {
+        "baseAttack": 25,
+        "attackSpeed": 5,
+        "range": 10,
+        "evolveTo": "knife_tower_elite"
+      },
+      "scaling": {
+        "physical_damage": 0.30,
+        "explosion_damage": 0.10
+      },
+      "quality": 3,
+      "price": 200,
+      "description": "飞刀塔：独立 id「knife_tower」，与旧「狙击/sniper_tower」无关；局内 Lv.4 分支见 tower_upgrade_branches.json。"
+    },
+    {
+      "id": "ranger_tower_elite",
+      "name": "精英游侠塔",
+      "icon": "🏹",
+      "category": "防御塔",
+      "buyable": false,
+      "attributes": {
+        "baseAttack": 16.5,
+        "attackSpeed": 11,
+        "range": 5
+      },
+      "scaling": {
+        "physical_damage": 0.50
+      },
+      "quality": 1,
+      "price": 100,
+      "description": "在精英化后攻击与攻速略有提升"
+    },
+    {
+      "id": "boomerang_tower_elite",
+      "name": "精英飞镖塔",
+      "icon": "🪃",
+      "category": "防御塔",
+      "buyable": false,
+      "attributes": {
+        "baseAttack": 11,
+        "attackSpeed": 11,
+        "range": 5
+      },
+      "scaling": {
+        "physical_damage": 0.50
+      },
+      "specialEffects": [
+        { "type": "bounce", "value": 3, "description": "在每次攻击敌人之间弹射3次" }
+      ],
+      "quality": 2,
+      "price": 100,
+      "description": "精英化后的飞镖塔，攻击与攻速略微增强"
+    },
+    {
+      "id": "marble_tower_elite",
+      "name": "精英弹珠塔",
+      "icon": "🔴",
+      "category": "防御塔",
+      "buyable": false,
+      "attributes": {
+        "baseAttack": 13,
+        "attackSpeed": 9.5,
+        "range": 5
+      },
+      "scaling": {
+        "physical_damage": 0.45
+      },
+      "specialEffects": [
+        { "type": "bounce", "value": 2, "description": "弹射" }
+      ],
+      "quality": 2,
+      "price": 120,
+      "description": "精英化后的弹珠塔。"
+    },
+    {
+      "id": "frost_tower_elite",
+      "name": "精英寒冰塔",
+      "icon": "❄️",
+      "category": "防御塔",
+      "buyable": false,
+      "attributes": {
+        "baseAttack": 15,
+        "attackSpeed": 8.5,
+        "range": 5
+      },
+      "scaling": {
+        "physical_damage": 0.40,
+        "magic_damage": 0.15
+      },
+      "quality": 2,
+      "price": 130,
+      "description": "精英化后的寒冰塔。"
+    },
+    {
+      "id": "knife_tower_elite",
+      "name": "精英飞刀塔",
+      "icon": "🗡️",
+      "category": "防御塔",
+      "buyable": false,
+      "attributes": {
+        "baseAttack": 27.5,
+        "attackSpeed": 5.5,
+        "range": 10
+      },
+      "scaling": {
+        "physical_damage": 0.30,
+        "explosion_damage": 0.10
+      },
+      "quality": 3,
+      "price": 200,
+      "description": "精英化后的飞刀塔，攻击与攻速略有提升"
+    }
+  ]
+
+    
+
+    
+
+
+  

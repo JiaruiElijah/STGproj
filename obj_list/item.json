@@ -1,0 +1,479 @@
+[
+  {
+    "id": "quick_reload",
+    "name": "快速装填",
+    "icon": "⚡",
+    "rarity": 1,
+    "effects": {
+      "attack_speed_percent": 0.05
+    },
+    "use": "全场",
+    "basePrice": 25,
+    "code": 2,
+    "description": "+5%攻速"
+  },
+  {
+    "id": "strong_crossbow",
+    "name": "强弩",
+    "icon": "🏹",
+    "rarity": 2,
+    "effects": {
+      "attack_speed_percent": 0.10,
+      "physical_damage": -5
+    },
+    "use": "全场",
+    "basePrice": 25,
+    "code": 1,
+    "description": "+10%攻速, -5物理伤害"
+  },
+  {
+    "id": "zhuge_crossbow",
+    "name": "诸葛连弩",
+    "icon": "🏹",
+    "rarity": 3,
+    "effects": {
+      "attack_speed_percent": 0.10,
+      "physical_damage": 2,
+      "explosion_damage": -10
+    },
+    "use": "全场",
+    "basePrice": 100,
+    "description": "+10%攻速, +2物理伤害, -10爆炸伤害"
+  },
+  {
+    "id": "whetstone",
+    "name": "磨刀石",
+    "icon": "🔪",
+    "rarity": 1,
+    "effects": {
+      "physical_damage": 5
+    },
+    "use": "全场",
+    "basePrice": 30,
+    "code": 3,
+    "description": "+5物理伤害"
+  },
+  {
+    "id": "metal_storm",
+    "name": "金属风暴",
+    "icon": "🔫",
+    "rarity": 1,
+    "effects": {
+      "physical_damage": 10,
+      "armor_pierce_percent": -0.05
+    },
+    "use": "全场",
+    "basePrice": 25,
+    "code": 4,
+    "description": "+10物理伤害, -5%破甲力"
+  },
+  {
+    "id": "clean_arrow",
+    "name": "擦干净的箭",
+    "icon": "🏹",
+    "rarity": 2,
+    "effects": {
+      "physical_damage": 5,
+      "armor_pierce_percent": 0.05,
+      "soldier_health": -5
+    },
+    "use": "全场",
+    "basePrice": 50,
+    "description": "+5物理伤害, +5%破甲力, -5士兵生命"
+  },
+  {
+    "id": "sharp_blade",
+    "name": "利刃",
+    "icon": "⚔️",
+    "rarity": 2,
+    "effects": {
+      "physical_damage": 7,
+      "soldier_health": 1,
+      "burn_damage": -5
+    },
+    "use": "全场",
+    "basePrice": 50,
+    "code": 5,
+    "description": "+7物理伤害, +1士兵生命, -5持续伤害"
+  },
+  {
+    "id": "ruler",
+    "name": "尺子",
+    "icon": "📏",
+    "rarity": 1,
+    "effects": {
+      "armor_pierce_percent": 0.05
+    },
+    "use": "全场",
+    "basePrice": 25,
+    "code": 6,
+    "description": "+5%破甲力"
+  },
+  {
+    "id": "magic_staff",
+    "name": "法杖",
+    "icon": "🪄",
+    "rarity": 1,
+    "effects": {
+      "armor_pierce_percent": 0.05,
+      "magic_damage": -5
+    },
+    "use": "全场",
+    "basePrice": 25,
+    "description": "+5%破甲力, -5魔法伤害"
+  },
+  {
+    "id": "box",
+    "name": "匣子",
+    "icon": "📦",
+    "rarity": 2,
+    "effects": {
+      "armor_pierce_percent": 0.05,
+      "crit_rate": 0.01,
+      "attack_speed_percent": -0.05
+    },
+    "use": "全场",
+    "basePrice": 50,
+    "description": "+5%破甲力, +1暴击率, -5%攻速"
+  },
+  {
+    "id": "magic_ball",
+    "name": "魔法球",
+    "icon": "🔮",
+    "rarity": 1,
+    "effects": {
+      "magic_damage": 3
+    },
+    "use": "全场",
+    "basePrice": 25,
+    "code": 7,
+    "description": "+3魔法伤害"
+  },
+  {
+    "id": "flame",
+    "name": "火焰",
+    "icon": "🔥",
+    "rarity": 2,
+    "effects": {
+      "magic_damage": 10,
+      "physical_damage": -5
+    },
+    "use": "全场",
+    "basePrice": 50,
+    "code": 8,
+    "description": "+10魔法伤害, -5物理伤害"
+  },
+  {
+    "id": "sacrifice",
+    "name": "献祭",
+    "icon": "🕯️",
+    "rarity": 2,
+    "effects": {
+      "magic_damage": 8,
+      "soldier_health": -5
+    },
+    "use": "全场",
+    "basePrice": 50,
+    "code": 9,
+    "description": "+8魔法伤害, -5士兵生命"
+  },
+  {
+    "id": "secret_art",
+    "name": "秘术",
+    "icon": "📜",
+    "rarity": 3,
+    "effects": {
+      "magic_damage": 10,
+      "burn_damage": 1
+    },
+    "use": "全场",
+    "basePrice": 100,
+    "description": "+10魔法伤害, +1持续伤害"
+  },
+  {
+    "id": "workout",
+    "name": "锻炼身体",
+    "icon": "💪",
+    "rarity": 1,
+    "effects": {
+      "soldier_health": 10
+    },
+    "use": "全场",
+    "basePrice": 25,
+    "description": "+10士兵生命"
+  },
+  {
+    "id": "behemoth",
+    "name": "巨兽",
+    "icon": "🦣",
+    "rarity": 2,
+    "effects": {
+      "soldier_health": 20,
+      "physical_damage": 5,
+      "armor_pierce_percent": -0.10,
+      "attack_speed_percent": -0.05
+    },
+    "basePrice": 60,
+    "description": "+20士兵生命, +5物理伤害, -10%破甲力, -5%攻速"
+  },
+  {
+    "id": "thorns_armor",
+    "name": "反伤刺甲",
+    "icon": "🛡️",
+    "rarity": 3,
+    "effects": {
+      "conversion": "5_health_to_1_physical"
+    },
+    "basePrice": 120,
+    "description": "每5点士兵生命转化为1点物理伤害"
+  },
+  {
+    "id": "oil_apply",
+    "name": "上油",
+    "icon": "🛢️",
+    "rarity": 1,
+    "effects": {
+      "explosion_damage": 2
+    },
+    "use": "全场",
+    "basePrice": 25,
+    "code": 10,
+    "description": "+2爆炸伤害"
+  },
+  {
+    "id": "bombard",
+    "name": "打炮",
+    "icon": "💣",
+    "rarity": 1,
+    "effects": {
+      "explosion_damage": 5,
+      "magic_damage": -5
+    },
+    "use": "全场",
+    "basePrice": 25,
+    "code": 11,
+    "description": "+5爆炸伤害, -5魔法伤害"
+  },
+  {
+    "id": "ballistics",
+    "name": "抛射",
+    "icon": "🎯",
+    "rarity": 2,
+    "effects": {
+      "explosion_damage": 5,
+      "armor_pierce_percent": 0.10
+    },
+    "use": "全场",
+    "basePrice": 50,
+    "code": 13,
+    "description": "+5爆炸伤害, +10%破甲力"
+  },
+  {
+    "id": "plastic_explosive",
+    "name": "塑料炸药",
+    "icon": "💥",
+    "effects": {
+      "explosion_range": 0.10
+    },
+    "use": "全场",
+    "basePrice": 30,
+    "code": 14,
+    "description": "+10%爆炸范围"
+  },
+  {
+    "id": "farming",
+    "name": "种田",
+    "icon": "🌾",
+    "effects": {
+      "interest_bonus": 1
+    },
+    "use": "全场",
+    "basePrice": 40,
+    "code": 15,
+    "description": "每回合利息+1"
+  },
+  {
+    "id": "bounty_increase",
+    "name": "悬赏增加",
+    "icon": "📢",
+    "effects": {
+      "harvest_power": 1
+    },
+    "use": "全场",
+    "basePrice": 30,
+    "description": "+1收获力"
+  },
+  {
+    "id": "looting",
+    "name": "掠夺",
+    "icon": "💰",
+    "effects": {
+      "gold_on_kill_chance": 1
+    },
+    "use": "全场",
+    "basePrice": 30,
+    "code": 16,
+    "description": "敌人死亡概率获得+1金币"
+  },
+  {
+    "id": "precision_looting",
+    "name": "精确掠夺",
+    "icon": "🎯",
+    "effects": {
+      "gold_on_crit_kill": 10
+    },
+    "use": "全场",
+    "basePrice": 40,
+    "code": 17,
+    "description": "暴击击杀敌人获得10金币"
+  },
+  {
+    "id": "money_power",
+    "name": "钱力",
+    "icon": "💵",
+    "rarity": 2,
+    "effects": {
+      "per_10_gold": {
+        "physical_damage": 5,
+        "magic_damage": 5,
+        "explosion_damage": 5
+      }
+    },
+    "basePrice": 80,
+    "description": "每持有10金币，+5物理 +5法术 +5爆破"
+  },
+  {
+    "id": "free_refresh",
+    "name": "免费",
+    "icon": "🔄",
+    "effects": {
+      "shop_free_refresh": 1
+    },
+    "use": "全场",
+    "basePrice": 30,
+    "code": 18,
+    "description": "商店+1免费刷新次数"
+  },
+  {
+    "id": "aiming",
+    "name": "瞄准",
+    "icon": "🎯",
+    "effects": {
+      "crit_rate": 0.01
+    },
+    "use": "全场",
+    "basePrice": 25,
+    "code": 19,
+    "description": "+1暴击率"
+  },
+  {
+    "id": "golden_bow",
+    "name": "黄金弓",
+    "icon": "🏹",
+    "effects": {
+      "crit_rate": 0.05,
+      "magic_damage": -5
+    },
+    "use": "全场",
+    "basePrice": 50,
+    "code": 20,
+    "description": "+5暴击率, -5魔法伤害"
+  },
+  {
+    "id": "golden_staff",
+    "name": "黄金法杖",
+    "icon": "🪄",
+    "effects": {
+      "crit_rate": 0.05,
+      "magic_damage": -5
+    },
+    "use": "全场",
+    "basePrice": 50,
+    "code": 21,
+    "description": "+5暴击率, -5魔法伤害"
+  },
+  {
+    "id": "fertilizer",
+    "name": "肥料",
+    "icon": "🌱",
+    "effects": {
+      "skill_cooldown": 0.20,
+      "physical_damage": -15
+    },
+    "use": "全场",
+    "basePrice": 40,
+    "code": 22,
+    "description": "+20%技能刷新速度, -15%伤害"
+  },
+  {
+    "id": "toxin",
+    "name": "毒素",
+    "icon": "☠️",
+    "effects": {
+      "burn_damage": 1
+    },
+    "use": "全场",
+    "basePrice": 25,
+    "code": 23,
+    "description": "+1持续伤害"
+  },
+  {
+    "id": "glass_bird",
+    "name": "玻璃鸟",
+    "icon": "🐦",
+    "effects": {
+      "skill_duration": 1
+    },
+    "use": "全场",
+    "basePrice": 30,
+    "code": 24,
+    "description": "+1技能持续时间"
+  },
+  {
+    "id": "medal",
+    "name": "勋章",
+    "icon": "🏅",
+    "effects": {
+      "total_damage_percent": 0.05
+    },
+    "use": "全场",
+    "basePrice": 30,
+    "code": 25,
+    "description": "+5%全伤害加成"
+  },
+  {
+    "id": "hero_soldier",
+    "name": "英雄战士",
+    "icon": "🛡️",
+    "category": "英雄",
+    "rarity": "普通",
+    "quality": 1,
+    "attributes": {
+      "baseAttack": 12,
+      "attackSpeed": 6,
+      "rangeGrid": 1,
+      "health": 80,
+      "powerGainPerHit": 1,
+      "skill1": {
+        "icon": "🔥",
+        "damageMultiplier": 2.0,
+        "rangeGrid": 1,
+        "rangeShape": "square",
+        "rangeDirection": null
+      },
+      "skill2": {
+        "icon": "❄️",
+        "damageMultiplier": 1.5,
+        "rangeGrid": 2,
+        "rangeShape": "rectangle",
+        "rangeDirection": "e"
+      }
+    },
+    "scaling": {
+      "physical_damage": 0.30
+    },
+    "price": 120,
+    "description": "可随时移动的英雄：部署后像防御塔一样攻击，多怪可同时贴脸攻塔；允许玩家点击并移动到新格子。"
+  }
+
+]

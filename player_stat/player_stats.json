@@ -1,0 +1,276 @@
+[
+  {
+    "id": "attack_damage_bonus",
+    "name": "攻击力加成",
+    "displayName": "攻击力加成",
+    "icon": "⚔️",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：最终攻击力乘区（0.1=+10%）。旧版「物理/法术/爆炸/全伤」仍保留在后台供兼容。"
+  },
+  {
+    "id": "attack_speed_bonus",
+    "name": "射速加成",
+    "displayName": "射速加成",
+    "icon": "🏹",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：攻击间隔缩短（攻速乘 1+加成）。"
+  },
+  {
+    "id": "crit_chance_bonus",
+    "name": "暴击率加成",
+    "displayName": "暴击率加成",
+    "icon": "💥",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：每次命中独立判定，暴击造成 200% 伤害（0.1=10% 暴击率）。"
+  },
+  {
+    "id": "elemental_effect_bonus",
+    "name": "元素效果加成",
+    "displayName": "元素效果加成",
+    "icon": "🔮",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：预留，用于后续元素异常持续时间/强度等。"
+  },
+  {
+    "id": "elemental_damage_bonus",
+    "name": "元素伤害加成",
+    "displayName": "元素伤害加成",
+    "icon": "✨",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：与攻击力乘区叠乘的元素伤害加成。"
+  },
+  {
+    "id": "max_health_bonus",
+    "name": "生命值加成",
+    "displayName": "生命值加成",
+    "icon": "❤️",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：防御塔最大生命乘 1+加成，当前血量按比例保留。"
+  },
+  {
+    "id": "health_regen_bonus",
+    "name": "生命值恢复加成",
+    "displayName": "生命值恢复加成",
+    "icon": "💚",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：战斗中塔每秒回复最大生命×(加成×0.5%)（低数值便于调参）。"
+  },
+  {
+    "id": "gold_income_bonus",
+    "name": "金币收益加成",
+    "displayName": "金币收益加成",
+    "icon": "🪙",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：击杀赏金与波次「收获力」金币乘 1+加成。"
+  },
+  {
+    "id": "base_spirit_output_bonus",
+    "name": "基地产出加成",
+    "displayName": "基地产出加成",
+    "icon": "🏠",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：基地周期产灵力数量乘 1+加成。"
+  },
+  {
+    "id": "hero_aura_range_bonus",
+    "name": "英雄光环范围加成",
+    "displayName": "英雄光环范围加成",
+    "icon": "🌟",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：英雄光环格半径乘 1+加成（显示与增益判定一致）。"
+  },
+  {
+    "id": "hero_xp_gain_bonus",
+    "name": "英雄经验获取加成",
+    "displayName": "英雄经验获取加成",
+    "icon": "📈",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：英雄造成伤害获得的经验乘 1+加成。"
+  },
+  {
+    "id": "hero_ult_cost_reduction",
+    "name": "英雄大招消耗减少",
+    "displayName": "英雄大招灵力消耗减免",
+    "icon": "🎇",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "前台属性：英雄大招实际灵力消耗 ×(1−减免)（0.1=减少10%消耗）。"
+  },
+  {
+    "id": "physical_damage",
+    "name": "物理伤害",
+    "displayName": "物理伤害",
+    "icon": "⚔️",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "number",
+    "description": "【后台】基础输出：影响近战、弓箭等物理类防御塔及士兵的伤害加成",
+    "legacy": true
+  },
+  {
+    "id": "magic_damage",
+    "name": "法术伤害",
+    "displayName": "法术伤害",
+    "icon": "✨",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "number",
+    "description": "【后台】基础输出：法师塔和法术类技能的伤害加成",
+    "legacy": true
+  },
+  {
+    "id": "explosion_damage",
+    "name": "爆炸伤害",
+    "displayName": "爆炸伤害",
+    "icon": "💥",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "number",
+    "description": "【后台】基础输出：炮塔及爆炸类衍生技能的伤害加成",
+    "legacy": true
+  },
+  {
+    "id": "soldier_health",
+    "name": "士兵生命",
+    "displayName": "士兵生命值",
+    "icon": "🛡️",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "number",
+    "description": "【后台】增加兵营召唤单位的最大生命值",
+    "legacy": true
+  },
+  {
+    "id": "attack_speed_percent",
+    "name": "%攻速",
+    "displayName": "攻击速度加成(旧)",
+    "icon": "⚡",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "【后台】旧版攻速加成，仍参与部分结算兼容",
+    "legacy": true
+  },
+  {
+    "id": "armor_pierce_percent",
+    "name": "%破甲力",
+    "displayName": "破甲力",
+    "icon": "⚔️",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "【后台】无视敌人护甲的比例",
+    "legacy": true
+  },
+  {
+    "id": "total_damage_percent",
+    "name": "%伤害",
+    "displayName": "全伤害加成(旧)",
+    "icon": "📈",
+    "baseValue": 0.0,
+    "currentValue": 0.0,
+    "type": "multiplier",
+    "description": "【后台】整体攻击倍数加成",
+    "legacy": true
+  },
+  {
+    "id": "crit_rate",
+    "name": "暴击率",
+    "displayName": "暴击概率(旧)",
+    "icon": "🔥",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "【后台】旧版暴击字段，与前台暴击率加成独立",
+    "legacy": true
+  },
+  {
+    "id": "harvest_power",
+    "name": "收获力",
+    "displayName": "收获力",
+    "icon": "💰",
+    "baseValue": 50,
+    "currentValue": 50,
+    "type": "number",
+    "description": "【后台】每波次结束后固定获得的金币基数（再乘金币收益加成）",
+    "legacy": true
+  },
+  {
+    "id": "harvest_power_growth_percent",
+    "name": "收获力增长",
+    "displayName": "收获力增长%",
+    "icon": "📈",
+    "baseValue": 0.01,
+    "currentValue": 0.01,
+    "type": "percent",
+    "description": "【后台】每波次结束后收获力增加的百分比",
+    "legacy": true
+  },
+  {
+    "id": "base_health",
+    "name": "基地生命值",
+    "displayName": "基地血量",
+    "icon": "🏠",
+    "baseValue": 20,
+    "currentValue": 20,
+    "type": "number",
+    "description": "【后台】基地核心血量配置参考",
+    "legacy": true
+  },
+  {
+    "id": "burn_damage",
+    "name": "持续伤害",
+    "displayName": "灼烧/中毒伤害",
+    "icon": "🧪",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "number",
+    "description": "【后台】灼烧、中毒等持续伤害",
+    "legacy": true
+  },
+  {
+    "id": "skill_cooldown",
+    "name": "技能刷新冷却",
+    "displayName": "技能冷却缩减",
+    "icon": "⏳",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "percent",
+    "description": "【后台】技能冷却缩减",
+    "legacy": true
+  },
+  {
+    "id": "skill_duration",
+    "name": "技能持续时间",
+    "displayName": "技能效力时长",
+    "icon": "⌛",
+    "baseValue": 0,
+    "currentValue": 0,
+    "type": "number",
+    "description": "【后台】增益/减益持续时间",
+    "legacy": true
+  }
+]
