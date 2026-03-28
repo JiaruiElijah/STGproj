@@ -15,7 +15,7 @@
         'toolbar.langToZh': '中文',
 
         'hint.controls':
-            '方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 技能弹幕 · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · 升级三选一',
+            '方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（需先升级选「封魔阵」或「梦想妙珠」） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · 升级三选一',
 
         'aside.title': '博丽灵梦 · 新属性（加成）',
 
@@ -44,7 +44,7 @@
         'attackBuild.title': '攻击构筑',
         'attackBuild.spreadHeading': '扩散攻击（Z）',
         'attackBuild.focusHeading': '集中攻击（慢速）',
-        'attackBuild.ultHeading': '大招（X）',
+        'attackBuild.ultHeading': '大招招式（X，非弹幕）',
         'attackBuild.upgradesLabel': '已选构筑',
         'attackBuild.placeholder': '开始游戏后显示',
         'attackBuild.simple.atk': '攻击力：{v}',
@@ -63,7 +63,7 @@
         'toolbar.langToZh': '中文',
 
         'hint.controls':
-            'Move: Arrow keys · <strong>Z</strong> Main fire · <strong>X</strong> Skill volley · <strong>Shift</strong> Focus / hitbox · <strong>P</strong> pickups · Level-up pick 1 of 3',
+            'Move: Arrow keys · <strong>Z</strong> Main fire · <strong>X</strong> Ultimate (Seal / Dream orb; pick in upgrades first) · <strong>Shift</strong> Focus / hitbox · <strong>P</strong> pickups · Level-up pick 1 of 3',
 
         'aside.title': 'Reimu Hakurei · Bonus Stats',
 
@@ -92,7 +92,7 @@
         'attackBuild.title': 'Attack build',
         'attackBuild.spreadHeading': 'Spread (Z)',
         'attackBuild.focusHeading': 'Focus (slow)',
-        'attackBuild.ultHeading': 'Skill (X)',
+        'attackBuild.ultHeading': 'Ultimate (X, not bullets)',
         'attackBuild.upgradesLabel': 'Picked',
         'attackBuild.placeholder': 'Shown after Start',
         'attackBuild.simple.atk': 'ATK: {v}',

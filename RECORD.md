@@ -1,5 +1,23 @@
 # 开发记录
 
+## [2026-03-28] STG：大招不发射 skill 弹幕 + 强化物品编辑器
+
+- **类型**：新增功能 | 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（X 仅按 `stgUltBranch` 触发封魔阵/妙珠，未选分支不发射 skill 弹幕）、`game_demo/game.js`（`stg_enhance_items_custom` 合并入 `ITEM_POOL`，同 id 覆盖 JSON）、`game_demo/enhanceItemsEditorPanel.js`（列表/JSON effects、导入池内强化、应用后 `mergeEnhanceCustomIntoPool` + `rollEnhanceOffers` + `renderEnhanceGrid`）、`game_demo/index.html`（顶栏「强化物品编辑器」、面板 DOM、`?v=20260328d`）、`game_demo/stgUiI18n.js`（提示与构筑「大招招式」文案）
+- **说明**：大招与主武器/慢速弹幕分离；自定义强化仅存浏览器本地，与 `enhance_items.json` 合并供四选一抽取。
+
+## [2026-03-28] STG：两种大招构筑实装（封魔阵 / 梦想妙珠）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`stgUltBranch === 'seal'` 时 `activateStgUltSeal`：跟随自机圆域消敌弹 + 持续伤害；`ult_seal_size`/`ult_seal_heal` 强化范围、持续、疗愈回血与结束后 `_ultAtkBuff`；`dream` 分支 `activateStgUltDream`：多枚上行妙珠消弹 + 接触 DPS，`ult_dream_count`/`ult_dream_stun`；`updateStgUltSkills`；敌人 `stgStunUntil` 停移动与射击；Z 弹 `getStgUltAtkDamageMult`；`resetRun` 清空大招状态与构筑；绘制结界与妙珠）、`game_demo/index.html`（`?v=20260328c`）
+- **说明**：选中「封魔阵」或「梦想妙珠」基础卡后，X 触发对应大招（仍受 `skillFireIntervalMs`/`skillCooldownMs` 约束）；未选分支时 X 不发射 skill 弹幕（见同日复核条目）。妙珠眩晕仅在敌人非眩晕态时施加，避免在接触区内每帧刷新。
+
+## [2026-03-28] 继续剔除塔防数据链与冗余调试项
+
+- **类型**：重构
+- **涉及文件**：`game_demo/game.js`（不再加载 arrow/boom/guard/wizard/配装/特斯拉 JSON；去掉防御塔覆盖与塔物品栏/配装/特斯拉状态机；`loadItemsData` 以 `item.json` 为主；`FALLBACK_ITEM_POOL` 仅兜底英雄；`GameState` 初始库存改为首个英雄×1；精简 Debug）、`game_demo/stgMode.js`（`buildPlayerFromHero` 用 `gameState.inventory` 选英雄，与英雄编辑器一致）、`game_demo/stgWaveFormationPanel.js`（保存/笔刷选项不再依赖 `towerDefenseGame`）、`game_demo/index.html`（去掉商店类 Debug 按钮；波次说明去塔防表述；`?v=20260328b`）
+- **说明**：减轻 ITEM_POOL 体积与 `game.js` 维护面；遗物商店与强化四选一仍可通过隐藏桩 + UIManager 调试；旧 localStorage 塔相关键可保留于用户磁盘，代码不再读取塔覆盖/塔栏/配装。
+
 ## [2026-03-28] 移除塔防玩法脚本与页面，保留 STG 共用启动链
 
 - **类型**：重构

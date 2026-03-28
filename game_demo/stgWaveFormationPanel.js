@@ -1,6 +1,6 @@
 /**
  * 波次阵型编辑器（唯一波次配置入口）：上/左/右 三块与 STG 同格数棋盘；
- * 种类与数量仅由格子决定；存档键 tower_defense_wave_config（与旧塔防共用键名，塔防脚本已移除时仅本地读写）。
+ * 种类与数量仅由格子决定；存档键 tower_defense_wave_config（历史键名保留）。
  */
 (function () {
     'use strict';
@@ -53,20 +53,6 @@
             localStorage.setItem(WAVE_STORAGE_KEY, JSON.stringify({ waves }));
         } catch (e) {
             console.warn('[阵型] 保存失败', e);
-        }
-        if (window.towerDefenseGame && window.towerDefenseGame.enemyManager && window.towerDefenseGame.enemyManager.waveConfig) {
-            try {
-                window.towerDefenseGame.enemyManager.waveConfig.setWaves(waves);
-            } catch (e) {
-                /* ignore */
-            }
-        }
-        if (
-            typeof window.towerDefenseGame !== 'undefined' &&
-            window.towerDefenseGame &&
-            typeof window.towerDefenseGame.saveWaveConfigToStorage === 'function'
-        ) {
-            window.towerDefenseGame.saveWaveConfigToStorage(waves);
         }
     }
 
@@ -149,7 +135,7 @@
     }
 
     /**
-     * 塔防 spawnQueue 用：按阵型遍历顺序合并连续同类型为 { type, count }[]
+     * 按阵型遍历顺序合并连续同类型为 { type, count }[]（存档与 STG 读档共用）
      */
     function formationToEnemiesOrdered(f) {
         const flat = flattenFormationToSpawnList(f);
@@ -226,16 +212,6 @@
             }
         } catch (e) {
             /* ignore */
-        }
-        if (window.towerDefenseGame && window.towerDefenseGame.enemyManager) {
-            try {
-                const gt = window.towerDefenseGame.enemyManager.getEnemyTypes();
-                Object.keys(gt).forEach((id) => {
-                    labels[id] = gt[id] && gt[id].name ? gt[id].name : id;
-                });
-            } catch (e) {
-                /* ignore */
-            }
         }
         const order = ['normal', 'fast', 'tank'];
         const keys = Object.keys(labels);
@@ -465,8 +441,8 @@
         saveWavesToStorage(waves);
         console.log('[阵型] 已保存波次（共', waves.length, '波），种类与数量仅由阵型格子决定');
         alert(
-            '已保存到本地波次配置（STG / 塔防共用）。\n' +
-                '种类与数量仅由「三棋盘」格子决定；塔防侧出怪顺序与阵型遍历顺序一致（同类型会合并为连续组）。'
+            '已保存到本地波次配置。\n' +
+                '种类与数量仅由「三棋盘」格子决定；STG 出怪顺序与阵型遍历顺序一致（同类型会合并为连续组）。'
         );
         close();
     }

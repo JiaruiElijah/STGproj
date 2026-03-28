@@ -1,6 +1,6 @@
 /**
- * 塔防游戏 - 构筑系统
- * 管理物品商店和玩家库存
+ * STG 共用：物品池、GameState、UIManager（遗物商店 / 强化四选一调试）
+ * 塔防玩法与防御塔数据已移除，仅保留 STG 与英雄编辑器所需链路与 JSON。
  */
 
 /** 缓存破坏参数：每次 fetch 时在 URL 后加 ?v=时间戳，避免浏览器缓存旧的 JSON */
@@ -13,96 +13,7 @@ function withCacheBust(path) {
 }
 
 /**
- * 从备用相对路径再拉取 arrow.json，仅合并池中尚不存在的 id（不覆盖已有）
- * @param {Array} allItems
- */
-async function mergeArrowJsonSupplement(allItems) {
-    if (!Array.isArray(allItems)) return;
-    const known = new Set(allItems.map(i => i && i.id).filter(Boolean));
-    // 已有弹珠/寒冰则不必再请求（首包 arrow 通常已齐）
-    if (known.has('marble_tower') && known.has('frost_tower')) {
-        console.log('[防御塔][物品池] arrow 双路径补全已跳过：池中已有 marble_tower、frost_tower');
-        return;
-    }
-    const paths = ['obj_list/arrow.json', './obj_list/arrow.json', '../obj_list/arrow.json'];
-    for (let p = 0; p < paths.length; p++) {
-        const path = paths[p];
-        try {
-            const response = await fetch(withCacheBust(path));
-            if (!response.ok) continue;
-            const data = await response.json();
-            if (!Array.isArray(data)) continue;
-            let n = 0;
-            for (let i = 0; i < data.length; i++) {
-                const it = data[i];
-                if (it && it.id && !known.has(it.id)) {
-                    allItems.push(it);
-                    known.add(it.id);
-                    n++;
-                }
-            }
-            if (n > 0) {
-                console.log(`[物品池] 从补全路径 ${path} 合并 ${n} 条（含 arrow 新塔等）`);
-            }
-        } catch (e) {
-            /* 下一路径 */
-        }
-    }
-}
-
-/**
- * 嵌入式兜底：确保弹珠塔/寒冰塔至少存在于池中（JSON 未加载成功时物品栏仍可选）
- * @param {Array} allItems
- */
-function mergeEmbeddedDefenseTowersIfMissing(allItems) {
-    if (!Array.isArray(allItems)) return;
-    const known = new Set(allItems.map(i => i && i.id).filter(Boolean));
-    const stubs = [
-        {
-            id: 'marble_tower',
-            name: '弹珠塔',
-            icon: '🔴',
-            category: '防御塔',
-            attributes: {
-                baseAttack: 12,
-                attackSpeed: 9,
-                range: 5,
-                evolveTo: 'marble_tower_elite'
-            },
-            scaling: { physical_damage: 0.45 },
-            specialEffects: [{ type: 'bounce', value: 2, description: '弹射' }],
-            quality: 2,
-            price: 120,
-            description: '弹珠塔（数据兜底：请确认 obj_list/arrow.json 已加载）'
-        },
-        {
-            id: 'frost_tower',
-            name: '寒冰塔',
-            icon: '❄️',
-            category: '防御塔',
-            attributes: {
-                baseAttack: 14,
-                attackSpeed: 8,
-                range: 5,
-                evolveTo: 'frost_tower_elite'
-            },
-            scaling: { physical_damage: 0.4, magic_damage: 0.15 },
-            quality: 2,
-            price: 130,
-            description: '寒冰塔（数据兜底：请确认 obj_list/arrow.json 已加载）'
-        }
-    ];
-    stubs.forEach(t => {
-        if (!known.has(t.id)) {
-            allItems.push(t);
-            known.add(t.id);
-            console.warn('[物品池] 已嵌入兜底防御塔:', t.id);
-        }
-    });
-}
-
-/**
- * 按 id 去重，后者覆盖前者（避免多路径重复合并 arrow 等同 id 条目）
+ * 按 id 去重，后者覆盖前者（避免多路径重复合并等同 id 条目）
  * @param {Array} items
  * @returns {Array}
  */
@@ -114,30 +25,6 @@ function dedupePoolById(items) {
         if (it && it.id != null) m.set(String(it.id), it);
     }
     return Array.from(m.values());
-}
-
-/** 局内 3→4 升级分支表使用的五类基底塔 id（便于控制台检索「防御塔」报告） */
-const UPGRADE_BRANCH_BASE_TOWER_IDS = ['ranger_tower', 'boomerang_tower', 'marble_tower', 'frost_tower', 'knife_tower'];
-
-const TOWER_CATEGORIES_FOR_REPORT = ['防御塔', '箭塔', '法师塔', '炮塔', '兵营'];
-
-/**
- * 输出防御塔相关清单到控制台（含「防御塔」关键字，便于过滤）
- * @param {Array} items
- * @param {string} phase - 阶段说明
- */
-function logDefenseTowerLoadReport(items, phase) {
-    if (!Array.isArray(items) || typeof console === 'undefined' || !console.log) return;
-    const towers = items.filter(i => i && TOWER_CATEGORIES_FOR_REPORT.includes(i.category));
-    const rows = towers.map(i => `${i.id}(${i.name || '?'})`).join(' | ');
-    console.log(`[防御塔清单][${phase}] 塔类条目 ${towers.length} 条。id→名称: ${rows || '无'}`);
-    const idSet = new Set(towers.map(i => i.id));
-    const missBranch = UPGRADE_BRANCH_BASE_TOWER_IDS.filter(id => !idSet.has(id));
-    if (missBranch.length) {
-        console.warn(`[防御塔清单][${phase}] 局内分支五类塔 缺失 id: ${missBranch.join(', ')}`);
-    } else {
-        console.log(`[防御塔清单][${phase}] 局内分支五类塔 id 已齐：ranger / boomerang / marble / frost / knife`);
-    }
 }
 
 /**
@@ -486,11 +373,8 @@ function buildSpecialEffectsHTML(specialEffects) {
 // 全局物品池（从JSON文件加载）
 let ITEM_POOL = [];
 
-/** 防御塔编辑器本地存储 key，刷新后依此加载覆盖 */
-const TOWER_OVERRIDES_STORAGE_KEY = 'tower_defense_tower_overrides';
-
 /**
- * 将覆盖数据合并到物品池（按 id 覆盖，影响所有引用该物品的展示与逻辑）
+ * 将覆盖数据合并到物品池（按 id 覆盖；英雄编辑器等同用此合并逻辑）
  * @param {Array} itemPool - 物品池（会被原地修改）
  * @param {Object} overrides - id -> 覆盖字段对象
  */
@@ -516,31 +400,6 @@ function applyTowerOverrides(itemPool, overrides) {
         }
         if (o.specialEffects && Array.isArray(o.specialEffects)) item.specialEffects = o.specialEffects;
     });
-}
-
-/**
- * 从 localStorage 读取已保存的防御塔覆盖
- * @returns {Object|null}
- */
-function loadSavedTowerOverrides() {
-    try {
-        const raw = localStorage.getItem(TOWER_OVERRIDES_STORAGE_KEY);
-        if (!raw) return null;
-        const data = JSON.parse(raw);
-        return data && typeof data === 'object' ? data : null;
-    } catch (e) {
-        console.warn('读取已保存的防御塔覆盖失败', e);
-        return null;
-    }
-}
-
-/** 加载并应用已保存的防御塔覆盖到当前 ITEM_POOL（游戏初始化时调用） */
-function applyTowerOverridesFromStorage() {
-    const saved = loadSavedTowerOverrides();
-    if (saved && Object.keys(saved).length > 0) {
-        applyTowerOverrides(ITEM_POOL, saved);
-        console.log('已加载已保存的防御塔配置');
-    }
 }
 
 /** 英雄编辑器本地存储 key：英雄 id -> 覆盖字段对象 */
@@ -579,104 +438,6 @@ function applyHeroOverridesFromStorage() {
     if (saved && Object.keys(saved).length > 0) {
         applyHeroOverrides(ITEM_POOL, saved);
         console.log('已加载已保存的英雄配置');
-    }
-}
-
-/** 威能节能编辑器：全局威能上限、英雄技能默认威能消耗 */
-const POWER_GLOBAL_STORAGE_KEY = 'tower_defense_power_global_settings';
-
-/**
- * @returns {{ powerMax?: number, heroSkillPowerDefault?: number }|null}
- * powerMax 表示「单塔威能条默认上限」；英雄技能大招局内以满条为准，heroSkillPowerDefault 为兼容旧存档保留。
- */
-function loadPowerGlobalSettings() {
-    try {
-        const raw = localStorage.getItem(POWER_GLOBAL_STORAGE_KEY);
-        if (!raw) return null;
-        const data = JSON.parse(raw);
-        return data && typeof data === 'object' ? data : null;
-    } catch (e) {
-        console.warn('读取威能全局设置失败', e);
-        return null;
-    }
-}
-
-/** 物品栏编辑器本地存储 key：防御塔 id -> 数量，刷新后依此设置玩家物品栏中的防御塔 */
-const INVENTORY_OVERRIDE_STORAGE_KEY = 'tower_defense_inventory_override';
-
-/** 防御塔分类，用于识别哪些物品属于“防御塔”以应用物品栏覆盖 */
-const TOWER_CATEGORIES_FOR_INVENTORY = ['防御塔', '箭塔', '法师塔', '炮塔', '兵营'];
-
-/**
- * 将物品栏覆盖应用到 gameState.inventory（仅影响防御塔；数量 0 的会从 inventory 移除）
- * @param {Object} gameState - 游戏状态
- * @param {Object} override - towerId -> count
- * @param {Array} itemPool - 物品池，用于取防御塔 id 列表
- */
-function applyInventoryOverride(gameState, override, itemPool) {
-    if (!gameState || !gameState.inventory || !itemPool) return;
-    const towerIds = itemPool.filter(i => i && TOWER_CATEGORIES_FOR_INVENTORY.includes(i.category)).map(i => i.id);
-    towerIds.forEach(id => {
-        const count = (override && typeof override[id] === 'number' && override[id] >= 0) ? override[id] : 0;
-        if (count <= 0) gameState.inventory.delete(id);
-        else gameState.inventory.set(id, count);
-    });
-}
-
-/**
- * 从 localStorage 读取已保存的物品栏覆盖
- * @returns {Object|null} towerId -> count
- */
-function loadSavedInventoryOverride() {
-    try {
-        const raw = localStorage.getItem(INVENTORY_OVERRIDE_STORAGE_KEY);
-        if (!raw) return null;
-        const data = JSON.parse(raw);
-        return data && typeof data === 'object' ? data : null;
-    } catch (e) {
-        console.warn('读取已保存的物品栏覆盖失败', e);
-        return null;
-    }
-}
-
-/**
- * 旧存档 id 迁移：red_diamond→marble_tower、sniper_tower→knife_tower（与箭塔弹珠/飞刀拆分）
- */
-function migrateLegacyTowerInventoryIdsInStorage() {
-    try {
-        const raw = localStorage.getItem(INVENTORY_OVERRIDE_STORAGE_KEY);
-        if (!raw) return;
-        const o = JSON.parse(raw);
-        if (!o || typeof o !== 'object') return;
-        let ch = false;
-        if (typeof o.red_diamond === 'number') {
-            const add = o.red_diamond;
-            o.marble_tower = (typeof o.marble_tower === 'number' ? o.marble_tower : 0) + add;
-            delete o.red_diamond;
-            ch = true;
-        }
-        if (typeof o.sniper_tower === 'number') {
-            const add = o.sniper_tower;
-            o.knife_tower = (typeof o.knife_tower === 'number' ? o.knife_tower : 0) + add;
-            delete o.sniper_tower;
-            ch = true;
-        }
-        if (ch) {
-            localStorage.setItem(INVENTORY_OVERRIDE_STORAGE_KEY, JSON.stringify(o));
-            console.log('[防御塔] 物品栏存档已迁移：red_diamond→marble_tower、sniper_tower→knife_tower');
-        }
-    } catch (e) {
-        console.warn('迁移物品栏 id 失败', e);
-    }
-}
-
-/** 游戏初始化时：应用已保存的物品栏覆盖到当前 gameState */
-function applyInventoryOverridesFromStorage(gameState) {
-    migrateLegacyTowerInventoryIdsInStorage();
-    const saved = loadSavedInventoryOverride();
-    if (saved && Object.keys(saved).length > 0 && ITEM_POOL && ITEM_POOL.length > 0) {
-        applyInventoryOverride(gameState, saved, ITEM_POOL);
-        console.log('已加载已保存的物品栏配置');
     }
 }
 
@@ -724,139 +485,68 @@ function applyHeroInventoryOverridesFromStorage(gameState) {
     }
 }
 
-/** 防御塔配装存档键（须早于下方 window 导出，避免暂时性死区） */
-const TOWER_LOADOUT_STORAGE_KEY = 'tower_defense_tower_loadouts';
-/** 特斯拉配装扩展：大招选择、刷新次数等 */
-const TESLA_LOADOUT_EXTRAS_KEY = 'tower_defense_tesla_loadout_extras';
+/** 本地自定义强化道具（合并入物品池，同 id 覆盖 JSON 默认） */
+const ENHANCE_ITEMS_CUSTOM_KEY = 'stg_enhance_items_custom';
 
-/**
- * 从 localStorage 恢复各塔配装到 gameState
- * @param {GameState} gameState
- */
-function applyTowerLoadoutsFromStorage(gameState) {
-    if (!gameState || !gameState.towerLoadouts) return;
+function loadEnhanceItemsCustom() {
     try {
-        const raw = localStorage.getItem(TOWER_LOADOUT_STORAGE_KEY);
-        if (!raw) return;
+        const raw = localStorage.getItem(ENHANCE_ITEMS_CUSTOM_KEY);
+        if (!raw) return [];
         const data = JSON.parse(raw);
-        if (!data || typeof data !== 'object') return;
-        let loadoutMigrated = false;
-        if (data.red_diamond) {
-            if (!data.marble_tower) data.marble_tower = data.red_diamond;
-            delete data.red_diamond;
-            loadoutMigrated = true;
-        }
-        if (data.sniper_tower) {
-            if (!data.knife_tower) data.knife_tower = data.sniper_tower;
-            delete data.sniper_tower;
-            loadoutMigrated = true;
-        }
-        if (loadoutMigrated) {
-            try {
-                localStorage.setItem(TOWER_LOADOUT_STORAGE_KEY, JSON.stringify(data));
-                console.log('[防御塔] 配装存档已迁移键：red_diamond→marble_tower、sniper_tower→knife_tower');
-            } catch (e2) {
-                console.warn('写回配装迁移失败', e2);
-            }
-        }
-        Object.keys(data).forEach(storedKey => {
-            const slots = data[storedKey];
-            if (!Array.isArray(slots)) return;
-            const normKey = gameState.getLoadoutStorageKey(storedKey);
-            const arr = gameState.getTowerLoadoutSlots(normKey);
-            for (let i = 0; i < 3; i++) {
-                const v = (slots[i] != null && slots[i] !== '') ? String(slots[i]) : null;
-                if (v != null) arr[i] = v;
-            }
-        });
-        console.log('已加载防御塔配装存档');
+        return Array.isArray(data) ? data : [];
     } catch (e) {
-        console.warn('读取防御塔配装失败', e);
+        console.warn('读取自定义强化列表失败', e);
+        return [];
     }
 }
 
 /**
- * 从 localStorage 恢复特斯拉大招选择、刷新计费等
- * @param {GameState} gameState
+ * 将本地保存的强化条目合并进物品池（category 强制为「强化」）
+ * @param {Array} itemPool
  */
-function applyTeslaLoadoutExtrasFromStorage(gameState) {
-    if (!gameState) return;
-    try {
-        const raw = localStorage.getItem(TESLA_LOADOUT_EXTRAS_KEY);
-        if (!raw) return;
-        const o = JSON.parse(raw);
-        if (!o || typeof o !== 'object') return;
-        if (o.teslaUltimateLoadoutId != null && o.teslaUltimateLoadoutId !== '') {
-            gameState.teslaUltimateLoadoutId = String(o.teslaUltimateLoadoutId);
+function mergeEnhanceCustomIntoPool(itemPool) {
+    if (!itemPool || !Array.isArray(itemPool)) return;
+    const custom = loadEnhanceItemsCustom();
+    if (!custom.length) return;
+    const indexById = new Map();
+    for (let i = 0; i < itemPool.length; i++) {
+        const it = itemPool[i];
+        if (it && it.id != null) indexById.set(String(it.id), i);
+    }
+    let nAdd = 0;
+    let nUp = 0;
+    custom.forEach((raw) => {
+        if (!raw || raw.id == null || String(raw.id).trim() === '') return;
+        const it = { ...raw };
+        it.id = String(it.id).trim();
+        it.category = '强化';
+        if (!it.effects || typeof it.effects !== 'object') it.effects = {};
+        if (it.name == null) it.name = it.id;
+        if (indexById.has(it.id)) {
+            const idx = indexById.get(it.id);
+            itemPool[idx] = { ...itemPool[idx], ...it };
+            nUp++;
+        } else {
+            itemPool.push(it);
+            indexById.set(it.id, itemPool.length - 1);
+            nAdd++;
         }
-        if (o.teslaLoadoutRefreshCount != null) {
-            const n = Number(o.teslaLoadoutRefreshCount);
-            if (Number.isFinite(n) && n >= 0) gameState.teslaLoadoutRefreshCount = Math.floor(n);
-        }
-        console.log('已加载特斯拉配装扩展存档');
-    } catch (e) {
-        console.warn('读取特斯拉配装扩展失败', e);
-    }
+    });
+    console.log('[强化] 已合并本地自定义：新增', nAdd, '条，覆盖', nUp, '条');
 }
 
-/**
- * 写入特斯拉配装扩展
- * @param {GameState} gameState
- */
-function saveTeslaLoadoutExtrasToStorage(gameState) {
-    if (!gameState) return;
-    try {
-        localStorage.setItem(TESLA_LOADOUT_EXTRAS_KEY, JSON.stringify({
-            teslaUltimateLoadoutId: gameState.teslaUltimateLoadoutId,
-            teslaLoadoutRefreshCount: gameState.teslaLoadoutRefreshCount || 0
-        }));
-    } catch (e) {
-        console.warn('保存特斯拉配装扩展失败', e);
-    }
-}
-
-/**
- * 将当前配装写入 localStorage
- * @param {GameState} gameState
- */
-function saveTowerLoadoutsToStorage(gameState) {
-    if (!gameState || !gameState.towerLoadouts) return;
-    try {
-        const raw = {};
-        gameState.towerLoadouts.forEach((slots, towerId) => {
-            raw[towerId] = slots.slice();
-        });
-        localStorage.setItem(TOWER_LOADOUT_STORAGE_KEY, JSON.stringify(raw));
-    } catch (e) {
-        console.warn('保存防御塔配装失败', e);
-    }
-}
-
-// 供防御塔编辑器、物品栏编辑器调用
+// 供英雄编辑器等调用
 if (typeof window !== 'undefined') {
     window.applyTowerOverrides = applyTowerOverrides;
-    window.loadSavedTowerOverrides = loadSavedTowerOverrides;
-    window.TOWER_OVERRIDES_STORAGE_KEY = TOWER_OVERRIDES_STORAGE_KEY;
-    window.applyInventoryOverride = applyInventoryOverride;
-    window.loadSavedInventoryOverride = loadSavedInventoryOverride;
-    window.INVENTORY_OVERRIDE_STORAGE_KEY = INVENTORY_OVERRIDE_STORAGE_KEY;
-    window.TOWER_CATEGORIES_FOR_INVENTORY = TOWER_CATEGORIES_FOR_INVENTORY;
-
-    // 供英雄编辑器调用
     window.applyHeroOverrides = applyHeroOverrides;
     window.loadSavedHeroOverrides = loadSavedHeroOverrides;
     window.HERO_OVERRIDES_STORAGE_KEY = HERO_OVERRIDES_STORAGE_KEY;
-    window.loadPowerGlobalSettings = loadPowerGlobalSettings;
-    window.TOWER_LOADOUT_STORAGE_KEY = TOWER_LOADOUT_STORAGE_KEY;
-    window.applyTowerLoadoutsFromStorage = applyTowerLoadoutsFromStorage;
-    window.saveTowerLoadoutsToStorage = saveTowerLoadoutsToStorage;
-    window.TESLA_LOADOUT_EXTRAS_KEY = TESLA_LOADOUT_EXTRAS_KEY;
-    window.applyTeslaLoadoutExtrasFromStorage = applyTeslaLoadoutExtrasFromStorage;
-    window.saveTeslaLoadoutExtrasToStorage = saveTeslaLoadoutExtrasToStorage;
-    window.POWER_GLOBAL_STORAGE_KEY = POWER_GLOBAL_STORAGE_KEY;
     window.applyHeroInventoryOverride = applyHeroInventoryOverride;
     window.loadSavedHeroInventoryOverride = loadSavedHeroInventoryOverride;
     window.HERO_INVENTORY_OVERRIDE_STORAGE_KEY = HERO_INVENTORY_OVERRIDE_STORAGE_KEY;
+    window.ENHANCE_ITEMS_CUSTOM_KEY = ENHANCE_ITEMS_CUSTOM_KEY;
+    window.loadEnhanceItemsCustom = loadEnhanceItemsCustom;
+    window.mergeEnhanceCustomIntoPool = mergeEnhanceCustomIntoPool;
 }
 
 /**
@@ -864,137 +554,28 @@ if (typeof window !== 'undefined') {
  * @returns {Promise<Array>} - 物品数组
  */
 async function loadItemsData() {
-    // 防御塔文件列表（需要合并）
-    const towerFiles = [
-        '../obj_list/arrow.json',
-        '../obj_list/boom.json',
-        '../obj_list/guard.json',
-        '../obj_list/wizard.json'
-    ];
-    
-    // 道具文件
-    const itemFile = '../obj_list/item.json';
-    
+    /** STG 主数据：道具 + 英雄等同在 item.json，不再加载各防御塔分表 */
+    const itemPaths = ['../obj_list/item.json', 'obj_list/item.json'];
     let allItems = [];
-    
-    // 加载所有防御塔文件
-    for (const filePath of towerFiles) {
+    for (let p = 0; p < itemPaths.length; p++) {
+        const itemFile = itemPaths[p];
         try {
-            console.log(`尝试加载防御塔文件: ${filePath}`);
-            const response = await fetch(withCacheBust(filePath));
+            const response = await fetch(withCacheBust(itemFile));
             if (!response.ok) {
-                console.warn(`路径 ${filePath} 返回状态码: ${response.status}`);
+                console.warn(`路径 ${itemFile} 返回状态码: ${response.status}`);
                 continue;
             }
             const data = await response.json();
             if (Array.isArray(data)) {
                 allItems = allItems.concat(data);
-                console.log(`成功从 ${filePath} 加载 ${data.length} 个防御塔`);
-                if (filePath.indexOf('arrow') !== -1) {
-                    const ids = data.map(x => x && x.id).filter(Boolean);
-                    console.log(`[防御塔][arrow.json] 本文件 id 列表 (${ids.length}):`, ids.join(', '));
-                    const miss = UPGRADE_BRANCH_BASE_TOWER_IDS.filter(id => ids.indexOf(id) === -1);
-                    if (miss.length) {
-                        console.warn('[防御塔][arrow.json] 与局内分支表对照：缺少 id →', miss.join(', '));
-                    } else {
-                        console.log('[防御塔][arrow.json] 与局内分支表对照：五类基底塔 id 已全部包含');
-                    }
-                }
+                console.log(`成功从 ${itemFile} 加载 ${data.length} 条（道具/英雄等）`);
             } else {
-                // 如果不是数组，尝试作为单个对象处理
                 allItems.push(data);
-                console.log(`成功从 ${filePath} 加载 1 个防御塔`);
             }
+            break;
         } catch (error) {
-            console.warn(`路径 ${filePath} 加载失败:`, error.message);
+            console.warn(`路径 ${itemFile} 加载失败:`, error.message);
         }
-    }
-
-    // 双路径补全 arrow.json：game_demo 为站点根时 `../obj_list` 可能 404，而 `obj_list/arrow.json` 可用（或反之）
-    await mergeArrowJsonSupplement(allItems);
-
-    // 仍缺弹珠/寒冰时写入嵌入式条目，保证物品栏编辑器与局内塔 id 一致
-    mergeEmbeddedDefenseTowersIfMissing(allItems);
-    
-    // 配装道具（独立 JSON，便于扩展）
-    const loadoutFile = '../obj_list/loadout_items.json';
-    try {
-        const response = await fetch(withCacheBust(loadoutFile));
-        if (response.ok) {
-            const data = await response.json();
-            if (Array.isArray(data)) {
-                allItems = allItems.concat(data);
-                console.log(`成功从 ${loadoutFile} 加载 ${data.length} 个配装道具`);
-            }
-        }
-    } catch (error) {
-        console.warn(`路径 ${loadoutFile} 加载失败:`, error.message);
-    }
-    try {
-        const altLoadout = 'obj_list/loadout_items.json';
-        if (allItems.filter(i => i && i.category === '配装').length === 0) {
-            const response = await fetch(withCacheBust(altLoadout));
-            if (response.ok) {
-                const data = await response.json();
-                if (Array.isArray(data)) {
-                    allItems = allItems.concat(data);
-                    console.log(`成功从 ${altLoadout} 加载 ${data.length} 个配装道具`);
-                }
-            }
-        }
-    } catch (error) {
-        console.warn('备用配装列表加载失败:', error.message);
-    }
-
-    // 特斯拉专属配装（被动 + 大招选项，与 loadout_items 并存）
-    const teslaLoadoutFile = '../obj_list/tesla_loadout_items.json';
-    try {
-        const response = await fetch(withCacheBust(teslaLoadoutFile));
-        if (response.ok) {
-            const data = await response.json();
-            if (Array.isArray(data)) {
-                allItems = allItems.concat(data);
-                console.log(`成功从 ${teslaLoadoutFile} 加载 ${data.length} 个特斯拉配装`);
-            }
-        }
-    } catch (error) {
-        console.warn(`路径 ${teslaLoadoutFile} 加载失败:`, error.message);
-    }
-    try {
-        const altTesla = 'obj_list/tesla_loadout_items.json';
-        const hasTesla = allItems.some(i => i && i.loadoutFamily === 'tesla');
-        if (!hasTesla) {
-            const response = await fetch(withCacheBust(altTesla));
-            if (response.ok) {
-                const data = await response.json();
-                if (Array.isArray(data)) {
-                    allItems = allItems.concat(data);
-                    console.log(`成功从 ${altTesla} 加载 ${data.length} 个特斯拉配装`);
-                }
-            }
-        }
-    } catch (error) {
-        console.warn('备用特斯拉配装列表加载失败:', error.message);
-    }
-
-    // 加载道具文件
-    try {
-        console.log(`尝试加载道具文件: ${itemFile}`);
-        const response = await fetch(withCacheBust(itemFile));
-        if (response.ok) {
-            const data = await response.json();
-            if (Array.isArray(data)) {
-                allItems = allItems.concat(data);
-                console.log(`成功从 ${itemFile} 加载 ${data.length} 个道具`);
-            } else {
-                allItems.push(data);
-                console.log(`成功从 ${itemFile} 加载 1 个道具`);
-            }
-        } else {
-            console.warn(`路径 ${itemFile} 返回状态码: ${response.status}`);
-        }
-    } catch (error) {
-        console.warn(`路径 ${itemFile} 加载失败:`, error.message);
     }
 
     // 强化系统道具池（与遗物不同池；商店不出售，仅强化界面四选一）
@@ -1031,15 +612,12 @@ async function loadItemsData() {
         }
     }
     
-    // 如果所有文件都加载失败，尝试备用路径
     if (allItems.length === 0) {
-        console.log('尝试备用路径...');
+        console.log('尝试备用路径（仅 item / 强化 / 遗物）...');
         const alternativePaths = [
-            'obj_list/arrow.json',
-            'obj_list/boom.json',
-            'obj_list/guard.json',
-            'obj_list/wizard.json',
-            'obj_list/item.json'
+            'obj_list/item.json',
+            'obj_list/enhance_items.json',
+            'obj_list/relics.json'
         ];
         
         for (const filePath of alternativePaths) {
@@ -1071,8 +649,7 @@ async function loadItemsData() {
     }
     
     allItems = dedupePoolById(allItems);
-    console.log(`总共加载 ${allItems.length} 个物品`);
-    logDefenseTowerLoadReport(allItems, '去重后最终池');
+    console.log(`[物品池] 去重后共 ${allItems.length} 条`);
     
     // 统一处理价格字段：将 basePrice 映射为 price，如果没有 price 则使用 basePrice
     allItems.forEach(item => {
@@ -1281,142 +858,24 @@ class PlayerStats {
     }
 }
 
-// 注意：以下数据仅作为备用，实际开发中应从JSON文件加载
+/** HTTP 全失败时的兜底：至少含一条「英雄」供 STG / 英雄编辑器使用 */
 const FALLBACK_ITEM_POOL = [
     {
-      "id": "arrow_tower",
-      "name": "箭塔",
-      "category": "防御塔",
-      "rarity": "普通",
-      "attributes": {
-        "baseAttack": 15,
-        "attackSpeed": 1.0,
-        "rangeGrid": 1,
-        "health": 100
-      },
-      "scaling": {
-        "remoteDamageRatio": 0.50
-      },
-      "price": 50,
-      "description": "最基础的箭塔"
-    },
-    {
-      "id": "machine_gun_tower",
-      "name": "机枪塔",
-      "category": "防御塔",
-      "rarity": "稀有",
-      "attributes": {
-        "baseAttack": 5,
-        "attackSpeed": 20.0,
-        "rangeGrid": 1,
-        "health": 120
-      },
-      "scaling": {
-        "remoteDamageRatio": 0.50
-      },
-      "price": 100,
-      "description": "射程近，高攻速，容易触发攻击特效的箭塔"
-    },
-    {
-      "id": "boomerang_tower",
-      "name": "飞镖塔",
-      "category": "防御塔",
-      "rarity": "稀有",
-      "attributes": {
-        "baseAttack": 10,
-        "attackSpeed": 10.0,
-        "rangeGrid": 1,
-        "health": 100
-      },
-      "scaling": {
-        "remoteDamageRatio": 0.50
-      },
-      "specialEffects": [
-        { "type": "bounce", "value": 3, "description": "在敌人之间弹射2/3次" }
-      ],
-      "price": 100,
-      "description": "属性偏低，但能够同时攻击多个目标的箭塔"
-    },
-    {
-      "id": "crossbow_tower",
-      "name": "弩塔",
-      "category": "防御塔",
-      "rarity": "稀有",
-      "attributes": {
-        "baseAttack": 15,
-        "attackSpeed": 10.0,
-        "rangeGrid": 1,
-        "health": 100
-      },
-      "scaling": {
-        "remoteDamageRatio": 0.40,
-        "rangeRatio": 0.10
-      },
-      "price": 100,
-      "description": "属性中等，范围较大的箭塔"
-    },
-    {
-      "id": "shotgun_tower",
-      "name": "霰弹枪",
-      "category": "防御塔",
-      "rarity": "史诗",
-      "attributes": {
-        "baseAttack": 10,
-        "attackSpeed": 5.0,
-        "rangeGrid": 1,
-        "health": 150
-      },
-      "scaling": {
-        "remoteDamageRatio": 0.50
-      },
-      "specialEffects": [
-        { "type": "armor_pierce", "value": 1.0, "description": "伤害直接无视护甲" }
-      ],
-      "price": 150,
-      "description": "范围短，单向，同时射击范围内大量目标"
-    },
-    {
-      "id": "musket_tower",
-      "name": "火枪塔",
-      "category": "防御塔",
-      "rarity": "史诗",
-      "attributes": {
-        "baseAttack": 15,
-        "attackSpeed": 0.8,
-        "rangeGrid": 1,
-        "health": 80
-      },
-      "scaling": {
-        "remoteDamageRatio": 0.40,
-        "rangeRatio": 0.10
-      },
-      "specialEffects": [
-        { "type": "instant_kill", "chance": "variable", "description": "概率秒杀" }
-      ],
-      "price": 200,
-      "description": "范围中，攻速低，但是概率秒杀"
-    },
-    {
-      "id": "tactical_arrow_tower",
-      "name": "战术箭塔",
-      "category": "防御塔",
-      "rarity": "传说",
-      "attributes": {
-        "baseAttack": 10,
-        "skillBaseDamage": 5,
-        "attackSpeed": 1.2,
-        "rangeGrid": 1,
-        "health": 120
-      },
-      "scaling": {
-        "remoteDamageRatio": 0.50,
-        "skillMagicDamageRatio": 0.80
-      },
-      "specialEffects": [
-        { "type": "stun", "duration": "variable", "description": "射出昏睡箭并造成眩晕" }
-      ],
-      "price": 250,
-      "description": "附带法术伤害和控制能力的箭塔"
+        id: 'hero_soldier',
+        name: '英雄战士',
+        icon: '🛡️',
+        category: '英雄',
+        rarity: '普通',
+        attributes: {
+            baseAttack: 12,
+            attackSpeed: 6,
+            rangeGrid: 1,
+            health: 80,
+            powerGainPerHit: 1
+        },
+        scaling: { physical_damage: 0.3 },
+        price: 120,
+        description: '兜底英雄（请改用 obj_list/item.json）'
     }
 ];
 
@@ -1427,11 +886,10 @@ class GameState {
         this.coins = 100;
         // 玩家持有的物品（使用Map存储，key为物品id，value为数量）
         this.inventory = new Map();
-        // 初始持有：2 个箭塔（从物品池中取第一个防御塔类型，兼容 arrow_tower / ranger_tower 等不同数据源）
-        const towerCategories = ['防御塔', '箭塔', '法师塔', '炮塔', '兵营', '英雄'];
-        const firstTower = itemPool && itemPool.find(i => towerCategories.includes(i.category));
-        if (firstTower) {
-            this.inventory.set(firstTower.id, 2);
+        // 初始库存：至少解锁池中第一个英雄（数量由英雄编辑器覆盖可改）
+        const firstHero = itemPool && itemPool.find(i => i && i.category === '英雄');
+        if (firstHero) {
+            this.inventory.set(firstHero.id, 1);
         }
         // 物品池引用
         this.itemPool = itemPool;
@@ -1448,130 +906,8 @@ class GameState {
         // 收获力：每波结束固定获得的金币数，波次结束后按百分比增长
         this.harvestPower = Math.max(0, (playerStats && playerStats.getStat('harvest_power')) ?? 50);
         this.harvestPowerGrowthPercent = Math.max(0, (playerStats && playerStats.getStat('harvest_power_growth_percent')) ?? 0.01);
-        /** 灵力：部署防御塔/英雄时消耗（见物品 attributes.deploySpiritCost，默认 5） */
+        /** 灵力：与波次奖励、Debug 等共用 */
         this.spirit = 40;
-        /** 防御塔配装：塔物品 id → 长度 3 的数组；槽 0/1/2 对应局内塔 1/2/3 级时生效（见 towerDefense 累计应用） */
-        this.towerLoadouts = new Map();
-        /** 特斯拉：当前随机到的 3 个被动配装 id（打开面板时重抽，可金币刷新） */
-        this.teslaLoadoutOfferIds = [];
-        /** 特斯拉：被动候选刷新次数（费用 5 + count*5，与商店刷新类似） */
-        this.teslaLoadoutRefreshCount = 0;
-        /** 特斯拉：大招三选一（配装 id，效果待实现） */
-        this.teslaUltimateLoadoutId = null;
-    }
-
-    /**
-     * 配装存档与局内加成统一使用的键（特斯拉/精英特斯拉共用「tesla」）
-     * @param {string} towerId
-     * @returns {string|undefined}
-     */
-    getLoadoutStorageKey(towerId) {
-        if (!towerId) return towerId;
-        if (towerId === 'tesla' || towerId === 'tesla_elite') return 'tesla';
-        return towerId;
-    }
-
-    /**
-     * 获取某座塔类型的配装槽数组（共 3 槽：对应 1/2/3 级）
-     * @param {string} towerId
-     * @returns {(string|null)[]}
-     */
-    getTowerLoadoutSlots(towerId) {
-        const key = this.getLoadoutStorageKey(towerId);
-        if (!key) return [null, null, null];
-        if (!this.towerLoadouts.has(key)) {
-            this.towerLoadouts.set(key, [null, null, null]);
-        }
-        const arr = this.towerLoadouts.get(key);
-        // 兼容旧版 5 槽：截断为 3
-        if (Array.isArray(arr) && arr.length !== 3) {
-            const n = [arr[0] ?? null, arr[1] ?? null, arr[2] ?? null];
-            this.towerLoadouts.set(key, n);
-            return n;
-        }
-        return arr;
-    }
-
-    /**
-     * 写入单个配装槽
-     * @param {string} towerId
-     * @param {number} slotIndex 0–2（分别对应 1/2/3 级）
-     * @param {string|null} equipId
-     * @returns {boolean}
-     */
-    setTowerLoadoutSlot(towerId, slotIndex, equipId) {
-        const arr = this.getTowerLoadoutSlots(towerId);
-        if (slotIndex < 0 || slotIndex >= 3) return false;
-        arr[slotIndex] = equipId || null;
-        return true;
-    }
-
-    /**
-     * 特斯拉被动配装池（用于随机三选一）
-     * @returns {Array<Object>}
-     */
-    getTeslaPassiveLoadoutPool() {
-        return (this.itemPool || []).filter(i =>
-            i && i.category === '配装' && i.loadoutFamily === 'tesla' && i.loadoutKind === 'passive'
-        );
-    }
-
-    /**
-     * 特斯拉大招配装池（三选一展示）
-     * @returns {Array<Object>}
-     */
-    getTeslaUltimateLoadoutPool() {
-        return (this.itemPool || []).filter(i =>
-            i && i.category === '配装' && i.loadoutFamily === 'tesla' && i.loadoutKind === 'ultimate'
-        );
-    }
-
-    /**
-     * 随机抽取 3 个不同的被动配装 id 写入 teslaLoadoutOfferIds
-     */
-    rollTeslaLoadoutOffers() {
-        const pool = this.getTeslaPassiveLoadoutPool();
-        if (!pool.length) {
-            this.teslaLoadoutOfferIds = [];
-            return;
-        }
-        const copy = [...pool];
-        for (let i = copy.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            const t = copy[i];
-            copy[i] = copy[j];
-            copy[j] = t;
-        }
-        const ids = [];
-        const seen = new Set();
-        for (let k = 0; k < copy.length && ids.length < 3; k++) {
-            const id = copy[k].id;
-            if (seen.has(id)) continue;
-            seen.add(id);
-            ids.push(id);
-        }
-        this.teslaLoadoutOfferIds = ids.slice(0, 3);
-    }
-
-    /**
-     * 刷新特斯拉被动候选的费用（金币）：首次 5，之后每次 +5
-     * @returns {number}
-     */
-    getTeslaLoadoutRefreshCost() {
-        return 5 + (this.teslaLoadoutRefreshCount || 0) * 5;
-    }
-
-    /**
-     * 花费金币重新随机三个被动候选
-     * @returns {{ ok: boolean, cost?: number, reason?: string }}
-     */
-    tryRefreshTeslaLoadoutOffers() {
-        const cost = this.getTeslaLoadoutRefreshCost();
-        if (this.coins < cost) return { ok: false, reason: 'coins', cost };
-        this.coins -= cost;
-        this.teslaLoadoutRefreshCount = (this.teslaLoadoutRefreshCount || 0) + 1;
-        this.rollTeslaLoadoutOffers();
-        return { ok: true, cost };
     }
 
     /**
@@ -1590,7 +926,7 @@ class GameState {
             // 进化塔等不可购买物品：通过 buyable/shopVisible 标记
             if (item.buyable === false) return false;
             if (item.shopVisible === false) return false;
-            // 商店仅出售「遗物」；其余道具/塔/配装仍保留在 itemPool 后台供已有存档与逻辑引用
+            // 商店仅出售「遗物」；其余条目仍保留在 itemPool 供逻辑引用
             if (item.category !== '遗物') return false;
             return true;
         });
@@ -2035,14 +1371,6 @@ class UIManager {
             this.renderInventory();
             // 更新玩家属性显示
             this.renderPlayerStats();
-            
-            // 如果购买的是防御塔，更新防御塔物品栏
-            // 防御塔的子分类包括：箭塔、法师塔、炮塔、兵营
-            const item = this.gameState.findItemById(itemId);
-            const towerSubCategories = ['防御塔', '箭塔', '法师塔', '炮塔', '兵营', '英雄'];
-            if (item && towerSubCategories.includes(item.category)) {
-                this.updateTowerInventory();
-            }
         } else {
             // 可以在这里添加购买失败的提示
             alert('购买失败！金币不足。');
@@ -2131,7 +1459,7 @@ class UIManager {
     }
 
     /**
-     * 渲染库存列表（仅非防御塔道具，防御塔在左侧「防御塔物品栏」显示）
+     * 渲染隐藏桩库存列表（排除英雄/塔类分类，英雄由英雄编辑器管理）
      */
     renderInventory() {
         // 清空当前列表
@@ -2172,22 +1500,8 @@ class UIManager {
         console.log('商店已刷新');
     }
     
-    /**
-     * 更新防御塔物品栏（游戏页 + 商店页左侧栏）
-     */
-    updateTowerInventory() {
-        if (window.towerDefenseGame && typeof window.towerDefenseGame.renderTowerInventory === 'function') {
-            window.towerDefenseGame.renderTowerInventory();
-            const shopList = document.getElementById('shopTowerInventoryList');
-            if (shopList) {
-                window.towerDefenseGame.renderTowerInventory(shopList);
-            }
-            const enhList = document.getElementById('enhanceTowerInventoryList');
-            if (enhList) {
-                window.towerDefenseGame.renderTowerInventory(enhList);
-            }
-        }
-    }
+    /** 塔防已移除，保留空方法避免旧调用处报错 */
+    updateTowerInventory() {}
 
     /**
      * 渲染强化界面四选一（免费）
@@ -2244,7 +1558,6 @@ class UIManager {
                 if (this.gameState.pickEnhanceOffer(index)) {
                     this.renderEnhanceGrid();
                     this.renderEnhancePlayerStats();
-                    this.updateTowerInventory();
                     console.log('[强化] 已应用并刷新选项');
                 }
             });
@@ -2338,12 +1651,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     console.log('物品池数量:', ITEM_POOL.length);
-    // 供物品栏编辑器等直接使用完整池（与 gameState.itemPool 同一引用，便于新塔必现）
+    mergeEnhanceCustomIntoPool(ITEM_POOL);
+    // 全局供英雄/怪物编辑器等使用（与 gameState.itemPool 同一引用）
     if (typeof window !== 'undefined') window.ITEM_POOL = ITEM_POOL;
     
-    // 应用已保存的防御塔编辑器覆盖（刷新后保留）
-    applyTowerOverridesFromStorage();
-
     // 应用已保存的英雄编辑器覆盖（刷新后保留）
     applyHeroOverridesFromStorage();
     
@@ -2363,13 +1674,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // 创建游戏状态（传入物品池和玩家属性）
     const gameState = new GameState(ITEM_POOL, playerStats);
-    // 应用已保存的物品栏覆盖（防御塔数量由物品栏编辑器保存的配置决定）
-    applyInventoryOverridesFromStorage(gameState);
-
-    // 应用已保存的英雄物品栏覆盖（英雄数量由英雄编辑器保存的配置决定）
+    // 英雄物品栏数量（英雄编辑器存档）
     applyHeroInventoryOverridesFromStorage(gameState);
-    applyTowerLoadoutsFromStorage(gameState);
-    applyTeslaLoadoutExtrasFromStorage(gameState);
     
     // 创建UI管理器
     const uiManager = new UIManager(gameState);
@@ -2383,6 +1689,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 英雄 / 怪物编辑器不依赖塔防 Canvas（塔防脚本已移除）
     if (window.HeroEditorPanel && typeof window.HeroEditorPanel.init === 'function') window.HeroEditorPanel.init();
+    if (window.EnhanceItemsEditorPanel && typeof window.EnhanceItemsEditorPanel.init === 'function') {
+        window.EnhanceItemsEditorPanel.init();
+    }
     if (window.MonsterEditorPanel && typeof window.MonsterEditorPanel.init === 'function') {
         window.MonsterEditorPanel.init(null);
     }
@@ -2406,31 +1715,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const amount = parseInt(debugSpiritInput.value, 10) || 0;
             if (amount <= 0) return;
             gameState.spirit = Math.max(0, (gameState.spirit || 0) + amount);
-            if (window.towerDefenseGame && typeof window.towerDefenseGame.updateSpiritUI === 'function') {
-                window.towerDefenseGame.updateSpiritUI();
-            } else {
-                const el = document.getElementById('spiritBarValue');
-                if (el) el.textContent = String(Math.floor(gameState.spirit));
-            }
+            const el = document.getElementById('spiritBarValue');
+            if (el) el.textContent = String(Math.floor(gameState.spirit));
             console.log(`[Debug] 增加 ${amount} 灵力，当前: ${gameState.spirit}`);
-        });
-    }
-    // 绑定 Debug：免费刷新商店
-    const debugRefreshShopFreeBtn = document.getElementById('debugRefreshShopFreeBtn');
-    if (debugRefreshShopFreeBtn) {
-        debugRefreshShopFreeBtn.addEventListener('click', () => {
-            gameState.refreshShopFree();
-            uiManager.renderShop();
-            uiManager.updateCoinsDisplay();
-        });
-    }
-    // 绑定 Debug：重置商店刷新费用
-    const debugResetRefreshCostBtn = document.getElementById('debugResetRefreshCostBtn');
-    if (debugResetRefreshCostBtn) {
-        debugResetRefreshCostBtn.addEventListener('click', () => {
-            gameState.shopRefreshCount = 0;
-            uiManager.updateRefreshButtonText();
-            console.log('[Debug] 商店刷新费用已重置，下次刷新为 5 金币');
         });
     }
     

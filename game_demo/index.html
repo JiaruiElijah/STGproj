@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>STG 纵版射击</title>
     <!-- ?v= 用于破坏浏览器缓存；修改 JS/CSS 后请改版本号否则可能一直用旧文件 -->
-    <link rel="stylesheet" href="styles.css?v=20260328a">
+    <link rel="stylesheet" href="styles.css?v=20260328c">
 </head>
 <body>
     <!-- STG 纵版射击（默认首页） -->
@@ -15,6 +15,7 @@
                 <button type="button" class="open-shop-btn" id="stgOpenWaveFormationBtn" title="波次与阵型（唯一配置入口）">📋 波次阵型</button>
                 <button type="button" class="open-shop-btn" id="stgOpenMonsterEditorBtn" title="编辑敌人种类与 STG 弹幕">👹 怪物编辑器</button>
                 <button type="button" class="open-shop-btn" id="stgOpenHeroEditorBtn" title="英雄属性与物品栏数量">🦸 英雄编辑器</button>
+                <button type="button" class="open-shop-btn" id="stgOpenEnhanceItemsEditorBtn" title="自定义强化道具（合并入物品池）">📦 强化物品编辑器</button>
                 <button type="button" class="open-shop-btn" id="stgOpenPlayerEditorBtn" title="移动判定与武器参数（普通/慢速/大招）">🎮 玩家与武器编辑器</button>
                 <button type="button" class="open-shop-btn" id="stgOpenScenePropsEditorBtn" title="P 点轨迹等场景道具">🧩 场景道具</button>
                 <button type="button" class="open-shop-btn stg-primary-btn" id="stgStartBtn">▶ 开始游戏</button>
@@ -37,7 +38,7 @@
                         <div id="stgAttackFocusUpgrades" class="stg-attack-upgrade-icons" role="list"></div>
                     </div>
                     <div data-stg-attack-section="ult" class="stg-attack-section">
-                        <div id="stgAttackUltHeading" class="stg-attack-section-heading">大招（X）</div>
+                        <div id="stgAttackUltHeading" class="stg-attack-section-heading">大招招式（X，非弹幕）</div>
                         <ul id="stgAttackUltStats" class="stg-attack-stats"></ul>
                         <div id="stgAttackUltUpgLabel" class="stg-attack-upgrades-label">已选构筑</div>
                         <div id="stgAttackUltUpgrades" class="stg-attack-upgrade-icons" role="list"></div>
@@ -59,7 +60,7 @@
                                 <span id="stgNextWaveText" class="stg-hud-item">下一波 —</span>
                                 <span id="stgTimeText" class="stg-hud-item">时间 —</span>
                             </div>
-                            <p id="stgHintBar" class="stg-hint-bar">方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 技能弹幕 · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · 升级三选一</p>
+                            <p id="stgHintBar" class="stg-hint-bar">方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（需先升级选「封魔阵」或「梦想妙珠」） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · 升级三选一</p>
                         </div>
                     </div>
                 </div>
@@ -160,7 +161,7 @@
                         <label class="stg-player-editor-label">环形发数（3–36）<input type="number" id="stgPlayerEditFocusRingCount" min="3" max="36" value="12" /></label>
                     </div>
                 </div>
-                <div class="stg-player-editor-weapon-sub">大招（X 按住连射）</div>
+                <div class="stg-player-editor-weapon-sub">大招参数（仅影响封魔阵/妙珠伤害与间隔；不发射弹幕）</div>
                 <div class="stg-player-editor-fields">
                     <label class="stg-player-editor-label">武器攻击力（基础值）<input type="number" id="stgPlayerEditSkillAttack" min="0.5" max="9999" step="0.5" value="10" /></label>
                     <label class="stg-player-editor-label">子弹半径（px，2–24）<input type="number" id="stgPlayerEditSkillBulletRadius" min="2" max="24" step="1" value="4" /></label>
@@ -171,8 +172,8 @@
                             <option value="square">方形</option>
                         </select>
                     </label>
-                    <label class="stg-player-editor-label">射速间隔（ms，40–400）<input type="number" id="stgPlayerEditSkillFireIv" min="40" max="400" step="10" value="120" title="按住 X 时两次发射的最短间隔" /></label>
-                    <label class="stg-player-editor-label">额外冷却（ms，0 关闭）<input type="number" id="stgPlayerEditSkillCooldown" min="0" max="60000" step="100" value="0" title="每次技能齐射后追加等待，防爆发过高" /></label>
+                    <label class="stg-player-editor-label">触发间隔（ms，40–400）<input type="number" id="stgPlayerEditSkillFireIv" min="40" max="400" step="10" value="120" title="按住 X 时两次大招招式的最短间隔" /></label>
+                    <label class="stg-player-editor-label">额外冷却（ms，0 关闭）<input type="number" id="stgPlayerEditSkillCooldown" min="0" max="60000" step="100" value="0" title="每次大招后追加等待" /></label>
                     <label class="stg-player-editor-label">弹幕速度（px/s）<input type="number" id="stgPlayerEditSkillBulletSpeed" min="120" max="900" step="10" value="420" /></label>
                     <label class="stg-player-editor-label">发射模式
                         <select id="stgPlayerEditSkillEmitStyle">
@@ -242,6 +243,25 @@
         <div id="enhancePlayerStatsList"></div>
     </div>
 
+    <!-- 强化物品编辑器：本地 JSON 合并入 ITEM_POOL，同 id 覆盖 enhance_items.json -->
+    <div id="enhanceItemsEditorPanel" class="wave-config-panel hidden" aria-label="强化物品编辑器">
+        <div class="wave-config-panel-inner tower-editor-inner">
+            <div class="wave-config-header">
+                <h3>强化物品编辑器</h3>
+                <button type="button" id="enhanceItemsEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+            </div>
+            <p class="wave-config-hint">在此添加的条目会保存到浏览器本地，并<strong>合并</strong>进物品池（<code>category</code> 固定为「强化」）。与 <code>obj_list/enhance_items.json</code> 中<strong>相同 id</strong> 时，以本编辑器为准。<code>effects</code> 为对象，键名与 <code>player_stats</code> / 前台强化一致（如 <code>attack_damage_bonus</code> 小数表示加成）。</p>
+            <div class="stg-formation-toolbar" style="flex-wrap:wrap;gap:8px;">
+                <button type="button" id="enhanceItemsEditorAddBtn" class="open-shop-btn">＋ 添加一条</button>
+                <button type="button" id="enhanceItemsEditorImportBtn" class="open-shop-btn" title="把当前物品池中已有强化项复制到列表中再编辑">从物品池导入强化项</button>
+            </div>
+            <div id="enhanceItemsEditorList" class="wave-config-list"></div>
+            <div class="wave-config-actions">
+                <button type="button" id="enhanceItemsEditorApplyBtn" class="open-shop-btn stg-primary-btn">应用并保存</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 英雄编辑器（与物品池英雄条目共用，影响 STG 强化属性） -->
     <div id="heroEditorPanel" class="wave-config-panel hidden">
         <div class="wave-config-panel-inner tower-editor-inner">
@@ -292,7 +312,7 @@
                 <h3>波次阵型编辑器</h3>
                 <button type="button" id="stgWaveFormationCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
             </div>
-            <p class="wave-config-hint"><strong>种类与数量仅由下方格子决定</strong>（塔防/STG 共用本配置）。三块棋盘为主战场上/左/右延伸；<strong>左键按住拖动</strong>可连续摆放；<strong>右键</strong>擦除一格。同一格多只怪可写 <code>type1|type2</code>（需分次填入或导入）。「出兵间隔 / 灵力 / 下一波」为全局节奏参数；塔防出怪顺序与格子遍历顺序一致（同类型合并为连续组）。旧存档仅有种类+数量时，会尝试摆到上棋盘以便编辑。</p>
+            <p class="wave-config-hint"><strong>种类与数量仅由下方格子决定</strong>。三块棋盘为主战场上/左/右延伸；<strong>左键按住拖动</strong>可连续摆放；<strong>右键</strong>擦除一格。同一格多只怪可写 <code>type1|type2</code>（需分次填入或导入）。「出兵间隔 / 灵力 / 下一波」为全局节奏参数；出怪顺序与格子遍历顺序一致（同类型合并为连续组）。旧存档仅有种类+数量时，会尝试摆到上棋盘以便编辑。</p>
             <div class="stg-formation-toolbar">
                 <label class="stg-formation-label">当前波次
                     <select id="stgFormationWaveSelect" class="stg-formation-select"></select>
@@ -301,7 +321,7 @@
                 <button type="button" id="stgFormationRemoveWaveBtn" class="open-shop-btn">删除当前波</button>
             </div>
             <div class="stg-formation-toolbar stg-formation-wave-meta">
-                <label class="stg-formation-label">本波出兵间隔（ms，仅无阵型时的 STG 备用 / 塔防逐只间隔）
+                <label class="stg-formation-label">本波出兵间隔（ms，无阵型时的 STG 备用）
                     <input type="number" id="stgFormationSpawnInterval" class="stg-formation-num" min="0" value="400" />
                 </label>
                 <label class="stg-formation-label">本波结束灵力
@@ -337,15 +357,16 @@
         </div>
     </div>
 
-    <script src="pageManager.js?v=20260328a"></script>
-    <script src="stgUiI18n.js?v=20260328a"></script>
-    <script src="stgMode.js?v=20260328a"></script>
-    <script src="stgPlayerEditorPanel.js?v=20260328a"></script>
-    <script src="stgScenePropsEditorPanel.js?v=20260328a"></script>
-    <script src="stgWaveFormationPanel.js?v=20260328a"></script>
-    <script src="monsterEditorPanel.js?v=20260328a"></script>
-    <script src="heroEditorPanel.js?v=20260328a"></script>
-    <script src="game.js?v=20260328a"></script>
+    <script src="pageManager.js?v=20260328c"></script>
+    <script src="stgUiI18n.js?v=20260328d"></script>
+    <script src="stgMode.js?v=20260328c"></script>
+    <script src="stgPlayerEditorPanel.js?v=20260328c"></script>
+    <script src="stgScenePropsEditorPanel.js?v=20260328c"></script>
+    <script src="stgWaveFormationPanel.js?v=20260328c"></script>
+    <script src="monsterEditorPanel.js?v=20260328c"></script>
+    <script src="heroEditorPanel.js?v=20260328c"></script>
+    <script src="enhanceItemsEditorPanel.js?v=20260328d"></script>
+    <script src="game.js?v=20260328d"></script>
     <!-- Debug 工具栏：固定定位，不参与文档流，不影响游戏布局 -->
     <div id="debugToolbar" class="debug-toolbar">
         <span class="debug-toolbar-label">Debug</span>
@@ -353,8 +374,6 @@
         <button type="button" id="debugAddCoinsBtn" class="debug-add-coins-btn" title="给玩家增加指定数量金币">+ 金币</button>
         <input type="number" id="debugSpiritInput" class="debug-coins-input" value="20" min="1" step="1" title="要增加的灵力数量">
         <button type="button" id="debugAddSpiritBtn" class="debug-add-spirit-btn" title="给玩家增加指定数量灵力">+ 灵力</button>
-        <button type="button" id="debugRefreshShopFreeBtn" class="debug-add-coins-btn" title="免费刷新商店">刷新(免费)</button>
-        <button type="button" id="debugResetRefreshCostBtn" class="debug-add-coins-btn" title="重置商店刷新费用为首次 5 金币">重置刷新费用</button>
     </div>
 </body>
 </html>

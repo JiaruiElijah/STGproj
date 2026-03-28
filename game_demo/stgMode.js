@@ -1,6 +1,6 @@
 /**
  * STG 纵版射击模式（棋盘格竖屏、玩家移动 + Z 连射 + 波次 + P 点经验 + 三选一强化）
- * 与塔防共用：波次 localStorage、怪物编辑器存档、英雄数值（物品池 + 英雄物品栏）
+ * 共用：波次 localStorage、怪物编辑器存档、英雄数值（物品池 + gameState.inventory 中英雄数量）
  */
 (function () {
     'use strict';
@@ -460,6 +460,14 @@
     let stgUltBranch = null;
     const stgTakenUpgradeIds = new Set();
 
+    /**
+     * 封魔阵：持续跟随自机，范围内消敌弹并造成持续伤害；可选疗愈（期间回血 + 结束后短暂攻击加成）
+     * @type {{ endMs: number, radius: number, dps: number, healPerSec: number, hasHealCard: boolean } | null}
+     */
+    let stgSealField = null;
+    /** 梦想妙珠：向上移动，大范围消弹 + 接触伤害；可选眩晕 */
+    let stgDreamOrbs = [];
+
     /** 升级候选（三选一） */
     let upgradeChoices = [];
 
@@ -709,6 +717,8 @@
      * STG 敌人位置更新（与怪物编辑器 stgMoveMode 一致）
      */
     function updateStgEnemyPosition(e, player, cw, ch, dtSec) {
+        const nowSt = performance.now();
+        if (e.stgStunUntil != null && nowSt < e.stgStunUntil) return;
         const sp = e.speed * dtSec;
         const mode = e.stgMoveMode || 'homing_legacy';
 
@@ -1550,9 +1560,11 @@
         const pool = (typeof window !== 'undefined' && window.ITEM_POOL) || [];
         const gs = gameStateRef;
         let heroItem = pool.find((i) => i && i.category === '英雄');
-        if (gs && gs.heroInventory && heroItem) {
-            const has = (id) => (gs.heroInventory.get(id) || 0) > 0;
-            const picked = pool.find((i) => i && i.category === '英雄' && has(i.id));
+        // 英雄编辑器写入的是 gameState.inventory（英雄 id→数量），非 heroInventory
+        if (gs && gs.inventory && heroItem) {
+            const picked = pool.find(
+                (i) => i && i.category === '英雄' && (gs.inventory.get(i.id) || 0) > 0
+            );
             if (picked) heroItem = picked;
         }
         const attr = (heroItem && heroItem.attributes) || {};
@@ -1582,7 +1594,10 @@
             bulletSpeed: 420,
             mainWeaponAttack: 10,
             focusWeaponAttack: 10,
-            skillWeaponAttack: 10
+            skillWeaponAttack: 10,
+            /** 封魔阵「疗愈」结束后短时攻击加成（仅 Z 弹伤害） */
+            _ultAtkBuffUntil: 0,
+            _ultAtkBuffMult: 1.18
         };
         const cfg = loadStgPlayerConfig();
         if (cfg) mergeStgPlayerEditorIntoPlayer(p, cfg);
@@ -1660,8 +1675,8 @@
             visShape = normalizePlayerBulletVisualShape(p.bulletVisualShape);
         }
 
-        /** 局内三选一 bonusDamage × 强化攻击力乘区 × 各武器基础攻击力 */
-        const dmg = applyStgWeaponBaseAttackBonuses(baseAtk) * bonusDamage;
+        /** 局内三选一 bonusDamage × 强化攻击力乘区 × 各武器基础攻击力 × 封魔阵疗愈后短暂攻击加成 */
+        const dmg = applyStgWeaponBaseAttackBonuses(baseAtk) * bonusDamage * getStgUltAtkDamageMult();
         const spd = spdBase * bonusBulletSpeed;
         const px = p.x;
         const py = p.y - p.radius;
@@ -1703,6 +1718,174 @@
         for (let i = 0; i < n; i++) {
             const a = (Math.PI * 2 * i) / n;
             pushBullet(px, py, Math.cos(a) * spd, Math.sin(a) * spd);
+        }
+    }
+
+    /** 「封魔阵疗愈」结束后短暂攻击乘区（仅影响玩家弹伤害） */
+    function getStgUltAtkDamageMult() {
+        if (!player) return 1;
+        const t = performance.now();
+        if (player._ultAtkBuffUntil != null && t < player._ultAtkBuffUntil) {
+            return player._ultAtkBuffMult != null ? player._ultAtkBuffMult : 1;
+        }
+        return 1;
+    }
+
+    /**
+     * 大招类无弹体伤害（封魔阵 DPS / 妙珠接触）；DoT 不使用暴击以免帧间噪声过大
+     * @param {StgEnemy} e
+     * @param {number} rawDmg
+     * @param {boolean} useCrit
+     */
+    function stgApplyDamageToEnemyNoBullet(e, rawDmg, useCrit) {
+        if (!e || !e.alive) return;
+        let hitDmg = rawDmg;
+        if (useCrit && playerStatsRef && playerStatsRef.getStat) {
+            const critP = Math.min(
+                0.95,
+                (playerStatsRef.getStat('crit_chance_bonus') || 0) + (playerStatsRef.getStat('crit_rate') || 0)
+            );
+            if (critP > 0 && Math.random() < critP) hitDmg *= 2;
+        }
+        e.hp -= hitDmg;
+        if (e.hp <= 0) {
+            if (e.pattern !== 'none' && e.stgEmitWhen === 'on_death') {
+                emitStgEnemyAttack(e, player);
+                console.log('[STG] 死后弹幕：种类', e.typeId || '');
+            }
+            markStgWaveEnemyResolved(e);
+            e.alive = false;
+            const pExp = Math.max(5, Math.floor(12 * bonusExpMult));
+            pickups.push(createPickupAtKill(e.x, e.y, pExp));
+            console.log('[STG] 大招击杀，掉落 P点 经验', pExp);
+        }
+    }
+
+    /** 大招 · 封魔阵：展开圆形结界 */
+    function activateStgUltSeal() {
+        if (!player) return;
+        const now = performance.now();
+        let radius = 94;
+        let durationMs = 1380;
+        if (stgTakenUpgradeIds.has('ult_seal_size')) {
+            radius *= 1.42;
+            durationMs += 580;
+        }
+        const sk = player.skillWeaponAttack != null ? player.skillWeaponAttack : 10;
+        const dps = applyStgWeaponBaseAttackBonuses(sk) * bonusDamage * 0.38;
+        let healPerSec = 0;
+        if (stgTakenUpgradeIds.has('ult_seal_heal')) {
+            healPerSec = 0.055;
+        }
+        stgSealField = {
+            endMs: now + durationMs,
+            radius,
+            dps,
+            healPerSec,
+            hasHealCard: stgTakenUpgradeIds.has('ult_seal_heal')
+        };
+        console.log('[STG] 封魔阵', 'R=', radius.toFixed(0), 'ms=', durationMs);
+    }
+
+    /** 大招 · 梦想妙珠：水平排布、向上飞行的消弹体 */
+    function activateStgUltDream() {
+        if (!player) return;
+        const p = player;
+        const n = stgTakenUpgradeIds.has('ult_dream_count') ? 5 : 3;
+        const stunMs = stgTakenUpgradeIds.has('ult_dream_stun') ? 880 : 0;
+        const spdBase = p.skillBulletSpeed != null ? p.skillBulletSpeed : p.bulletSpeed;
+        const vy = -Math.max(200, Math.min(540, spdBase * bonusBulletSpeed * 0.52));
+        const sk = p.skillWeaponAttack != null ? p.skillWeaponAttack : 10;
+        const dps = applyStgWeaponBaseAttackBonuses(sk) * bonusDamage * 0.44;
+        const py = p.y - p.radius;
+        const gap = n >= 5 ? 22 : 30;
+        const startX = p.x - ((n - 1) * gap) / 2;
+        for (let i = 0; i < n; i++) {
+            stgDreamOrbs.push({
+                x: startX + i * gap,
+                y: py,
+                vx: 0,
+                vy,
+                r: 27,
+                eraseR: 36,
+                dps,
+                stunMs,
+                alive: true
+            });
+        }
+        console.log('[STG] 梦想妙珠 x', n, stunMs ? '带眩晕' : '');
+    }
+
+    /**
+     * 每帧更新封魔阵与梦想妙珠（须在敌弹位移之后、敌弹打玩家之前调用，以便先消弹）
+     * @param {number} dtSec
+     * @param {number} nowMs
+     * @param {number} cw
+     * @param {number} ch
+     */
+    function updateStgUltSkills(dtSec, nowMs, cw, ch) {
+        if (stgSealField && player) {
+            if (nowMs >= stgSealField.endMs) {
+                if (stgSealField.hasHealCard) {
+                    player._ultAtkBuffUntil = nowMs + 3000;
+                    player._ultAtkBuffMult = 1.18;
+                }
+                stgSealField = null;
+            } else {
+                const px = player.x;
+                const py = player.y;
+                const R = stgSealField.radius;
+                if (stgSealField.healPerSec > 0 && player.hp < player.maxHp) {
+                    player.hp += player.maxHp * stgSealField.healPerSec * dtSec;
+                    if (player.hp > player.maxHp) player.hp = player.maxHp;
+                }
+                for (let i = enemyBullets.length - 1; i >= 0; i--) {
+                    const b = enemyBullets[i];
+                    if (!b.alive) continue;
+                    const br = b.radius != null ? b.radius : 5;
+                    if (Math.hypot(b.x - px, b.y - py) < R + br) b.alive = false;
+                }
+                for (let ei = 0; ei < enemies.length; ei++) {
+                    const e = enemies[ei];
+                    if (!e.alive) continue;
+                    const er = e.radius != null ? e.radius : 14;
+                    if (Math.hypot(e.x - px, e.y - py) < R + er) {
+                        stgApplyDamageToEnemyNoBullet(e, stgSealField.dps * dtSec, false);
+                    }
+                }
+            }
+        }
+
+        for (let i = stgDreamOrbs.length - 1; i >= 0; i--) {
+            const o = stgDreamOrbs[i];
+            if (!o || !o.alive) {
+                stgDreamOrbs.splice(i, 1);
+                continue;
+            }
+            o.x += (o.vx || 0) * dtSec;
+            o.y += (o.vy || 0) * dtSec;
+            if (o.y < -120 || o.x < -100 || o.x > cw + 100) {
+                stgDreamOrbs.splice(i, 1);
+                continue;
+            }
+            for (let j = enemyBullets.length - 1; j >= 0; j--) {
+                const b = enemyBullets[j];
+                if (!b.alive) continue;
+                const br = b.radius != null ? b.radius : 5;
+                if (Math.hypot(b.x - o.x, b.y - o.y) < o.eraseR + br) b.alive = false;
+            }
+            for (let ei = 0; ei < enemies.length; ei++) {
+                const e = enemies[ei];
+                if (!e.alive) continue;
+                const er = e.radius != null ? e.radius : 14;
+                if (Math.hypot(e.x - o.x, e.y - o.y) < o.r + er) {
+                    stgApplyDamageToEnemyNoBullet(e, o.dps * dtSec, false);
+                    /** 眩晕仅在「当前未处于眩晕」时施加，避免在接触区内每帧刷新结束时间 */
+                    if (o.stunMs > 0 && (e.stgStunUntil == null || nowMs >= e.stgStunUntil)) {
+                        e.stgStunUntil = nowMs + o.stunMs;
+                    }
+                }
+            }
         }
     }
 
@@ -1766,6 +1949,11 @@
         stgPlayerFxParticles = [];
         stgPlayerHitFlashMs = 0;
         stgLaserFxAccMs = 0;
+        stgSealField = null;
+        stgDreamOrbs = [];
+        stgTakenUpgradeIds.clear();
+        stgFocusBranch = null;
+        stgUltBranch = null;
         invalidateScenePropsCache();
         resetBonuses();
         player = buildPlayerFromHero();
@@ -1922,7 +2110,7 @@
             }
         }
 
-        /** --- 玩家主武器（Z 按住）与技能弹幕（X 按住） --- */
+        /** --- 玩家主武器（Z 按住）；大招（X）仅触发构筑招式，不发射 skill 弹幕 --- */
         const nowT = performance.now();
         if (!player._lastFireMs) player._lastFireMs = 0;
         const mainIvBase = shiftHeld
@@ -1939,9 +2127,16 @@
         const skillIv = (player.skillFireIntervalMs != null ? player.skillFireIntervalMs : 120) * bonusFireIntervalMult;
         const skillCd = player.skillCooldownMs != null ? player.skillCooldownMs : 0;
         if (keys.KeyX && nowT >= (player._skillCooldownUntil || 0) && nowT - player._lastSkillFireMs >= skillIv) {
-            player._lastSkillFireMs = nowT;
-            emitPlayerVolley(true);
-            if (skillCd > 0) player._skillCooldownUntil = nowT + skillCd;
+            if (stgUltBranch === 'seal') {
+                player._lastSkillFireMs = nowT;
+                activateStgUltSeal();
+                if (skillCd > 0) player._skillCooldownUntil = nowT + skillCd;
+            } else if (stgUltBranch === 'dream') {
+                player._lastSkillFireMs = nowT;
+                activateStgUltDream();
+                if (skillCd > 0) player._skillCooldownUntil = nowT + skillCd;
+            }
+            /** 未选封魔阵/妙珠构筑时，X 不触发任何发射（大招不是武器弹幕） */
         }
 
         /** --- 出兵与自动下一波（与 towerDefense：本波开始起算 nextWaveDelaySec，不等待清怪） --- */
@@ -2000,8 +2195,15 @@
                 continue;
             }
 
-            /** none=无弹幕；死后弹幕仅在阵亡时发射，不在此循环 */
-            if (e.pattern !== 'none' && e.stgEmitWhen !== 'on_death' && performance.now() - e.lastShootTime >= e.shootCooldownMs) {
+            /** none=无弹幕；死后弹幕仅在阵亡时发射，不在此循环；眩晕中不发弹 */
+            const stunNow = performance.now();
+            const stunned = e.stgStunUntil != null && stunNow < e.stgStunUntil;
+            if (
+                !stunned &&
+                e.pattern !== 'none' &&
+                e.stgEmitWhen !== 'on_death' &&
+                performance.now() - e.lastShootTime >= e.shootCooldownMs
+            ) {
                 e.lastShootTime = performance.now();
                 emitStgEnemyAttack(e, player);
             }
@@ -2077,6 +2279,9 @@
                 b.alive = false;
             }
         }
+
+        /** 大招：封魔阵 / 梦想妙珠（消弹 + 区域伤害，需在敌弹打自机前执行） */
+        updateStgUltSkills(dtSec, performance.now(), cw, ch);
 
         /** 激光持续段：过期移除；与玩家相交则持续伤害（按攻击力×秒） */
         const nowMs = performance.now();
@@ -2747,6 +2952,40 @@
             if (!b.alive) return;
             drawStgPlayerBullet(ctx, b);
         });
+
+        /** 大招 · 封魔阵：跟随自机的结界圆 */
+        if (player && stgSealField && performance.now() < stgSealField.endMs) {
+            const R = stgSealField.radius;
+            ctx.save();
+            ctx.setLineDash([12, 8]);
+            ctx.strokeStyle = 'rgba(186, 104, 200, 0.72)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, R, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = 'rgba(155, 89, 182, 0.13)';
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, R, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+        /** 大招 · 梦想妙珠 */
+        stgDreamOrbs.forEach((o) => {
+            if (!o || !o.alive) return;
+            const grd = ctx.createRadialGradient(o.x, o.y, 2, o.x, o.y, o.r);
+            grd.addColorStop(0, 'rgba(235, 210, 255, 0.98)');
+            grd.addColorStop(0.5, 'rgba(160, 100, 220, 0.55)');
+            grd.addColorStop(1, 'rgba(90, 50, 150, 0.22)');
+            ctx.fillStyle = grd;
+            ctx.beginPath();
+            ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        });
+
         /** 直线激光（粗线段 + 高亮芯） */
         enemyLasers.forEach((L) => {
             if (!L.alive) return;
