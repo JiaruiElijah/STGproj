@@ -1,5 +1,471 @@
 # 开发记录
 
+## [2026-03-27] STG：arc_edges 离场切线叠加强制水平外偏（避免贴左右缘滑移不出屏）
+
+- **类型**：Bug 修复
+- **涉及文件**：`game_demo/stgMode.js`（`blendArcBezierTangentWithOutward`；退化弧改为水平法向离场）、`game_demo/index.html` `?v=20260331v`
+- **说明**：靠边终点处贝塞尔切线常近似竖直，仅 `arcExitVx` 过小或为向屏内时无法触发「完全离场」剔除；现对左/右终点列强制最小水平穿出分量后再归一化。
+
+## [2026-03-27] STG：弧线起点=主棋盘第0行+阵型列；终点列自动左右靠边；仅编离场行
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`StgEnemy` 增加 `formationMainCol` 参数→`stgFormationMainCol`；`initStgEnemyArcEdgesApproach` 起点 `getMainGridCellCenter(col,0)`；`buildStgEnemyArcBezierMain` 按 `sx` 比较左右边缘列格心定 `endCol`；`stgArcExitRow` / 旧 `stgArcMainEndRow` 为靠边行）、`game_demo/monsterEditorPanel.js`（仅「靠边离场行」+ 弧高）、`game_demo/index.html` `?v=20260331u`
+- **说明**：编辑器不再填起点/终点列；列由阵型与自动选边决定。
+
+## [2026-03-27] STG：弧线改为「主棋盘起点格 → 主棋盘终点格」+ 接近段竖直/水平
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`getMainGridCellCenter` / `worldToMainGridCell`；`initStgEnemyArcEdgesApproach` + `buildStgEnemyArcBezierMain`；`arc_edges` 先 `approach_v`→`approach_h` 对齐起点格心再贝塞尔至终点格心；旧档无 `stgArcMain*` 时起点用出生附近主格、终点由旧离场格或 `stgArcEdge2*` 映射主格）、`game_demo/monsterEditorPanel.js`（主棋盘起点/终点四格索引 + 弧高）、`game_demo/index.html` `?v=20260331t`
+- **说明**：弧不再以出生格为起点、不以延伸棋盘为终点；与上/左/右无关。
+
+## [2026-03-27] STG：双边缘弧线改为「出生格 → 离场格」单弧 + 切线离场
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`initStgEnemyArcEdges`：`getExtendedGridCellCenter` + 离场格；单条二次贝塞尔；`updateStgEnemyPosition` 去掉第二段弧；旧档无离场格时仍用 `stgArcEdge2*` 归一化终点）、`game_demo/monsterEditorPanel.js`（离场棋盘/列/行、单弧高；选项文案「弧线至离场格后离场」）、`game_demo/index.html` `?v=20260331s`
+- **说明**：出生位置由阵型摆放格心决定；离场格与阵型编辑器上/左/右棋盘索引一致；离场后沿终点切线方向。
+
+## [2026-03-27] STG：擦弹成功渐隐显示擦弹范围（外椭圆环带）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`stgGrazeRangeFlashes`、`drawStgGrazeRangeFlashes`、`updateStgGrazeRangeFlashes`；擦弹判定成功后入队；`resetRun` 清空）、`game_demo/index.html` `?v=20260331r`
+- **说明**：约 0.56s 内青白径向渐变环带 + 外椭圆描边 + 内受击圆细描边，淡出曲线为平方；同屏最多 8 段避免叠层过重。
+
+## [2026-03-27] STG：升级右下提示 + E 打开居中三选一并暂停
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/index.html`（`#stgLevelUpHint`、`#stgUpgradeModalRoot` 全屏遮罩；移除棋盘列内嵌 dock）、`game_demo/styles.css`（`.stg-level-up-hint`、`.stg-upgrade-modal-root` / backdrop / dialog）、`game_demo/stgMode.js`（`stgUpgradePending`、`prepareLevelUpChoices`、`openStgUpgradeModal`、`phase=levelup` 暂停 `update`、`KeyE`、结算时关弹层）、`game_demo/stgUiI18n.js`（`hint.controls`、`upgrade.subhint`、`levelUp.*`、`applyStgLevelUpHintLabels`）、`?v=20260331q`
+- **说明**：升级仅先显示棋盘右下脉冲按钮；按 E 或点击后全屏居中三选一；叠级未处理仍先随机上一组。
+
+## [2026-03-27] STG：三选一区域上移、单行紧凑三卡
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/index.html`（`stg-upgrade-dock` 置于 `stg-meta-panel` 之上；标题与副提示包在 `stg-upgrade-headline`）、`game_demo/styles.css`（dock 取消大占位、`grid` 三列、`#stgUpgradeOverlay` 下卡片/徽章/字号缩小）、`game_demo/stgMode.js`（`resizeCanvas` 按 dock + meta 计高，去掉对 hint 的重复累加）、`?v=20260331p`
+- **说明**：升级面板紧贴棋盘下缘，波次/时间/说明在其下方；无升级时 dock 高度近 0，画布可更高。
+
+## [2026-03-27] STG：道具 B 额外弹改为追踪 + 穿透 2 次
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`pushBullet` 区分 `fromSpreadExtra` 与道具 D；`getStgSpreadExtraOverride` 增加 `homingStr`/`pierceHits`）、`game_demo/stgUiI18n.js`（`UPGRADE_EN.spread_extra`）、`game_demo/stgBuildInventoryPanel.js`（构筑覆盖：`extraHomingStr`、`extraPierceHits`）、`新模式玩法开发/STG所有道具/新玩法--STG模式`、`game_demo/index.html` `?v=20260331o`
+- **说明**：额外弹走与 D 独立的追踪强度；`pierceHits` 默认 3 表示可连续命中 3 名不同敌人（文档「穿透 2 次」）；仍吃齐射伤害与道具 G 暴击等。
+
+## [2026-03-27] STG：基础属性「擦弹收益」+ 基础道具10（三选一）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`bonusGrazeChargeMult`、`stgStatBonusDisplay.pct_graze`、`stat_graze`、`STG_UPGRADE_POOL`、`updateStgGrazeOrbs` 灌条叠乘）、`game_demo/game.js`（`STG_REIMU_ASIDE_PANEL` 插入 `pct_graze`）、`game_demo/stgUiI18n.js`（`UPGRADE_EN.stat_graze`）、`新模式玩法开发/STG所有道具/新玩法--STG模式`、`新模式玩法开发/STG基础属性/属性列表显示`、`game_demo/index.html` `?v=20260331n`
+- **说明**：每次选基础道具10 展示 +10% 并与 `stat_regen` 同档 ×1.1 叠乘擦弹球转化为大招蓄能；右侧栏顺序为攻击力与射速之间的「擦弹收益加成」。
+
+## [2026-03-27] STG：三选一移至棋盘下方、不暂停；1/2/3 选择；叠级未选则随机
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/index.html`（`#stgUpgradeDock` 嵌在 `stg-main` 内棋盘列下方）、`game_demo/styles.css`（`.stg-upgrade-dock` 固定占位、`stg-upgrade-panel` 非全屏）、`game_demo/stgMode.js`（`stgUpgradePickOpen` 取代 `phase=levelup`；`finalizeStgUpgradePick`/`forceRandomStgUpgradePick`；拾取经验叠级时先随机上一组；`Digit1–3`）、`game_demo/stgUiI18n.js`（`upgrade.subhint`、静态面板选择器）、`?v=20260331m`
+- **说明**：下方占位 `min-height:188px` 避免显隐顶动棋盘；`resizeCanvas` 计入 dock 高度。
+
+## [2026-03-27] STG：受伤后拉回开局位置并停滞（毫秒可编辑）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`hitSpawnHoldMs`、`snapStgPlayerToSpawn`、`applyStgPlayerHitResponse`、`_stgSpawnX/Y`、`_stgHitHoldUntil`；`update` 停滞期禁止移动/Z/X/阴阳玉产球/炮台）、`game_demo/stgPlayerEditorPanel.js` + `index.html`（`stgPlayerEditHitSpawnHoldMs`）、`?v=20260331l`
+- **说明**：出生点与 `buildPlayerFromHero` 一致；窗口 resize 时更新 `_stgSpawn*`；激光持续伤不触发本逻辑（仍不调 `applyStgPlayerHitResponse`）。
+
+## [2026-03-27] STG：基础道具1 改为「+1 整格生命与上限」（对齐《新玩法--STG模式》）
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`stat_hp`：`stgLifeCellsMax`+1 封顶 30、当前半格+2；侧栏 `hpCellsStat` 显示「+N 格」）、`game_demo/game.js`（右侧列表首行 `hp_cells_stat`）、`game_demo/stgUiI18n.js`（英文 stat_hp 描述）、`新模式玩法开发/STG所有道具/新玩法--STG模式`（条目标注已完成）、`index.html` `?v=20260331k`
+- **说明**：取代原 5% 格数成长与「生命值加成 +5%」展示。
+
+## [2026-03-27] STG：怪物编辑器可选「机体接触伤害」；局内敌机身体碰撞自机
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`StgEnemy.stgContactDamagePlayer`、`getEnemyTypeMap` 合并存档；敌机循环后检测圆与判定点重叠，扣血规则同 `resolveStgBulletLifeDamageHalvesFromEnemy`）、`game_demo/monsterEditorPanel.js`（STG 区块「自机碰撞」勾选、`stgContactDamagePlayer` 存盘）、`game_demo/index.html`（`stgMode.js`/`monsterEditorPanel.js` `?v=20260331j`）
+- **说明**：默认启用；关闭则仅弹幕/激光可伤玩家。一帧最多结算一次接触，避免多机叠放瞬秒。
+
+## [2026-03-27] STG：左上角生命 HUD 改为「每格一格 + 半格填充」与数值文案
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`refreshStgLifeCellsHud` 按 `stgLifeCellsMax`/`stgLifeHalfUnitsRemain` 绘制；`updateHud` 不再对生命用 10 段比例条）、`game_demo/index.html`（`#stgPriorityHpCells` 空容器 + `#stgPriorityHpDetail`）、`game_demo/styles.css`（`stg-priority-cells--life`、半格样式、`stg-priority-hp-detail`）、`game_demo/stgUiI18n.js`（`hud.hpDetail`/`hud.hpAria`/`hud.hpAriaIdle`）、`?v=20260331i`
+- **说明**：从左到右为满血侧先扣右侧空槽；每格可半格亮；副行显示「3.5 / 6 格」类文案。
+
+## [2026-03-27] STG：自机生命改为「X 格 / 半格」；敌弹仅扣半格或整格
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`stgLifeCellsMax` / `stgLifeHalfUnitsRemain`、`syncStgPlayerLifeHpMirror` 镜像 `hp/maxHp`；敌弹 `lifeDmgHalves` 由敌机 `attack` 决定；激光/回复/stat_hp/封魔阵等按半格处理）、`game_demo/stgPlayerEditorPanel.js`（`lifeCellsMax` 替代 `maxHpBase`；旧档 `maxHpBase` 读入时粗算格数）、`game_demo/index.html`（表单项与 `?v=20260331h`）
+- **说明**：HUD 生命条仍用 `hp/maxHp` 比例（半格总数）；编辑器默认 6 格；`attack>=2` 的敌机子弹扣 1 整格，否则扣半格。
+
+## [2026-03-27] STG：玩家编辑器可调生命/无敌/消弹；受伤无敌并清弹幕
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgPlayerEditorPanel.js`（`maxHpBase`、`hitInvulnMs`、`hitBulletClearMs` 存盘）、`game_demo/stgMode.js`（`buildPlayerFromHero` 用 `maxHpBase`；`mergeStgPlayerEditorIntoPlayer` 同步生命与受伤参数；`isStgPlayerInvulnerable` / `applyStgPlayerHitResponse`；敌弹命中触发无敌+清弹；激光伤害尊重无敌；消弹窗口内每帧清空 `enemyBullets`；无敌时机体闪烁）、`game_demo/index.html`（三项表单项、`stgMode.js`/`stgPlayerEditorPanel.js` `?v=20260331g`）
+- **说明**：基础生命再乘局外 `max_health_bonus`；无敌为 0 时仍可被连续命中；消弹为 0 时仅受伤当帧清空敌弹一次。
+
+## [2026-03-27] STG：波次阵型编辑器支持在任意位置插入空波
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgWaveFormationPanel.js`（`insertEmptyWaveAt` / `insertWaveBeforeCurrent` / `insertWaveAfterCurrent`、`defaultNewWaveMeta`）、`game_demo/index.html`（「在此波前/后插入」按钮、说明文案、`stgWaveFormationPanel.js` `?v=20260331f`）
+- **说明**：先选中某波，再点「前插入」或「后插入」即可在两波之间加入空三棋盘新波并自动选中新波；最后一波后点「后插入」等同原末尾追加。原单一「添加波次」已替换为上述两键。
+
+## [2026-03-27] STG：棋盘四向各扩 2 格（16×21）
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`GRID_COLS`/`GRID_ROWS` 12×17→16×21）、`game_demo/stgWaveFormationPanel.js`（默认格数与 `getGridSize` 兜底一致）、`game_demo/index.html`（`#stgCanvas` 初始 720×945、停火行 `max=21`、`stgMode`/`stgWaveFormationPanel` `?v=20260331e`）
+- **说明**：与主战场同格的阵型编辑器、扩展格坐标、网格绘制随常量自动扩展；旧存档阵型数组不足新格数时以空格补全。
+
+## [2026-03-27] STG：怪物血量改「每波倍率」；全局随波次公式停用
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`getStgEnemyHpMultiplierForWaveIndex` 改为读 `waves[k].enemyHpMult`；`loadWaves` 的 `pack` 内 `attachLegacyEnemyHpMultIfMissing` 为旧档补字段）、`game_demo/stgWaveFormationPanel.js`（`waveMetaBuffers` 增加 `enemyHpMult`；读档时无字段则用旧全局系数按波次换算进缓冲）、`game_demo/index.html`（每波血量输入；全局三项隐藏保留兼容）、`?v=20260331d`
+- **说明**：局内血量 = 怪物基础血 × 当前波 `enemyHpMult`（0.05～500）。旧存档未写 per-wave 时，加载时按原 `enemyHpScale` 公式填入内存，避免难度突变；保存波次后写入各波 `enemyHpMult`。
+
+## [2026-03-27] STG：构筑面板扩散 A–H 可调核心数值（与局内逻辑同源）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`getStgBuildOverride` 下新增 `getStgSpreadFan/Extra/Homing/Crit/Turret/Yinyang/BigP/BigEnergyOverride`，并在 `emitPlayerVolley`、阴阳玉产球与持续伤、伴身炮台、击杀大掉落等处接入）、`game_demo/stgBuildInventoryPanel.js`（`spread_fan`～`spread_big_energy` 展开表单）、`game_demo/index.html`（`stgMode.js` / `stgBuildInventoryPanel.js` `?v=20260331c`）
+- **说明**：A 扇条数加成/扇角覆盖/齐射伤害倍率；B 额外弹概率、横向偏移与水平速度范围、伤害倍率；C 炮台伤害倍率与开火间隔；D 追踪伤害乘区与 homingStr；E 产球间隔、球寿命、上限、碰撞/视觉半径、持续伤比例；F/H 大掉落概率与经验倍率；G 扩散额外暴击概率。卡牌文案未强制同步（按用户可忽视部分描述）。
+
+## [2026-03-27] STG：构筑面板道具 I 可调水晶伤害/弹速/枚数（描述联动）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgBuildInventoryPanel.js`（`focus_crystal_base` 展开区增加 `crystalDamageMult`、`crystalBulletSpeedMult`、`crystalCountBase`、`crystalCountExtraWithK`；与 `stgMode.js` 中 `getStgCrystalGameplayOverride` 字段一致）、`game_demo/styles.css`（`.stg-build-inv-detail-subtitle`）、`game_demo/index.html`（`styles.css` / `stgMode.js` / `stgBuildInventoryPanel.js` `?v=20260331b`）
+- **说明**：保存后写入 `stg_build_upgrade_overrides`；局内 `emitCrystalVolley` 与 `buildFocusCrystalBaseDescZh/En`、三选一 `getUpgradeDisplay` 已读同一套覆盖，枚数与文案同步。
+
+## [2026-03-27] STG：局内构筑道具面板可展开编辑（水晶外观、狂怒数值）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`stg_build_upgrade_overrides` 本地存储；`getStgCrystalVisualOverride` / `getStgRageEffectOverride`；水晶弹 `shape`/`crystalFill`/`radiusScale`；狂怒 `durationBase/Extra`、`bulletSpdPerStack`、`fireIvMultPerStack`；`mergeBuildUpgradeOverrides` 等 API）、`game_demo/stgBuildInventoryPanel.js`（每条条目展开、I/M 表单、保存合并）、`game_demo/styles.css`（`.stg-build-inv-item` / `.stg-build-inv-detail` 等）、`game_demo/index.html`（`?v=20260331a`）
+- **说明**：道具 I 可调形状/颜色/半径倍率；道具 M 可调基础与 O 追加持续、每层弹速加成与射击间隔乘数；其余道具展开为占位说明。
+
+## [2026-03-27] STG：慢速模式不再绘制擦弹外椭圆
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`draw` 中 Shift 慢速仅保留受击虚线圆+判定点；`tryStgGrazeEnemyBullet` 仍用椭圆判定）、`game_demo/index.html`（`?v=20260330i`）
+
+## [2026-03-27] STG：狂怒左下角双格统一 😤
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（击杀进度格与层数格同用 😤）、`game_demo/index.html`（`?v=20260330h`）
+
+## [2026-03-27] STG：左下角 buff 缩小；狂怒拆成击杀进度与层数/计时两格
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`S=36`/`gap=6`；`drawStgCornerRageKillProgressBuff` 仅再杀数+emoji；`drawStgCornerRageStackTimerBuff` 仅层数+逆时针弧，`stacks===0` 不画；圆角随 S 缩放）、`game_demo/index.html`（`stgMode.js` `?v=20260330g`）
+- **说明**：两枚狂怒图标横向并排不重叠；层数为 0 时不显示计时格。
+
+## [2026-03-27] STG：阴阳玉对齐策划（10s 一枚、3s 存在、挡弹）
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`STG_YINYANG_SPAWN_INTERVAL_MS=10000`、`STG_YINYANG_ORB_DURATION_MS=3000`、球体 `lifeMs` 到期移除；敌弹位移后与阴阳玉圆判重叠则 `alive=false`；敌激光段与球心到线段距离判相交则移除激光；绘制寿命衰减）、`game_demo/stgUiI18n.js`（`UPGRADE_EN.spread_yinyang`）、`game_demo/index.html`（`?v=20260330f`）
+- **说明**：与 `新模式玩法开发/STG所有道具/新玩法--STG模式` 道具 E 更新一致；对敌仍为 50% 等效单发/秒持续伤。
+
+## [2026-03-27] STG：棋盘左下角水晶/狂怒方形 buff HUD
+
+- **类型**：新增功能 | 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`STG_CRYSTAL_FOCUS_HITS_NEEDED` / `STG_RAGE_KILLS_PER_STACK` 与碰撞累计同源；`drawStgCornerFocusBuffHud` 及水晶/狂怒绘制；移除自机 `drawStgRageUnifiedRing`）、`game_demo/index.html`（`stgMode.js` `?v=20260330e`）
+- **说明**：水晶分支显示「还需命中几次」；狂怒 0 层大号「还需击杀」；有层时「生效中」小字+层数+底部「再杀N」，当前段剩余时间用方形内圆上逆时针弧（不写秒）；仅 `phase===playing` 且对应 focus 分支+核心卡时绘制。
+
+## [2026-03-27] STG：敌人血环（圆盘与 emoji 之间、逆时针扣血）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`drawStgEnemyHpRing`；`draw` 中敌人绘制顺序：原色圆→描边→三角→血环→emoji）、`game_demo/index.html`（`stgMode.js` `?v=20260330d`）
+- **说明**：底轨整圈半透明黑；剩余血量用绿色弧从 12 点起 `arc(..., true)` 逆时针铺满 `hp/maxHp`，受伤时弧沿逆时针方向缩短。
+
+## [2026-03-27] STG：阴阳玉按《新玩法--STG模式》重做逻辑（非改策划文）
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（移除开火 20% 随机产球；`stgYinYangNextSpawnWallMs`+每 5 秒在扩散模式产一枚；圆形绕机；接触 DPS=扩散主武器等效单发×50%/秒；上限 12 球；`getStgSpreadMainVolleyDmgForYinYang`）、`game_demo/stgUiI18n.js`（`UPGRADE_EN.spread_yinyang`）、`game_demo/index.html`（`?v=20260330c`）
+- **说明**：策划文档 `道具E` 要求「每 5 秒一枚、圆形绕机、碰到 50% 攻击力」；实现为持续重叠伤害（每秒 50% 等效单发），道具 D 追踪减伤不作用于阴阳玉。
+
+## [2026-03-27] STG：局内构筑道具编辑器显示道具简介
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`getBuildUpgradeCatalog` 增加 `desc`）、`game_demo/stgBuildInventoryPanel.js`（每行下方展示简介块）、`game_demo/styles.css`（`.stg-build-inv-row-content` / `.stg-build-inv-line1` / `.stg-build-inv-desc`）、`game_demo/index.html`（`?v=20260330a`）
+- **说明**：构筑列表与 `STG_UPGRADE_POOL` 同源，简介取自各条 `desc`，便于在勾选开局持有时辨认；无 `desc` 时不占行。
+
+## [2026-03-29] STG：阴阳玉轨道+太极绘制；伴身炮台小炮塔美术
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（阴阳玉 `phaseRad/orbitR/orbitOmega` 绕自机椭圆公转；`drawStgYinYangSymbol`；伤害圈虚线提示；炮台发射点改为随 `radius` 缩放；`drawStgSideTurret`）、`game_demo/index.html`（`?v=20260329z`）
+- **说明**：阴阳玉 DPS/半径略调；炮台仅在扩散（非 Shift）局内显示并指向最近敌。
+
+## [2026-03-29] STG：狂怒弹速/射速加成对普通（扩散）主武器同样生效
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`emitPlayerVolley` 狂怒弹速改为 `!isSkill` + 狂怒分支；主武器开火间隔缩短去掉 `shiftHeld`）、`game_demo/index.html`（`?v=20260329y`）
+- **说明**：叠层仍须在慢速下击杀累计；有层后 Z 不按 Shift 也吃射速与弹速倍率。大招弹幕仍不套用弹速狂怒段。
+
+## [2026-03-29] STG：狂怒圆环内仅显示当前层数一个数字
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`drawStgRageUnifiedRing`）、`game_demo/index.html`（`?v=20260329x`）
+- **说明**：不再竖排 1…N，环心只画 `stgRageStacks`。
+
+## [2026-03-29] STG：狂怒改为单圆环 + 叠层整段刷新 CD + 到期自上而下掉层
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`stgRageEndMs` 单段；叠层 `stgRageStacks++` 并重算结束时刻；到期减一层后若仍有层则新开一段 CD；`drawStgRageUnifiedRing` 环内竖排 1…N）、`game_demo/index.html`（`?v=20260329w`）
+- **说明**：与「共用一个圆、叠层重置前段 CD、从最高层一层层掉」一致；逆时针弧仍表示当前段剩余时间。
+
+## [2026-03-29] STG：狂怒层数可视化（轨道圆环 + 序号 + 逆时针剩余弧）+ 每层独立倒计时
+
+- **类型**：新增功能 | 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`stgRageLayerEndMs` FIFO 替代单一 `stgRageEndMs`；`drawStgRageStackIndicators`；叠层 `push` 独立结束时刻）、`game_demo/index.html`（`?v=20260329v`）
+- **说明**：每层在自机周围按上限槽位均分角度布置小圆环，环内数字为层序；高亮弧用 `arc(..., true)` 从 12 点逆时针缩短表示剩余时间。新叠层不再整段刷新旧层倒计时（与旧版「一加层全体重算 5s」不同），更贴合逐层消退表现。
+
+## [2026-03-29] STG：撤销 1fr|auto|1fr 主行网格，恢复 flex 三栏（修复侧栏被压成细条）
+
+- **类型**：Bug 修复 | 重构回退
+- **涉及文件**：`game_demo/styles.css`（`.stg-body-row` / `.stg-left-column` / `.stg-center-column` / `.stg-player-aside` 恢复为原先 flex 布局；折叠侧栏恢复 `align-self: flex-start`）、`game_demo/index.html`（`?v=20260329u`）
+- **说明**：网格在部分视口宽度下两侧 `1fr` 与 `minmax` 行为导致左右栏被挤成竖条；改回横向 flex + 固定侧栏 `flex-basis`，避免版面崩坏。
+
+## [2026-03-29] STG：主布局改 1fr|auto|1fr 网格，棋盘不因侧栏折叠水平位移 + 垂直居中
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/styles.css`（`.stg-body-row` 用 `grid-template-columns: minmax(0,1fr) auto minmax(0,1fr)`；左 `justify-self:end`、中 `justify-self:center`、右 `justify-self:start`；`align-items:center`；窄屏仍用 flex 列）、`game_demo/index.html`（`?v=20260329t`）
+- **说明**：原 flex + `justify-content:center` 在右侧宽度变化时整组重算，棋盘会左右跳；现中间列恒在容器水平几何中心，折叠属性栏仅改变两侧 1fr 留白。垂直方向在顶栏下剩余区域内三列对齐居中。
+
+## [2026-03-29] STG：右侧「属性加成」面板隐藏/展开 + localStorage 记忆
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/index.html`（`#stgPlayerAside`、标题行「隐藏」、折叠态「显示属性」）、`game_demo/styles.css`（`.stg-player-aside--collapsed`、`.stg-aside-header-row`、竖排展开按钮）、`game_demo/game.js`（`stg_reimu_aside_collapsed`、`applyStgPlayerAsideCollapsed`、点击绑定、折叠后 `resize`）、`game_demo/stgUiI18n.js`（`aside.hideStats` / `aside.showStats` 等）、`?v=20260329s`
+- **说明**：偏好存 `localStorage`；折叠后仅窄条竖字按钮，再点恢复；触发 `resize` 以便画布利用变宽区域。
+
+## [2026-03-29] STG：攻击构筑四项统计增加可见短标签（攻击/攻速/弹速/暴击）
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`fillStgAttackStatGrid` 每格增加 `stg-attack-stat-label`）、`game_demo/stgUiI18n.js`（`attackBuild.statLabel.*` 中英）、`game_demo/styles.css`（`.stg-attack-stat-label`）、`game_demo/index.html`（`?v=20260329r`）
+- **说明**：原先仅 emoji + 数值，中文名只在 `title`；现与「已选构筑」一致在格内显示短字，悬停仍用完整 `statTip`。
+
+## [2026-03-29] STG：已选构筑「图标下小字」可见性（flex 对齐 + 字号对比 + 文案回退）
+
+- **类型**：Bug 修复
+- **涉及文件**：`game_demo/stgMode.js`（`fillStgAttackUpgradeIcons` 小字用 `shortLabel` 回退池内 `name`/`id`）、`game_demo/styles.css`（`.stg-attack-upgrade-icons` 改为 `align-items: flex-start`、名称区 10px/加粗/深色、`min-height`）、`game_demo/index.html`（`?v=20260329q`）
+- **说明**：侧栏已选构筑每项本为「emoji 方块 + 下方名称」；原 `align-items: flex-end` 与 9px 浅字在窄栏中易被误认为只有图标。统一顶端对齐并略增大对比度，避免空串。
+
+## [2026-03-29] STG：已选构筑标题修复 + 移除局外强化菜单 + 棋盘加宽加高
+
+- **类型**：Bug 修复 | 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`applyStgAttackUpgLabel` 不再用 📦 覆盖「已选构筑」；`resizeCanvas` 高度上限 800）、`game_demo/index.html`（删除「强化道具池」「玩家强化物品栏」按钮与对应弹窗 DOM；移除两脚本引用；`?v=20260329p`）、`game_demo/game.js`（去掉两面板 init）、`game_demo/styles.css`（`.stg-container` max-width 1180；`.stg-main` max-width 放宽）、已删除 `enhanceItemsEditorPanel.js`、`playerEnhanceInventoryPanel.js`
+- **说明**：左侧第二栏曾始终显示 📦，因 `refreshStgAttackBuildPanel` 内错误地把三栏标签都写成 emoji。顶栏去掉两项后整体可更宽，画布单格上限略提高以放大棋盘。
+
+## [2026-03-29] STG：棋盘裁切感修复 + 强缓存对策（resize 预留 HUD / server 禁缓存）
+
+- **类型**：Bug 修复 | 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`resizeCanvas` 按 `.stg-canvas-wrap` 与下方 `meta`+`hint` 测高；`rAF` 二次计算）、`game_demo/styles.css`（`.stg-main` 改为 `overflow: visible`）、`game_demo/index.html`（meta no-cache、`?v=20260329o`）、`server.py`（对 html/js/css 发 `Cache-Control: no-store`）
+- **说明**：原 `window.innerHeight-168` 未给下方波次白条留足空间，画布易高于可视区；`overflow-x:hidden` 会使部分浏览器纵向表现为可裁切。
+
+## [2026-03-29] STG：index 全量统一 `?v=20260329n` 避免缓存导致「修改不生效」
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/index.html`（所有 script + styles 同一版本号；注释提示 Ctrl+F5）
+- **说明**：此前仅部分文件 bump，`stgUiI18n` 等与 `stgMode` 版本不一致时浏览器仍可能用旧脚本。
+
+## [2026-03-29] STG：已选构筑标题改回文字 + 每项图标下小字名
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`fillStgAttackUpgradeIcons` 包一层 `stg-attack-up-item` + `stg-attack-up-name`）、`game_demo/styles.css`、`game_demo/index.html`、`?v=20260329m`
+- **说明**：「已选构筑」不再用 📦；每条构筑在 emoji 下显示 `getUpgradeDisplay` 名称。
+
+## [2026-03-29] STG：左侧攻击构筑排版（统计改图标横排）
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`fillStgAttackStatGrid`、`applyStgAttackUpgLabel`）、`game_demo/stgUiI18n.js`（`attackBuild.statTip.*`、`statGridAria`）、`game_demo/styles.css`（`.stg-attack-stat-grid`、左栏宽约 300px）、`game_demo/index.html`、`?v=20260329l`
+- **说明**：四项数值改为 🗡️⚡💨💥 + 数字横排；「已选构筑」为 📦+悬停/读屏全文。
+
+## [2026-03-29] STG：停火判定改为棋盘行号（enemyFireStopRow）
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`enemyFireStopRow` 1..GRID_ROWS；`rn * cellSize` 为几何停火线；旧 `enemyFireStopLineY` 迁移）、`game_demo/stgWaveFormationPanel.js`、`game_demo/index.html`、`?v=20260329k`
+- **说明**：阵型编辑器改为填「第几行」停火，与棋盘对齐；窗口改变格高时行号不变则带型仍对齐。
+
+## [2026-03-29] STG：敌弹入场前禁射 + 阵型编辑器停火线
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`stgHasEnteredPlayfield` 与 `enemyFireStopLineY` 共同门控战斗弹幕；连射余弹在越线时清空）、`game_demo/stgWaveFormationPanel.js`（`enemyFireStopLineY` 读写与 `tower_defense_wave_config`）、`game_demo/index.html`、`game_demo/styles.css`、`?v=20260329j`
+- **说明**：停火线为画布坐标 Y（自上而下）；`stgEmitWhen === 'on_death'` 仍仅在阵亡时发射，不受停火线/入场限制。
+
+## [2026-03-29] STG：局内构筑道具面板 + R/S 依赖 Q + 大招分支显示名
+
+- **类型**：新增功能 | Bug 修复 | 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`ult_seal_economy`/`ult_seal_heal` 增加 `requires: ult_seal_size`；`applyStgSavedBuildGrants` 读 `stg_build_inventory_granted`；`StgMode.getBuildUpgradeCatalog`）、`game_demo/stgBuildInventoryPanel.js`（新建）、`game_demo/stgUiI18n.js`（`attackBuild.ultNameSealUpgraded`；三选一顶栏 `upgrade.weapon.ultSeal` 改为强化封魔阵线）、`game_demo/index.html`、`game_demo/styles.css`（`.stg-build-inv-*`）、`game_demo/game.js`（`init`）、`?v=20260329i`
+- **说明**：升级三选一不再在未选 Q 时抽到 R/S；侧栏大招标题在选 Q 后为「强化封魔阵（X）」，选 T 后为「梦想妙珠（X）」，否则「试做型封魔阵（X）」。顶栏「局内构筑道具」可勾选开局即持有的 STG 道具（互斥组与前置自动补全）。
+
+## [2026-03-29] STG：擦弹外椭圆 + 慢速机体透明度可调 + 已擦弹敌弹透明度归场景道具
+
+- **类型**：新增功能 | 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（椭圆擦弹 `getStgGrazeOuterEllipseRadii`；慢速显示外椭圆预览；`grazedBulletAlpha` 读场景配置）、`game_demo/stgPlayerEditorPanel.js`（`grazeEllipseHorizMult`/`grazeEllipseVertMult`/`focusShipAlpha`）、`game_demo/stgScenePropsEditorPanel.js`（`grazedBulletAlpha`）、`game_demo/index.html`、`?v=20260329h`
+- **说明**：外椭圆 Rx/Ry = (受击+弹半径) + 环宽×水平/垂直倍率；左右可大于上下。
+
+## [2026-03-29] STG：擦弹后敌弹半透明 + 慢速模式自机半透明突出判定点
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`_stgGrazed` 敌弹改用 `rgba` 填充；慢速下机体 `globalAlpha≈0.42`、判定点与受击圆全不透明略加强）、`game_demo/index.html`（`?v=20260329g`）
+- **说明**：视觉层次：判定点 > 机体轮廓。
+
+## [2026-03-29] STG：擦弹机制（敌弹每弹一次、小白球吸附灌大招蓄能 + 玩家编辑器参数）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`enemyBullets` 增加 `_stgGrazed`；`getStgGrazeRuntimeParams`/`tryStgGrazeEnemyBullet`/`updateStgGrazeOrbs`/`stgGrazeOrbs`；`mergeStgPlayerEditorIntoPlayer` 擦弹字段）、`game_demo/stgPlayerEditorPanel.js`（`DEFAULTS` 与 `fillInputs`/`readApplyObject`）、`game_demo/index.html`（擦弹折叠区块）、`game_demo/stgUiI18n.js`（顶栏说明）、`?v=20260329f`
+- **说明**：判定点外环（受击圆+敌弹半径外侧、可配置宽度）内且本帧敌弹有位移时触发；蓄能收益与充能点同乘 `bonusUltChargeMult`；绘制白球光晕。
+
+## [2026-03-29] STG：修复「击杀掉落充能点」不生效 — getEnemyTypeMap 合并遗漏字段
+
+- **类型**：Bug 修复
+- **涉及文件**：`game_demo/stgMode.js`（`getEnemyTypeMap` 写入 `stgDropChargePickup`/`stgChargeDropMult`；`pushStgChargePickupOnEnemyKillIfConfigured`；大招 DoT / 阴阳玉击杀与子弹击杀共用）
+- **说明**：怪物编辑器已保存勾选，但 `getEnemyTypeMap` 输出对象未带上该字段，导致 `StgEnemy` 上恒为 false。已补合并；非 Z 弹击杀路径同样补掉充能点。
+
+## [2026-03-29] STG：场景道具编辑器 — P 点 / 充能点 分轨（形状、大小、轨迹与速率）
+
+- **类型**：新增功能 | 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`getStgScenePropsDefaults`、`normalizeScenePropsConfig`、`buildPickupMotionFromScene` 按 `p`/`c` 前缀；拾取半径与绘制按 `pickupRadius`/`shape`/`sizePx`；大 P/大能量略放大半径）、`game_demo/stgScenePropsEditorPanel.js`（双套表单项与 `normalizeEditorCfg`）、`game_demo/index.html`（面板分区）、`game_demo/styles.css`（`.stg-scene-props-kind-section`）、`?v=20260329d`
+- **说明**：旧存档无 `c*` 时运行时与编辑器均将充能点轨迹参数镜像自 P 点，避免手感突变；充能点默认方形、可改圆/菱。应用后仅新产生的掉落生效。
+
+## [2026-03-28] STG：文档封魔阵/妙珠逻辑 + 伏魔针淡粉 UI + 封魔阵结界改绿色绘制
+
+- **类型**：修改功能 | 文档
+- **涉及文件**：`新模式玩法开发/STG所有道具/新玩法--STG模式`（分支互斥、Q/S/R 与 T/U/V 前置、竖屏「前方」= 上、妙珠向上与消弹伤害）、`game_demo/styles.css`（伏魔针分区与水晶三选一/顶栏改为淡粉系）、`game_demo/stgMode.js`（试做型封魔阵结界描边/填充与侧栏绿色一致）、`game_demo/index.html`（`?v=20260328c`）
+- **说明**：文档与 `stgMode.js` 行为对齐；伏魔针不再使用史诗紫；局内封魔阵圆环由紫改绿以免与妙珠/伏魔针混淆。
+
+## [2026-03-28] STG：充能点掉落 + 大招仅由充能点蓄能 + 左侧优先 HUD（生命/经验/大招格）
+
+- **类型**：新增功能 | 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`createPickupChargeAtKill`、`pickupKind: 'charge'`、`stgDropChargePickup`/`stgChargeDropMult`、拾取分流：P 点只加经验、充能点只灌 `stgUltChargeMeter`；`STG_PRIORITY_SEGMENTS` 与 `refreshStgPrioritySegmentRow`）、`game_demo/index.html`（`stg-left-column` 顶部 `stgPriorityHud`；画布下 HUD 去掉 HP/EXP/大招条；场景道具编辑器充能点基础价值）、`game_demo/styles.css`（`.stg-priority-*`、移除画布侧重复 `.stg-hud-ult-wrap`）、`game_demo/stgScenePropsEditorPanel.js`（`chargePointValue`）、`game_demo/monsterEditorPanel.js`（击杀掉落充能点开关与倍率）、`game_demo/stgUiI18n.js`（`hud.hpLabel`/`expLabel`、`hint.controls`）
+- **说明**：怪物编辑器按种类配置击杀是否额外掉落充能点及倍率；场景道具编辑器配置单颗充能点基础蓄能值；局内充能点与 P 点共用轨迹绘制为方形「充」字。生命、经验、大招五格统一置于左侧最上方分段条。
+
+## [2026-03-27] STG：大招五格充能 + 玩家编辑器初始格数 + 界面（X）提示
+
+- **类型**：新增功能 | 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`stgUltCharges`/`stgUltChargeMeter`、拾取 P 点蓄能、按 X 消耗一格、`mergeStgPlayerEditorIntoPlayer` 读 `ultInitialCharges`）、`game_demo/stgPlayerEditorPanel.js`（`ultInitialCharges` 存读）、`game_demo/index.html`（HUD 五格、`?v=20260327k`）、`game_demo/styles.css`（`.stg-hud-ult-*`）、`game_demo/stgUiI18n.js`（`hud.ultLabel`、`attackBuild.ultHeadingNeutral` 等）、`新模式玩法开发/STG所有道具/新玩法--STG模式`（充能说明）
+- **说明**：默认 5 格上限；每格需蓄满阈值（基准 100÷`bonusUltChargeMult`，大能量点拾取有加成）；基础道具 9 加快蓄满；侧栏与攻击构筑标题显示「（X）」。
+
+## [2026-03-27] STG：试做型封魔阵改为默认大招（移出升级池）
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（从 `STG_UPGRADE_POOL` 移除 `ult_seal_base`；Q–S 取消对 base 的 `requires`；未选妙珠分支时按 X 始终 `activateStgUltSeal`）、`game_demo/stgUiI18n.js`（顶栏说明、`UPGRADE_EN` 去掉 `ult_seal_base`）、`game_demo/index.html`（玩家编辑器大招说明、静态提示、`?v=20260327j`）、`新模式玩法开发/STG所有道具/新玩法--STG模式`（明确默认自带与 Q–V 为分支强化）
+- **说明**：与文档一致：试做型封魔阵非三选一卡牌；升级池仅含 Q–S / T–V；选 T 后 X 改为梦想妙珠。
+
+## [2026-03-27] STG：攻击构筑三色分区 + 未选大招仅「试做」+ 三选一配色强化
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgUiI18n.js`（`attackBuild.ultHeadingNeutral`）、`game_demo/stgMode.js`（大招标题、`data-stg-ult-variant`、构筑图标按 `group` 上色）、`game_demo/styles.css`（扩散蓝 / 伏魔针紫 / 大招绿或妙珠紫；三选一卡与顶栏同色）、`game_demo/index.html`（静态默认与 `?v=20260327i`）
+- **说明**：未选 Q/T 时侧栏大招仅显示试做型封魔阵；选妙珠后大招区块与梦想妙珠卡统一为紫红色系，封魔阵为绿色系；左侧已选构筑 emoji 与对应体系统色。
+
+## [2026-03-27] STG：攻击构筑大招标题 — 不再显示「未解锁」
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`refreshStgAttackBuildPanel`）、`game_demo/stgUiI18n.js`（移除 `attackBuild.ultLocked`）、`game_demo/styles.css`（大招标题统一绿色）、`game_demo/index.html`（静态默认与 `?v=20260327h`）
+- **说明**：未选 Q/T 分支时仍显示 `attackBuild.ultHeading`（试做型封魔阵 / 梦想妙珠）；选中后显示对应单招式名。
+
+## [2026-03-27] STG：玩家编辑器滚动 + 试做型封魔阵文案与道具 R（消弹转 P）
+
+- **类型**：Bug 修复 | 修改功能 | 新增功能
+- **涉及文件**：`game_demo/styles.css`（`#stgPlayerEditorPanel` 内层 flex 与宽度合并、中间区滚动/底栏固定）、`game_demo/stgMode.js`（`STG_UPGRADE_POOL` 大招命名与 Q–V 描述；新增 `ult_seal_economy`；封魔阵消弹生成 P 点、道具 R 转化倍率与阵内移速）、`game_demo/stgUiI18n.js`（试做型封魔阵/英文 Seal Prototype、`UPGRADE_EN`）、`game_demo/index.html`（顶栏提示、`?v=20260327g`）、`新模式玩法开发/STG所有道具/新玩法--STG模式`（大招段落已完成标记）
+- **说明**：武器编辑器面板中间表单可滚动、底部按钮不裁切；与文档一致将大招称为试做型封魔阵，并补齐道具 R 的局内效果（与 Q/S 并存三选一）。
+
+## [2026-03-27] STG：攻击构筑左侧大招标题 — 未解锁 / 封魔阵 / 梦想妙珠
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`refreshStgAttackBuildPanel` 依 `stgUltBranch` 设标题）、`game_demo/stgUiI18n.js`（`attackBuild.ultLocked` / `ultNameSeal` / `ultNameDream`）、`game_demo/styles.css`（`.stg-attack-ult--locked`）、`game_demo/index.html`（默认「未解锁」）、`?v=20260327f`
+- **说明**：未选 Q/T 分支或未开局时显示「未解锁」；选后仅显示对应大招名。
+
+## [2026-03-27] STG：攻击构筑与三选一命名（博丽御符/伏魔针等）+ 武器顶栏
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgUiI18n.js`（`attackBuild.*` 标题、`upgrade.weapon.*`、`getUpgradeWeaponBadge`）、`game_demo/stgMode.js`（`createStgUpgradeChoiceButton`、`refreshStgUiLanguageFromI18n` 复用）、`game_demo/styles.css`（三列网格、分色顶栏与边框）、`game_demo/index.html`（静态标题）、`新模式玩法开发/STG所有道具/新玩法--STG模式`（完成说明）、`?v=`
+- **说明**：文档为「博丽御符」「伏魔针」；三选一每张卡顶栏显示所属武器体系并高亮；宽屏 `auto-fit` 网格排版。`?v=20260327e`
+
+## [2026-03-27] STG：波次阵型编辑器 — 怪物血量随波次增长（可编辑系数）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`enemyHpScale`、`getStgEnemyHpMultiplierForWaveIndex`、`spawnEnemyFromRaw` 乘算血量；`loadWaves` 读档）、`game_demo/stgWaveFormationPanel.js`（`loadWaveConfigFromStorage` / `saveWaveConfigToStorage` 写入 `tower_defense_wave_config`）、`game_demo/index.html`（三块说明下新增全局系数表单）、`game_demo/styles.css`（`.stg-formation-hp-scale-*`）、`game_demo/waveConfig.json`（示例 `enemyHpScale`）、`?v=20260327d`
+- **说明**：倍率 = `baseMult + k*linearPerWave + k²*accelPerWaveSq`（k 为当前波次索引，第 1 波 k=0）。与怪物编辑器 `defaultHealth` 相乘后取整。旧存档无 `enemyHpScale` 时等价 1/0/0。
+
+## [2026-03-27] STG：P 点弧线「曲线速率」区分先慢后快 / 先快后慢
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`normalizeArcUpSpeedMode` / `normalizeArcDownSpeedMode`；上抛 `ease_in`/`ease_out`/`ease_in_out`；下落 `ease_in`/`ease_out`；`stgPickupOnArcUpFinished`）、`game_demo/stgScenePropsEditorPanel.js`（读存与默认）、`game_demo/index.html`（下拉与说明、`?v=20260327c`）
+- **说明**：旧存档 `curve` 上抛映射为 `ease_in_out`（原 smoothstep），下落映射为 `ease_in`（原先慢后快）。上抛第四项为「两端慢·中间快」。
+
+## [2026-03-27] STG：场景道具编辑器底部按钮可见 + 扩散构筑侧栏排版
+
+- **类型**：Bug 修复 | 修改功能
+- **涉及文件**：`game_demo/index.html`（场景道具面板中间区包 `stg-scene-props-editor-body`、子区块类名、应用按钮主色）、`game_demo/styles.css`（面板 flex 分栏、可滚动主体、固定操作栏；左侧攻击构筑加宽至 276px、三段卡片式区块、扩散段强调色）
+- **说明**：`wave-config-panel-inner` 的 `max-height` + `overflow:hidden` 曾裁切底部「应用」；现仅中间表单滚动，按钮区 `flex-shrink:0`。左侧「扩散攻击」与其它两段区分更清晰。
+
+## [2026-03-27] STG：玩家编辑器加宽折叠 + 等级经验槽三参数
+
+- **类型**：新增功能 | 修改功能
+- **涉及文件**：`game_demo/index.html`（`#stgPlayerEditorPanel` 分区 `<details>`、等级经验三项输入）、`game_demo/styles.css`（面板 720px、滚动高度、`.stg-player-editor-section-details`）、`game_demo/stgPlayerEditorPanel.js`（`expBase` / `expLinearPerLevel` / `expAccelPerLevelSq` 存读）、`game_demo/stgMode.js`（`getStgExpFormulaParams`、`computeExpToNextForLevel`；`resetRun`/拾取升级/应用编辑器时同步 `expToNext`）、`?v=20260327a`
+- **说明**：升级所需经验 = floor(基础 + (L−1)×线性 + (L−1)²×加速)；加速为 0 时与旧版 `100+(L−1)*40` 一致。武器三段默认折叠，移动与等级默认展开。
+
+## [2026-03-29] 场景道具：P 点弧线 上抛/下落 匀速或曲线
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`pArcUpSpeedMode` / `pArcDownSpeedMode`；弧线上抛 curve=smoothstep、下落 curve=速度渐近）、`game_demo/stgScenePropsEditorPanel.js`（读存与默认）、`game_demo/index.html`（两下拉与说明、`?v=20260329h`）
+- **说明**：旧存档无新字段的空中 P 点仍按 vy 正负旧逻辑；新掉落带完整字段。
+
+## [2026-03-29] STG：道具A–P 局内效果实现
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（A 扇形+2、B 额外弹、D 追踪−40%伤+转向、E 阴阳玉范围伤、F/H 大P/大能量掉落、G 扩散额外暴击率、C 伴身炮台、I 集中命中30次水晶齐射+J/K/L、M–P 狂怒层数/射速弹速/持续/上限/虚弱；`新模式玩法开发/STG所有道具/新玩法--STG模式`（道具I 行标注））、`?v=20260329g`
+- **说明**：阴阳玉跟随自机；狂怒仅慢速击杀计数；虚弱需狂怒≥5 层。
+
+## [2026-03-29] STG：属性加成列表对齐《属性列表显示》6 项
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/game.js`（`STG_REIMU_ASIDE_PANEL` 仅 6 行文案）、`game_demo/stgMode.js`（`stgStatBonusDisplay` 去掉 P 点/充能显示项；`stat_exp`/`stat_ult_charge` 仍叠乘局内数值）、`新模式玩法开发/STG基础属性/属性列表显示`（完成说明）、`?v=20260329f`
+- **说明**：与 `STG基础属性/属性列表显示` 一致；基础 7、9 不展示。
+
+## [2026-03-29] STG：道具表对齐文档；仅基础道具写「属性加成」
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`STG_UPGRADE_POOL` 道具A–V + 基础1–7、9 文案；`applyStgStatPickup` / `stgStatBonusDisplay` / `refreshStgReimuBonusAside`；左侧已选构筑不再含 stat；`applyStgUpgradePick` 对 stat 早退不污染分支；`bonusUltChargeMult`、`stgRunRegenMult`；`window.refreshStgReimuBonusAside`）、`game_demo/game.js`（`STG_REIMU_ASIDE_PANEL` 八行与 `pct_p_value`/`pct_charge_value`）、`game_demo/stgUiI18n.js`（`UPGRADE_EN`、`applyAll` 刷新右侧栏）、`game_demo/index.html`（侧栏标题与 `?v=20260329e`）
+- **说明**：与设计文档《STG所有道具/新玩法--STG模式》一致；构筑卡不改变右侧属性加成列表。
+
+## [2026-03-29] 文档：区分局内三选一 STG_UPGRADE_POOL 与局外 enhance_items
+
+- **类型**：修改功能（注释与 UI 说明）
+- **涉及文件**：`game_demo/stgMode.js`（`STG_UPGRADE_POOL` 上方注释）、`game_demo/game.js`（`enhance_items` 加载处注释）、`game_demo/index.html`（强化道具池面板说明、`?v=20260329d`）
+- **说明**：局内升级唯一随机源为 `STG_UPGRADE_POOL`；`enhance_items.json` 为局外 meta，二者数据源不同。
+
+## [2026-03-29] 强化道具池：替换为 STG 有效条目
+
+- **类型**：修改功能
+- **涉及文件**：`obj_list/enhance_items.json`（新 id 前缀 `stg_enh_*`，仅含 STG 结算用到的 playerStats 属性：`attack_damage_bonus`、`attack_speed_bonus`、`crit_chance_bonus`、`elemental_*`、`max_health_bonus`、`health_regen_bonus`、`hero_xp_gain_bonus`）、`game_demo/index.html`（道具池/物品栏说明文案、`?v=20260329c`）、`game_demo/game.js`（`hero_xp_gain_bonus` 显示名改为「局内经验获取加成」）
+- **说明**：移除塔防向金币/基地产灵/光环/大招灵耗等旧条目；若本地曾存 `stg_enhance_items_custom` 覆盖旧 id，需在编辑器中清理或手动清除该键。
+
+## [2026-03-29] 玩家强化物品栏：展示 effects 与描述
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/game.js`（`window.formatEffectsAsReadableLines`）、`game_demo/playerEnhanceInventoryPanel.js`（每行展示 `description` + 与强化卡片一致的可读效果列表）、`game_demo/styles.css`（效果区样式）、`?v=20260329b`
+- **说明**：`game.js` 未加载时用 `key: value` 兜底。
+
+## [2026-03-29] 玩家强化物品栏（从道具池设置持有数）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/game.js`（`stg_player_enhance_inventory`、`applyEnhanceInventoryOverride`、`loadSavedEnhanceInventoryOverride`、开局 `applyEnhanceInventoryOverridesFromStorage`；`window` 暴露）、`game_demo/playerEnhanceInventoryPanel.js`（列表、应用并刷新 `renderInventory`）、`game_demo/index.html`（顶栏 🎒、面板 DOM、`game.js` `?v=20260329a`）、`game_demo/styles.css`（`.player-enh-inv-*`）
+- **说明**：与「强化道具池」分离——后者改池内条目定义，本面板只改 `inventory` 中强化 id 的数量（与英雄物品栏存档并列）。
+
+## [2026-03-28] 怪物编辑器：每条折叠 + 紧凑排版
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/monsterEditorPanel.js`（每条怪用 `<details>`/`<summary>`，摘要行显示 id、图标、名称·HP、删除；`e.stopPropagation` 防误触折叠）、`game_demo/styles.css`（列表与表单项间距/字号收紧、摘要行与箭头样式）、`game_demo/index.html`（折叠说明文案、`styles.css`/`monsterEditorPanel.js` `?v=20260328h`）
+- **说明**：默认全部折叠，点击标题行展开；减少纵向滚动与扫视成本。
+
+## [2026-03-28] STG：敌人弹幕 — 连射次数 + 平均/扩散波速率
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`emitStgEnemyAttackVolley`、`getEnemyBurstSpeedMult`、战斗中 `_stgBurstRemain` 续发、眩晕清空连射、死后弹幕仍单轮）、`game_demo/monsterEditorPanel.js`（连射次数/间隔/速率下拉）、`game_demo/styles.css`（`.monster-stg-burst-hint`）、`game_demo/index.html`（`?v=20260328g`）
+- **说明**：「平均」各波弹速一致；「扩散波」用 ease-out 曲线使后发波次更快、相邻波差递减；激光按 `spdMult` 缩短持续；分裂子弹速度与母弹同乘区。
+
+## [2026-03-28] STG：敌人移动 — 锁 Y / 锁 X
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`stgMoveMode`：`lock_y` 仅沿 Y 移至 `lockTargetY` 后 `moveIdle`；`lock_x` 仅沿 X 移至 `lockTargetX`；构造时从 `stgLockTargetYNorm`/`stgLockTargetXNorm` 换算像素；波次合并 `mergeStgEnemyTypeDef` 支持新字段）、`game_demo/monsterEditorPanel.js`（下拉选项与「锁轴目标」面板）、`game_demo/index.html`（`?v=20260328f`）
+- **说明**：坐标与「到点后静止」相同为画布归一化 0~1；到位阈值 6px（与 anchor 一致）。
+
+## [2026-03-28] STG：玩家武器编辑器 — 子弹穿透 + 发射参数折叠
+
+- **类型**：新增功能 | 修改功能
+- **涉及文件**：`game_demo/stgPlayerEditorPanel.js`（`bulletPierceEnabled`/`bulletPierceHits` 及慢速、技能三套；`sync*PierceRow`）、`game_demo/stgMode.js`（`mergeStgPlayerEditorIntoPlayer`、`emitPlayerVolley` 的 `pierceHitsLeft`、敌撞玩家弹时递减穿透段数）、`game_demo/index.html`（穿透控件 + `<details>` 包裹发射模式与单发/扇/环子项）、`game_demo/styles.css`（折叠块与行内勾选样式）、`?v=20260328e`
+- **说明**：未勾选穿透时行为与旧版一致（命中即消弹）；勾选后可设 2–20 段敌命中；`StgEnemy.stgInstanceId` + 弹体 `pierceHitEnemyIds` 避免穿透时对同一敌多段伤害。单发/扇形/环形参数收在「发射模式与弹道参数」折叠内。
+
 ## [2026-03-28] STG：大招不发射 skill 弹幕 + 强化物品编辑器
 
 - **类型**：新增功能 | 修改功能

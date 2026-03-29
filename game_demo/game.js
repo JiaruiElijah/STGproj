@@ -87,7 +87,7 @@ function getPlayerStatEffectLabel(key) {
         gold_income_bonus: '金币收益加成',
         base_spirit_output_bonus: '基地产出加成',
         hero_aura_range_bonus: '英雄光环范围加成',
-        hero_xp_gain_bonus: '英雄经验获取加成',
+        hero_xp_gain_bonus: '局内经验获取加成',
         hero_ult_cost_reduction: '英雄大招灵力消耗减免',
         harvest_power: '收获力',
         harvest_power_growth_percent: '收获力增长',
@@ -485,6 +485,46 @@ function applyHeroInventoryOverridesFromStorage(gameState) {
     }
 }
 
+/** 玩家强化物品栏本地存储：强化 id -> 数量（仅影响 category===「强化」的库存，与英雄栏独立） */
+const PLAYER_ENHANCE_INVENTORY_STORAGE_KEY = 'stg_player_enhance_inventory';
+
+/**
+ * 将玩家强化物品栏覆盖应用到 gameState.inventory（仅处理物品池中的强化 id）
+ * @param {Object} gameState
+ * @param {Object} override id -> 非负整数
+ * @param {Array} itemPool
+ */
+function applyEnhanceInventoryOverride(gameState, override, itemPool) {
+    if (!gameState || !gameState.inventory || !itemPool) return;
+    const ids = itemPool.filter((i) => i && i.category === '强化').map((i) => i.id);
+    ids.forEach((id) => {
+        const count =
+            override && typeof override[id] === 'number' && override[id] >= 0 ? Math.floor(override[id]) : 0;
+        if (count <= 0) gameState.inventory.delete(id);
+        else gameState.inventory.set(id, count);
+    });
+}
+
+function loadSavedEnhanceInventoryOverride() {
+    try {
+        const raw = localStorage.getItem(PLAYER_ENHANCE_INVENTORY_STORAGE_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        return data && typeof data === 'object' ? data : null;
+    } catch (e) {
+        console.warn('读取玩家强化物品栏失败', e);
+        return null;
+    }
+}
+
+function applyEnhanceInventoryOverridesFromStorage(gameState) {
+    const saved = loadSavedEnhanceInventoryOverride();
+    if (saved && Object.keys(saved).length > 0 && ITEM_POOL && ITEM_POOL.length > 0) {
+        applyEnhanceInventoryOverride(gameState, saved, ITEM_POOL);
+        console.log('已加载已保存的玩家强化物品栏');
+    }
+}
+
 /** 本地自定义强化道具（合并入物品池，同 id 覆盖 JSON 默认） */
 const ENHANCE_ITEMS_CUSTOM_KEY = 'stg_enhance_items_custom';
 
@@ -547,6 +587,11 @@ if (typeof window !== 'undefined') {
     window.ENHANCE_ITEMS_CUSTOM_KEY = ENHANCE_ITEMS_CUSTOM_KEY;
     window.loadEnhanceItemsCustom = loadEnhanceItemsCustom;
     window.mergeEnhanceCustomIntoPool = mergeEnhanceCustomIntoPool;
+    window.PLAYER_ENHANCE_INVENTORY_STORAGE_KEY = PLAYER_ENHANCE_INVENTORY_STORAGE_KEY;
+    window.applyEnhanceInventoryOverride = applyEnhanceInventoryOverride;
+    window.loadSavedEnhanceInventoryOverride = loadSavedEnhanceInventoryOverride;
+    /** 供玩家强化物品栏等展示与前台一致的 effects 文案 */
+    window.formatEffectsAsReadableLines = formatEffectsAsReadableLines;
 }
 
 /**
@@ -578,7 +623,7 @@ async function loadItemsData() {
         }
     }
 
-    // 强化系统道具池（与遗物不同池；商店不出售，仅强化界面四选一）
+    // 局外 meta：category=「强化」的道具（playerStats 叠加；玩家强化物品栏等）。与 STG 局内三选一（stgMode.js STG_UPGRADE_POOL）不是同一数据源。
     const enhanceFiles = ['../obj_list/enhance_items.json', 'obj_list/enhance_items.json'];
     for (const ef of enhanceFiles) {
         try {
@@ -1676,7 +1721,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const gameState = new GameState(ITEM_POOL, playerStats);
     // 英雄物品栏数量（英雄编辑器存档）
     applyHeroInventoryOverridesFromStorage(gameState);
-    
+    // 玩家持有的强化道具（与道具池定义无关，仅改 inventory 中强化 id 数量）
+    applyEnhanceInventoryOverridesFromStorage(gameState);
+
     // 创建UI管理器
     const uiManager = new UIManager(gameState);
     
@@ -1689,8 +1736,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // 英雄 / 怪物编辑器不依赖塔防 Canvas（塔防脚本已移除）
     if (window.HeroEditorPanel && typeof window.HeroEditorPanel.init === 'function') window.HeroEditorPanel.init();
-    if (window.EnhanceItemsEditorPanel && typeof window.EnhanceItemsEditorPanel.init === 'function') {
-        window.EnhanceItemsEditorPanel.init();
+    if (window.StgBuildInventoryPanel && typeof window.StgBuildInventoryPanel.init === 'function') {
+        window.StgBuildInventoryPanel.init();
     }
     if (window.MonsterEditorPanel && typeof window.MonsterEditorPanel.init === 'function') {
         window.MonsterEditorPanel.init(null);
@@ -1722,21 +1769,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     /**
-     * STG 右侧栏：仅展示「新属性（加成）」面板用数值（与文档「新属性」段一致）。
-     * 「属性强化（道具）」属于三选一强化池，不在此列表展示。
+     * STG 右侧「属性加成」列表：与《新玩法--STG模式》基础道具展示一致（7 行）。
+     * 基础道具1 为「整格」累加；基础道具7/9 仍由 stgMode 叠乘局内数值，但不在此列表展示。
      */
     const STG_REIMU_ASIDE_PANEL = [
         {
-            title: '新属性（加成）',
-            titleEn: 'Bonus Stats',
+            title: '属性加成',
+            titleEn: 'Stat bonuses',
             rows: [
-                { key: 'pct_hp', label: '生命值加成', labelEn: 'HP Bonus', placeholder: '0%' },
-                { key: 'pct_regen', label: '生命恢复加成', labelEn: 'Regen Bonus', placeholder: '0%' },
-                { key: 'pct_atk_all', label: '全攻击力加成', labelEn: 'All ATK Bonus', placeholder: '0%' },
-                { key: 'pct_fire', label: '射速加成', labelEn: 'Fire Rate Bonus', placeholder: '0%' },
-                { key: 'pct_bullet_spd', label: '弹速加成', labelEn: 'Bullet Speed Bonus', placeholder: '0%' },
-                { key: 'pct_move_base', label: '基础移速加成', labelEn: 'Base Move Speed Bonus', placeholder: '0%' },
-                { key: 'pct_ult_charge', label: '大招充能效率加成', labelEn: 'Ult Charge Bonus', placeholder: '0%' }
+                {
+                    key: 'hp_cells_stat',
+                    label: '额外生命格（基础道具1）',
+                    labelEn: 'Extra life cells (stat 1)',
+                    placeholder: '—'
+                },
+                { key: 'pct_regen', label: '生命恢复加成', labelEn: 'Regen bonus', placeholder: '0%' },
+                { key: 'pct_atk_all', label: '全攻击力加成', labelEn: 'All ATK bonus', placeholder: '0%' },
+                { key: 'pct_graze', label: '擦弹收益加成', labelEn: 'Graze bonus', placeholder: '0%' },
+                { key: 'pct_fire', label: '射速加成', labelEn: 'Fire rate bonus', placeholder: '0%' },
+                { key: 'pct_bullet_spd', label: '弹速加成', labelEn: 'Bullet speed bonus', placeholder: '0%' },
+                { key: 'pct_move_base', label: '移速（普通）加成', labelEn: 'Move speed (spread) bonus', placeholder: '0%' }
             ]
         }
     ];
@@ -1777,6 +1829,53 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.refreshStgPlayerStatsPanel = refreshStgPlayerStatsPanel;
     window.renderStgReimuStatsPanelToElement = renderStgReimuStatsPanelToElement;
 
+    /** 右侧「博丽灵梦 · 属性加成」折叠状态，写入 localStorage 以便刷新后保持 */
+    const STG_ASIDE_COLLAPSED_KEY = 'stg_reimu_aside_collapsed';
+
+    function readStgPlayerAsideCollapsed() {
+        try {
+            return localStorage.getItem(STG_ASIDE_COLLAPSED_KEY) === '1';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * @param {boolean} collapsed true 时仅显示竖排「显示属性」按钮，主面板隐藏
+     */
+    function applyStgPlayerAsideCollapsed(collapsed) {
+        const aside = document.getElementById('stgPlayerAside');
+        if (!aside) return;
+        aside.classList.toggle('stg-player-aside--collapsed', collapsed);
+        try {
+            localStorage.setItem(STG_ASIDE_COLLAPSED_KEY, collapsed ? '1' : '0');
+        } catch (e) {
+            /* ignore */
+        }
+        aside.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        /** 侧栏宽度变化后触发 STG 内 resize 监听，让棋盘吃满新横向空间 */
+        requestAnimationFrame(() => {
+            window.dispatchEvent(new Event('resize'));
+        });
+    }
+
+    function applyStgAsideToggleLabels() {
+        if (!window.StgUiI18n || typeof window.StgUiI18n.t !== 'function') return;
+        const t = window.StgUiI18n.t.bind(window.StgUiI18n);
+        const hideBtn = document.getElementById('stgAsideHideBtn');
+        const showBtn = document.getElementById('stgAsideShowBtn');
+        if (hideBtn) {
+            hideBtn.textContent = t('aside.hideStats');
+            hideBtn.setAttribute('title', t('aside.hideStatsTitle'));
+        }
+        if (showBtn) {
+            showBtn.textContent = t('aside.showStats');
+            showBtn.setAttribute('title', t('aside.showStatsTitle'));
+        }
+    }
+    window.applyStgAsideToggleLabels = applyStgAsideToggleLabels;
+    window.applyStgPlayerAsideCollapsed = applyStgPlayerAsideCollapsed;
+
     // STG 纵版射击：默认首页，使用独立画布与循环
     if (window.StgMode && typeof window.StgMode.init === 'function') {
         window.StgMode.init({ gameState, playerStats });
@@ -1790,11 +1889,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (window.StgWaveFormationPanel && typeof window.StgWaveFormationPanel.init === 'function') {
         window.StgWaveFormationPanel.init();
     }
+    applyStgPlayerAsideCollapsed(readStgPlayerAsideCollapsed());
     refreshStgPlayerStatsPanel();
 
     if (window.StgUiI18n && typeof window.StgUiI18n.init === 'function') {
         window.StgUiI18n.init();
     }
+
+    (function initStgAsideToggle() {
+        const hideBtn = document.getElementById('stgAsideHideBtn');
+        const showBtn = document.getElementById('stgAsideShowBtn');
+        if (hideBtn) {
+            hideBtn.addEventListener('click', () => applyStgPlayerAsideCollapsed(true));
+        }
+        if (showBtn) {
+            showBtn.addEventListener('click', () => applyStgPlayerAsideCollapsed(false));
+        }
+    })();
 
     const stgMonBtn = document.getElementById('stgOpenMonsterEditorBtn');
     if (stgMonBtn) {

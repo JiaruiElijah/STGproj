@@ -7,20 +7,55 @@
 
     const WAVE_STORAGE_KEY = 'tower_defense_wave_config';
 
+    /** 与 stgMode normalizeWaveDataEnemyHpScale 数值范围一致：倍率 = base + k*linear + k²*accel */
+    const DEFAULT_ENEMY_HP_SCALE = { baseMult: 1, linearPerWave: 0, accelPerWaveSq: 0 };
+
+    /** 与 stgMode getStgEnemyHpMultiplierForWaveIndex 一致：默认 1，范围 0.05～500 */
+    function normalizeWaveEnemyHpMult(raw) {
+        if (raw == null || raw === '') return 1;
+        const n = Number(raw);
+        if (!Number.isFinite(n)) return 1;
+        return Math.max(0.05, Math.min(500, n));
+    }
+
+    function normalizeEnemyHpScale(raw) {
+        const o = raw && typeof raw === 'object' ? raw : {};
+        const baseMult = o.baseMult != null && Number.isFinite(Number(o.baseMult)) ? Number(o.baseMult) : 1;
+        const linearPerWave =
+            o.linearPerWave != null && Number.isFinite(Number(o.linearPerWave)) ? Number(o.linearPerWave) : 0;
+        const accelPerWaveSq =
+            o.accelPerWaveSq != null && Number.isFinite(Number(o.accelPerWaveSq)) ? Number(o.accelPerWaveSq) : 0;
+        return {
+            baseMult: Math.max(0.05, Math.min(100, baseMult)),
+            linearPerWave: Math.max(-5, Math.min(5, linearPerWave)),
+            accelPerWaveSq: Math.max(-2, Math.min(2, accelPerWaveSq))
+        };
+    }
+
+    /** @type {{ baseMult: number, linearPerWave: number, accelPerWaveSq: number }} */
+    let enemyHpScaleBuffer = { ...DEFAULT_ENEMY_HP_SCALE };
+    /** @type {number|null} 停火行号（主棋盘从上往下 1..rows）；null=不启用 */
+    let enemyFireStopRowBuffer = null;
+
     let panelEl = null;
     let waveSelectEl = null;
     let brushSelectEl = null;
     let spawnIntervalInp = null;
     let spiritRewardInp = null;
     let nextDelayInp = null;
+    let waveEnemyHpMultInp = null;
+    let hpBaseMultInp = null;
+    let hpLinearInp = null;
+    let hpAccelInp = null;
+    let enemyFireStopRowInp = null;
     let grids = { top: null, left: null, right: null };
     /** @type {Array<{top:string[][],left:string[][],right:string[][]}>} */
     let formationBuffers = [];
-    /** @type {Array<{ spawnInterval: number, spiritReward: number, nextWaveDelaySec: number }>} */
+    /** @type {Array<{ spawnInterval: number, spiritReward: number, nextWaveDelaySec: number, enemyHpMult: number }>} */
     let waveMetaBuffers = [];
     let currentWaveIndex = 0;
-    let cols = 12;
-    let rows = 17;
+    let cols = 16;
+    let rows = 21;
 
     /** 拖动笔刷：左键按住划过多格 */
     let dragPainting = false;
@@ -34,23 +69,57 @@
         if (window.StgMode && typeof window.StgMode.getGridDimensions === 'function') {
             return window.StgMode.getGridDimensions();
         }
-        return { cols: 12, rows: 17 };
+        return { cols: 16, rows: 21 };
     }
 
-    function loadWavesFromStorage() {
+    /** 读取完整配置（含怪物血量全局系数） */
+    function loadWaveConfigFromStorage() {
         try {
             const raw = localStorage.getItem(WAVE_STORAGE_KEY);
-            if (!raw) return [];
+            if (!raw) {
+                return { waves: [], enemyHpScale: { ...DEFAULT_ENEMY_HP_SCALE }, enemyFireStopRow: null };
+            }
             const data = JSON.parse(raw);
-            return data && Array.isArray(data.waves) ? data.waves : [];
+            const waves = data && Array.isArray(data.waves) ? data.waves : [];
+            const g = getGridSize();
+            const maxR = g.rows || 21;
+            return {
+                waves,
+                enemyHpScale: normalizeEnemyHpScale(data && data.enemyHpScale),
+                enemyFireStopRow: normalizeEnemyFireStopRow(data && data.enemyFireStopRow, maxR, data && data.enemyFireStopLineY)
+            };
         } catch (e) {
-            return [];
+            return { waves: [], enemyHpScale: { ...DEFAULT_ENEMY_HP_SCALE }, enemyFireStopRow: null };
         }
     }
 
-    function saveWavesToStorage(waves) {
+    /**
+     * @param {number|null|undefined} rawRow
+     * @param {number} maxRow
+     * @param {number|null|undefined} legacyLineY 旧版像素线，仅当无行号时用于估算
+     */
+    function normalizeEnemyFireStopRow(rawRow, maxRow, legacyLineY) {
+        const mr = Math.max(1, Math.min(64, maxRow | 0));
+        if (rawRow !== '' && rawRow != null) {
+            const n = parseInt(Number(rawRow), 10);
+            if (Number.isFinite(n) && n >= 1 && n <= mr) return n;
+        }
+        if (legacyLineY != null && Number.isFinite(Number(legacyLineY))) {
+            const csEst = 45;
+            const r = Math.round(Number(legacyLineY) / csEst);
+            return Math.max(1, Math.min(mr, r));
+        }
+        return null;
+    }
+
+    function saveWaveConfigToStorage(waves, enemyHpScale, enemyFireStopRow) {
         try {
-            localStorage.setItem(WAVE_STORAGE_KEY, JSON.stringify({ waves }));
+            const payload = {
+                waves,
+                enemyHpScale: normalizeEnemyHpScale(enemyHpScale),
+                enemyFireStopRow: normalizeEnemyFireStopRow(enemyFireStopRow, getGridSize().rows || 21, null)
+            };
+            localStorage.setItem(WAVE_STORAGE_KEY, JSON.stringify(payload));
         } catch (e) {
             console.warn('[阵型] 保存失败', e);
         }
@@ -66,6 +135,11 @@
             return g;
         };
         return { top: mk(), left: mk(), right: mk() };
+    }
+
+    /** 新插入波次的默认节奏与血量倍率（空三棋盘，由用户再摆怪） */
+    function defaultNewWaveMeta() {
+        return { spawnInterval: 400, spiritReward: 10, nextWaveDelaySec: 15, enemyHpMult: 1 };
     }
 
     function normalizeFormation(f) {
@@ -342,6 +416,48 @@
         if (spawnIntervalInp) spawnIntervalInp.value = String(m.spawnInterval);
         if (spiritRewardInp) spiritRewardInp.value = String(m.spiritReward);
         if (nextDelayInp) nextDelayInp.value = String(m.nextWaveDelaySec);
+        if (waveEnemyHpMultInp) {
+            waveEnemyHpMultInp.value = String(
+                m.enemyHpMult != null && Number.isFinite(Number(m.enemyHpMult))
+                    ? normalizeWaveEnemyHpMult(m.enemyHpMult)
+                    : 1
+            );
+        }
+    }
+
+    function syncHpInputsFromBuffer() {
+        const s = enemyHpScaleBuffer || DEFAULT_ENEMY_HP_SCALE;
+        if (hpBaseMultInp) hpBaseMultInp.value = String(s.baseMult);
+        if (hpLinearInp) hpLinearInp.value = String(s.linearPerWave);
+        if (hpAccelInp) hpAccelInp.value = String(s.accelPerWaveSq);
+        if (enemyFireStopRowInp) {
+            const g = getGridSize();
+            const mr = g.rows || 21;
+            enemyFireStopRowInp.max = String(mr);
+            enemyFireStopRowInp.value =
+                enemyFireStopRowBuffer != null && Number.isFinite(enemyFireStopRowBuffer)
+                    ? String(enemyFireStopRowBuffer)
+                    : '';
+        }
+    }
+
+    function readHpFromInputs() {
+        const gf = (el, def) => {
+            if (!el) return def;
+            const n = parseFloat(el.value);
+            return Number.isFinite(n) ? n : def;
+        };
+        enemyHpScaleBuffer = normalizeEnemyHpScale({
+            baseMult: gf(hpBaseMultInp, 1),
+            linearPerWave: gf(hpLinearInp, 0),
+            accelPerWaveSq: gf(hpAccelInp, 0)
+        });
+        if (enemyFireStopRowInp) {
+            const v = String(enemyFireStopRowInp.value).trim();
+            const g = getGridSize();
+            const mr = g.rows || 21;
+            enemyFireStopRowBuffer = v === '' ? null : normalizeEnemyFireStopRow(parseInt(v, 10), mr, null);
+        }
     }
 
     function readMetaFromInputs() {
@@ -356,23 +472,42 @@
         if (nextDelayInp) {
             m.nextWaveDelaySec = Math.max(0, parseInt(nextDelayInp.value, 10) || 15);
         }
+        if (waveEnemyHpMultInp) {
+            const n = parseFloat(String(waveEnemyHpMultInp.value).replace(',', '.'));
+            m.enemyHpMult = normalizeWaveEnemyHpMult(Number.isFinite(n) ? n : 1);
+        }
     }
 
     function rebuildBuffersFromWaves() {
-        const waves = loadWavesFromStorage();
+        const full = loadWaveConfigFromStorage();
+        enemyHpScaleBuffer = full.enemyHpScale || { ...DEFAULT_ENEMY_HP_SCALE };
+        const g = getGridSize();
+        const mr = g.rows || 21;
+        enemyFireStopRowBuffer = normalizeEnemyFireStopRow(full.enemyFireStopRow, mr, full.enemyFireStopLineY);
+        const waves = full.waves || [];
         if (waves.length === 0) {
             formationBuffers = [createEmptyFormation()];
-            waveMetaBuffers = [{ spawnInterval: 400, spiritReward: 10, nextWaveDelaySec: 15 }];
+            waveMetaBuffers = [defaultNewWaveMeta()];
         } else {
             formationBuffers = [];
             waveMetaBuffers = [];
-            waves.forEach((w) => {
+            const sHp = normalizeEnemyHpScale(full.enemyHpScale);
+            waves.forEach((w, wi) => {
                 const migrated = migrateEnemiesToFormation({ ...w });
                 formationBuffers.push(normalizeFormation(migrated.stgFormation));
+                let hpMult = 1;
+                if (w.enemyHpMult != null && Number.isFinite(Number(w.enemyHpMult))) {
+                    hpMult = normalizeWaveEnemyHpMult(w.enemyHpMult);
+                } else {
+                    const kk = Math.max(0, wi | 0);
+                    let m = sHp.baseMult + sHp.linearPerWave * kk + sHp.accelPerWaveSq * kk * kk;
+                    hpMult = Math.max(0.05, Math.min(500, m));
+                }
                 waveMetaBuffers.push({
                     spawnInterval: w.spawnInterval != null ? w.spawnInterval : 400,
                     spiritReward: w.spiritReward != null ? w.spiritReward : 10,
-                    nextWaveDelaySec: w.nextWaveDelaySec != null ? Number(w.nextWaveDelaySec) : 15
+                    nextWaveDelaySec: w.nextWaveDelaySec != null ? Number(w.nextWaveDelaySec) : 15,
+                    enemyHpMult: hpMult
                 });
             });
         }
@@ -401,6 +536,7 @@
         buildBrushOptions();
         currentWaveIndex = parseInt(waveSelectEl.value, 10) || 0;
         syncMetaInputsFromBuffer();
+        syncHpInputsFromBuffer();
         refreshAllGrids();
         if (panelEl) panelEl.classList.remove('hidden');
     }
@@ -411,16 +547,23 @@
 
     function buildWavesPayload() {
         readMetaFromInputs();
+        readHpFromInputs();
         const waves = [];
         for (let i = 0; i < formationBuffers.length; i++) {
             const f = normalizeFormation(formationBuffers[i]);
-            const meta = waveMetaBuffers[i] || { spawnInterval: 400, spiritReward: 10, nextWaveDelaySec: 15 };
+            const meta = waveMetaBuffers[i] || {
+                spawnInterval: 400,
+                spiritReward: 10,
+                nextWaveDelaySec: 15,
+                enemyHpMult: 1
+            };
             const enemies = formationToEnemiesOrdered(f);
             waves.push({
                 waveNumber: i + 1,
                 spawnInterval: meta.spawnInterval,
                 spiritReward: meta.spiritReward,
                 nextWaveDelaySec: meta.nextWaveDelaySec,
+                enemyHpMult: normalizeWaveEnemyHpMult(meta.enemyHpMult),
                 stgFormation: {
                     top: f.top.map((row) => row.slice()),
                     left: f.left.map((row) => row.slice()),
@@ -438,24 +581,44 @@
             alert('请至少保留一波');
             return;
         }
-        saveWavesToStorage(waves);
-        console.log('[阵型] 已保存波次（共', waves.length, '波），种类与数量仅由阵型格子决定');
+        saveWaveConfigToStorage(waves, enemyHpScaleBuffer, enemyFireStopRowBuffer);
+        console.log('[阵型] 已保存波次（共', waves.length, '波）与每波血量倍率、兼容字段 enemyHpScale', enemyHpScaleBuffer);
         alert(
             '已保存到本地波次配置。\n' +
-                '种类与数量仅由「三棋盘」格子决定；STG 出怪顺序与阵型遍历顺序一致（同类型会合并为连续组）。'
+                '种类与数量仅由「三棋盘」格子决定；STG 出怪顺序与阵型遍历顺序一致（同类型会合并为连续组）。\n' +
+                '每波「敌人血量倍率」已写入；全局随波次公式当前不参与计算（见面板说明）。'
         );
         close();
     }
 
-    function addWave() {
+    /**
+     * 在指定下标插入空波（0=整关最前）；插入后选中该新波以便直接编辑。
+     * @param {number} insertIndex 新波将占据的下标，允许 0..length（length 等价末尾追加）
+     */
+    function insertEmptyWaveAt(insertIndex) {
         readMetaFromInputs();
-        formationBuffers.push(createEmptyFormation());
-        waveMetaBuffers.push({ spawnInterval: 400, spiritReward: 10, nextWaveDelaySec: 15 });
-        currentWaveIndex = formationBuffers.length - 1;
+        readHpFromInputs();
+        const len = formationBuffers.length;
+        const idx = Math.max(0, Math.min(len, insertIndex | 0));
+        formationBuffers.splice(idx, 0, createEmptyFormation());
+        waveMetaBuffers.splice(idx, 0, defaultNewWaveMeta());
+        currentWaveIndex = idx;
         populateWaveSelect();
-        waveSelectEl.value = String(currentWaveIndex);
+        if (waveSelectEl) waveSelectEl.value = String(currentWaveIndex);
         syncMetaInputsFromBuffer();
+        syncHpInputsFromBuffer();
         refreshAllGrids();
+        console.log('[阵型] 已在第', idx + 1, '位插入空波（共', formationBuffers.length, '波）');
+    }
+
+    /** 在当前选中波与上一波之间插入 */
+    function insertWaveBeforeCurrent() {
+        insertEmptyWaveAt(currentWaveIndex);
+    }
+
+    /** 在当前选中波与下一波之间插入；若当前为最后一波则等同末尾追加 */
+    function insertWaveAfterCurrent() {
+        insertEmptyWaveAt(currentWaveIndex + 1);
     }
 
     function removeCurrentWave() {
@@ -464,6 +627,7 @@
             return;
         }
         readMetaFromInputs();
+        readHpFromInputs();
         formationBuffers.splice(currentWaveIndex, 1);
         waveMetaBuffers.splice(currentWaveIndex, 1);
         if (currentWaveIndex >= formationBuffers.length) {
@@ -482,6 +646,11 @@
         spawnIntervalInp = document.getElementById('stgFormationSpawnInterval');
         spiritRewardInp = document.getElementById('stgFormationSpiritReward');
         nextDelayInp = document.getElementById('stgFormationNextDelaySec');
+        waveEnemyHpMultInp = document.getElementById('stgFormationWaveEnemyHpMult');
+        hpBaseMultInp = document.getElementById('stgFormationHpBaseMult');
+        hpLinearInp = document.getElementById('stgFormationHpLinear');
+        hpAccelInp = document.getElementById('stgFormationHpAccel');
+        enemyFireStopRowInp = document.getElementById('stgFormationEnemyFireStopRow');
         grids.top = document.getElementById('stgFormationGridTop');
         grids.left = document.getElementById('stgFormationGridLeft');
         grids.right = document.getElementById('stgFormationGridRight');
@@ -514,23 +683,34 @@
                 refreshAllGrids();
             });
         }
-        const addWaveBtn = document.getElementById('stgFormationAddWaveBtn');
-        if (addWaveBtn) addWaveBtn.addEventListener('click', addWave);
+        const insBeforeBtn = document.getElementById('stgFormationInsertWaveBeforeBtn');
+        if (insBeforeBtn) insBeforeBtn.addEventListener('click', insertWaveBeforeCurrent);
+        const insAfterBtn = document.getElementById('stgFormationInsertWaveAfterBtn');
+        if (insAfterBtn) insAfterBtn.addEventListener('click', insertWaveAfterCurrent);
         const removeWaveBtn = document.getElementById('stgFormationRemoveWaveBtn');
         if (removeWaveBtn) removeWaveBtn.addEventListener('click', removeCurrentWave);
 
         if (waveSelectEl) {
             waveSelectEl.addEventListener('change', () => {
                 readMetaFromInputs();
+                readHpFromInputs();
                 currentWaveIndex = parseInt(waveSelectEl.value, 10) || 0;
                 syncMetaInputsFromBuffer();
+                syncHpInputsFromBuffer();
                 refreshAllGrids();
             });
         }
-        [spawnIntervalInp, spiritRewardInp, nextDelayInp].forEach((inp) => {
+        [spawnIntervalInp, spiritRewardInp, nextDelayInp, waveEnemyHpMultInp].forEach((inp) => {
             if (inp) {
                 inp.addEventListener('change', () => {
                     readMetaFromInputs();
+                });
+            }
+        });
+        [hpBaseMultInp, hpLinearInp, hpAccelInp, enemyFireStopRowInp].forEach((inp) => {
+            if (inp) {
+                inp.addEventListener('change', () => {
+                    readHpFromInputs();
                 });
             }
         });

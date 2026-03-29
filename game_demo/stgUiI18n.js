@@ -15,11 +15,21 @@
         'toolbar.langToZh': '中文',
 
         'hint.controls':
-            '方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（需先升级选「封魔阵」或「梦想妙珠」） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · 升级三选一',
+            '方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（五格充能，<strong>充能点</strong>与<strong>擦弹</strong>小白球蓄能）默认「试做型封魔阵」；升级可抽 Q–V 分支强化（选 T 后改为梦想妙珠） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · 升级后棋盘右下提示，按 <strong>E</strong> 打开三选一（<strong>1/2/3</strong> 选择，暂停）',
 
-        'aside.title': '博丽灵梦 · 新属性（加成）',
+        'aside.title': '博丽灵梦 · 属性加成',
+        'aside.hideStats': '隐藏',
+        'aside.hideStatsTitle': '隐藏右侧属性加成面板',
+        'aside.showStats': '显示属性',
+        'aside.showStatsTitle': '展开右侧属性加成面板',
 
         'upgrade.title': '升级 — 三选一（博丽灵梦 · 构筑）',
+        'upgrade.subhint': '游戏已暂停 · 按键盘 <strong>1</strong> / <strong>2</strong> / <strong>3</strong> 选择',
+
+        'levelUp.badge': '升级',
+        'levelUp.key': 'E',
+        'levelUp.hintTitle': '按 E 打开升级三选一',
+        'levelUp.ariaOpen': '打开升级三选一',
 
         'result.titleWin': '🎉 通关！',
         'result.titleLose': '💀 本局结束',
@@ -28,12 +38,20 @@
         'result.restart': '🔄 重新开始',
         'result.hint': '也可点击顶栏「重新开始」',
 
+        'hud.hpLabel': '生命',
+        /** 离散生命格：当前为半格精度（如 3.5），max 为整格上限 */
+        'hud.hpDetail': '{cur} / {max} 格',
+        'hud.hpAria': '生命值 {cur} / {max} 格',
+        'hud.hpAriaIdle': '未开局',
+        'hud.expLabel': '经验',
         'hud.exp': 'Lv.{lv}  经验 {cur} / {next}',
         'hud.wave': '波次 {cur} / {w}  剩余敌 {en}  待出 {pending}',
         'hud.nextWaveNone': '下一波 —',
         'hud.nextWaveSoon': '下一波 即将',
         'hud.nextWaveSec': '下一波 {sec}s',
         'hud.time': '时间 {sec}s',
+        'hud.ultLabel': '大招（X）',
+        'hud.ultAria': '大招充能，共五格，按 X 消耗一格',
 
         'upgrade.pool_empty.name': '（无更多强化）',
         'upgrade.pool_empty.desc': '本局可抽取的构筑已全部获得。',
@@ -42,11 +60,36 @@
         'title.canvasSub': '点击「开始游戏」',
 
         'attackBuild.title': '攻击构筑',
-        'attackBuild.spreadHeading': '扩散攻击（Z）',
-        'attackBuild.focusHeading': '集中攻击（慢速）',
-        'attackBuild.ultHeading': '大招招式（X，非弹幕）',
+        'attackBuild.spreadHeading': '博丽御符（Z）',
+        'attackBuild.focusHeading': '伏魔针（慢速 · Shift）',
+        /** 未选大招分支时侧栏仅显示试做型封魔阵（不显示梦想妙珠） */
+        'attackBuild.ultHeadingNeutral': '试做型封魔阵（X）',
+        'attackBuild.ultHeading': '大招 · 试做型封魔阵 / 梦想妙珠（X）',
+        /** 侧栏：已选 Q 后显示（与 Q–S 分支强化名称一致） */
+        'attackBuild.ultNameSealUpgraded': '强化封魔阵（X）',
+        'attackBuild.ultNameDream': '梦想妙珠（X）',
         'attackBuild.upgradesLabel': '已选构筑',
+
+        /** 三选一卡牌顶栏：所属武器/体系（与《新玩法--STG模式》命名一致） */
+        'upgrade.weapon.spread': '博丽御符（Z）',
+        'upgrade.weapon.focusCrystal': '伏魔针 · 水晶',
+        'upgrade.weapon.focusRage': '伏魔针 · 狂怒',
+        /** Q–S 卡顶栏：强化封魔阵线（非默认试做型） */
+        'upgrade.weapon.ultSeal': '强化封魔阵',
+        'upgrade.weapon.ultDream': '梦想妙珠',
+        'upgrade.weapon.stat': '基础属性',
         'attackBuild.placeholder': '开始游戏后显示',
+        /** 左侧构筑统计图标悬停 / 读屏（名词不占用横向版面） */
+        'attackBuild.statGridAria': '武器数值',
+        'attackBuild.statTip.atk': '攻击力',
+        'attackBuild.statTip.aps': '攻速（发/秒）',
+        'attackBuild.statTip.spd': '弹速',
+        'attackBuild.statTip.crit': '暴击率',
+        /** 左侧四格内可见短标签（与 emoji 同列，非仅悬停 title） */
+        'attackBuild.statLabel.atk': '攻击',
+        'attackBuild.statLabel.aps': '攻速',
+        'attackBuild.statLabel.spd': '弹速',
+        'attackBuild.statLabel.crit': '暴击',
         'attackBuild.simple.atk': '攻击力：{v}',
         'attackBuild.simple.aps': '攻速：{v} 发/s',
         'attackBuild.simple.bulletSpd': '弹速：{v}',
@@ -63,11 +106,17 @@
         'toolbar.langToZh': '中文',
 
         'hint.controls':
-            'Move: Arrow keys · <strong>Z</strong> Main fire · <strong>X</strong> Ultimate (Seal / Dream orb; pick in upgrades first) · <strong>Shift</strong> Focus / hitbox · <strong>P</strong> pickups · Level-up pick 1 of 3',
+            'Move: Arrow keys · <strong>Z</strong> Main fire · <strong>X</strong> Ultimate (5 slots; <strong>charge pickups</strong> / <strong>graze</strong> orbs fill ult meter); Seal Prototype by default; upgrades Q–V (pick T for Dream Orb) · <strong>Shift</strong> Focus / hitbox · <strong>P</strong> pickups · Level-up: badge bottom-right, press <strong>E</strong> for pick 1/2/3 (pauses)',
 
-        'aside.title': 'Reimu Hakurei · Bonus Stats',
+        'aside.title': 'Reimu · Stat bonuses',
 
         'upgrade.title': 'Level Up — Pick 1 of 3 (Reimu · Build)',
+        'upgrade.subhint': 'Paused · Press <strong>1</strong> / <strong>2</strong> / <strong>3</strong> to choose',
+
+        'levelUp.badge': 'Lv up',
+        'levelUp.key': 'E',
+        'levelUp.hintTitle': 'Press E to open level-up choices',
+        'levelUp.ariaOpen': 'Open level-up upgrade panel',
 
         'result.titleWin': '🎉 Cleared!',
         'result.titleLose': '💀 Run Over',
@@ -76,12 +125,19 @@
         'result.restart': '🔄 Restart',
         'result.hint': 'You can also use Restart in the top bar.',
 
+        'hud.hpLabel': 'HP',
+        'hud.hpDetail': '{cur} / {max} cells',
+        'hud.hpAria': 'Life {cur} of {max} cells',
+        'hud.hpAriaIdle': 'Not started',
+        'hud.expLabel': 'EXP',
         'hud.exp': 'Lv.{lv}  EXP {cur} / {next}',
         'hud.wave': 'Wave {cur} / {w}  Enemies {en}  Pending {pending}',
         'hud.nextWaveNone': 'Next —',
         'hud.nextWaveSoon': 'Next wave soon',
         'hud.nextWaveSec': 'Next in {sec}s',
         'hud.time': 'Time {sec}s',
+        'hud.ultLabel': 'Ult (X)',
+        'hud.ultAria': 'Ultimate charges, five slots, press X to spend one',
 
         'upgrade.pool_empty.name': '(No upgrades left)',
         'upgrade.pool_empty.desc': 'All available build picks for this run are taken.',
@@ -90,11 +146,30 @@
         'title.canvasSub': 'Click 「Start」',
 
         'attackBuild.title': 'Attack build',
-        'attackBuild.spreadHeading': 'Spread (Z)',
-        'attackBuild.focusHeading': 'Focus (slow)',
-        'attackBuild.ultHeading': 'Ultimate (X, not bullets)',
+        'attackBuild.spreadHeading': 'Hakurei Ofuda (Z)',
+        'attackBuild.focusHeading': 'Fumashin (Focus · Shift)',
+        'attackBuild.ultHeadingNeutral': 'Seal Prototype (X)',
+        'attackBuild.ultHeading': 'Ultimate: Seal Prototype / Dream Orb (X)',
+        'attackBuild.ultNameSealUpgraded': 'Fortified Seal (X)',
+        'attackBuild.ultNameDream': 'Dream Orb (X)',
         'attackBuild.upgradesLabel': 'Picked',
+
+        'upgrade.weapon.spread': 'Hakurei Ofuda (Z)',
+        'upgrade.weapon.focusCrystal': 'Fumashin · Crystal',
+        'upgrade.weapon.focusRage': 'Fumashin · Rage',
+        'upgrade.weapon.ultSeal': 'Fortified Seal',
+        'upgrade.weapon.ultDream': 'Dream Orb',
+        'upgrade.weapon.stat': 'Base stats',
         'attackBuild.placeholder': 'Shown after Start',
+        'attackBuild.statGridAria': 'Weapon stats',
+        'attackBuild.statTip.atk': 'Attack',
+        'attackBuild.statTip.aps': 'Fire rate (/s)',
+        'attackBuild.statTip.spd': 'Bullet speed',
+        'attackBuild.statTip.crit': 'Crit chance',
+        'attackBuild.statLabel.atk': 'ATK',
+        'attackBuild.statLabel.aps': 'Fire/s',
+        'attackBuild.statLabel.spd': 'Spd',
+        'attackBuild.statLabel.crit': 'Crit',
         'attackBuild.simple.atk': 'ATK: {v}',
         'attackBuild.simple.aps': 'Fire rate: {v} /s',
         'attackBuild.simple.bulletSpd': 'Bullet spd: {v}',
@@ -108,101 +183,102 @@
      */
     const UPGRADE_EN = {
         spread_fan: {
-            name: 'Spread: Fan',
-            desc: 'Main attack becomes a fan; +2 spread bullets.'
+            name: 'Item A',
+            desc: 'Fan pattern; +2 spread bullets.'
         },
         spread_extra: {
-            name: 'Spread: Extra shots',
-            desc: 'Chance to fire extra bullets per attack.'
+            name: 'Item B',
+            desc: 'Chance to fire extra homing bullets; those can pierce twice (3 enemies).'
         },
         spread_turret: {
-            name: 'Spread: Turret',
-            desc: 'Side turret for 150% player ATK damage; follows you.'
+            name: 'Item C',
+            desc: 'Side turret: 150% player ATK, follows you.'
         },
         spread_homing: {
-            name: 'Spread: Homing',
-            desc: 'Bullets can home; damage −40%.'
+            name: 'Item D',
+            desc: 'Homing bullets; −40% damage.'
         },
         spread_yinyang: {
-            name: 'Spread: Yin-Yang orbs',
-            desc: 'Chance to spawn an orb for AoE damage.'
+            name: 'Item E',
+            desc: 'Every 10s: orb lasts 3s, orbits you, blocks enemy shots, and deals DoT (50% spread main hit/s) to touching enemies.'
         },
         spread_big_p: {
-            name: 'Spread: Large P',
-            desc: 'Kills with this mode may drop large P items.'
+            name: 'Item F',
+            desc: 'Kills may drop large P pickups.'
         },
         spread_crit: {
-            name: 'Spread: Crit',
-            desc: 'Higher crit chance for this attack mode.'
+            name: 'Item G',
+            desc: 'Higher crit chance for this attack.'
         },
         spread_big_energy: {
-            name: 'Spread: Large energy',
+            name: 'Item H',
             desc: 'Kills may drop large energy pickups.'
         },
         focus_crystal_base: {
-            name: 'Crystal: Crystal Arrow',
-            desc: 'Fire 6 crystals forward.'
+            name: 'Item I',
+            desc: 'Every 30 hits in focus: fire 6 crystals forward.'
         },
         focus_crystal_atk: {
-            name: 'Crystal: ATK',
+            name: 'Item J',
             desc: 'Crystal damage up.'
         },
         focus_crystal_count: {
-            name: 'Crystal: Count',
+            name: 'Item K',
             desc: 'More crystals.'
         },
         focus_crystal_pierce: {
-            name: 'Crystal: Pierce',
+            name: 'Item L',
             desc: 'Crystals pierce enemies.'
         },
         focus_rage_core: {
-            name: 'Rage: Stacks',
-            desc: 'In focus: every 5 kills adds Rage (ATK speed & bullet speed); 5s, max 3 stacks.'
+            name: 'Item M',
+            desc: 'Focus: every 5 kills adds Rage (fire & bullet spd); 5s, max 3 stacks.'
         },
         focus_rage_cap: {
-            name: 'Rage: Cap',
+            name: 'Item N',
             desc: 'Rage max stacks +3.'
         },
         focus_rage_dur: {
-            name: 'Rage: Duration',
+            name: 'Item O',
             desc: 'Rage duration +5s.'
         },
         focus_rage_weak: {
-            name: 'Rage: Weakness',
-            desc: 'At 5 stacks, enemies become weak (+20% damage taken).'
-        },
-        ult_seal_base: {
-            name: 'Seal: Barrier',
-            desc: 'Circular barrier around you: erases bullets and damages enemies.'
+            name: 'Item P',
+            desc: 'At 5 stacks on an enemy: weak (+20% damage taken).'
         },
         ult_seal_size: {
-            name: 'Seal: Size & duration',
+            name: 'Item Q',
             desc: 'Larger barrier, longer duration.'
         },
+        ult_seal_economy: {
+            name: 'Item R',
+            desc: 'Higher P value from converted bullets; move speed up while the seal lasts.'
+        },
         ult_seal_heal: {
-            name: 'Seal: Heal',
+            name: 'Item S',
             desc: 'Barrier heals and briefly boosts attack.'
         },
         ult_dream_base: {
-            name: 'Dream: Orbs',
-            desc: 'Fire 3 dream orbs: erase bullets, AoE damage.'
+            name: 'Item T',
+            desc: 'Switch to Dream Orbs: 3 orbs forward, heavy AoE damage.'
         },
         ult_dream_count: {
-            name: 'Dream: Count',
+            name: 'Item U',
             desc: 'More orbs.'
         },
         ult_dream_stun: {
-            name: 'Dream: Stun',
+            name: 'Item V',
             desc: 'Orbs can briefly stun enemies.'
         },
-        stat_hp: { name: 'Stat: HP', desc: 'Max HP up.' },
-        stat_regen: { name: 'Stat: Regen', desc: 'HP regen up.' },
-        stat_atk_all: { name: 'Stat: All ATK', desc: 'All attack damage up.' },
-        stat_fire: { name: 'Stat: Fire rate', desc: 'Fire rate up.' },
-        stat_bullet_spd: { name: 'Stat: Bullet speed', desc: 'Bullet speed up.' },
-        stat_move_spread: { name: 'Stat: Move (spread)', desc: 'Move speed in spread mode up.' },
-        stat_exp: { name: 'Stat: EXP', desc: 'EXP gain up.' },
-        stat_ult_charge: { name: 'Stat: Ult charge', desc: 'Ultimate charge rate up.' }
+        stat_hp: { name: 'Bonus 1', desc: '+1 life cell to max and current HP.' },
+        stat_regen: { name: 'Bonus 2', desc: 'HP regen up.' },
+        stat_atk_all: { name: 'Bonus 3', desc: 'All attack damage up.' },
+        stat_graze: { name: 'Bonus 10', desc: 'Graze orb ult meter gain up.' },
+        stat_fire: { name: 'Bonus 4', desc: 'Fire rate up.' },
+        stat_bullet_spd: { name: 'Bonus 5', desc: 'Bullet speed up.' },
+        stat_move_spread: { name: 'Bonus 6', desc: 'Move speed (spread mode) up.' },
+        stat_exp: { name: 'Bonus 7', desc: 'P pickup value up.' },
+        stat_ult_charge: { name: 'Bonus 9', desc: 'Energy pickup / ult cooldown value up.' }
     };
 
     function getLang() {
@@ -243,13 +319,47 @@
      */
     function getUpgradeDisplay(u) {
         if (!u) return { name: '', desc: '' };
-        if (!isEn()) return { name: u.name, desc: u.desc };
         if (u.id === 'pool_empty') {
             return { name: t('upgrade.pool_empty.name'), desc: t('upgrade.pool_empty.desc') };
         }
+        if (u.id === 'focus_crystal_base' && window.StgMode) {
+            if (typeof window.StgMode.getFocusCrystalBaseDesc === 'function' && !isEn()) {
+                return { name: u.name, desc: window.StgMode.getFocusCrystalBaseDesc() };
+            }
+            if (typeof window.StgMode.getFocusCrystalBaseDescEn === 'function' && isEn()) {
+                const en = UPGRADE_EN[u.id];
+                return {
+                    name: en ? en.name : u.name,
+                    desc: window.StgMode.getFocusCrystalBaseDescEn()
+                };
+            }
+        }
+        if (!isEn()) return { name: u.name, desc: u.desc };
         const en = UPGRADE_EN[u.id];
         if (en) return { name: en.name, desc: en.desc };
         return { name: u.name, desc: u.desc };
+    }
+
+    /**
+     * 三选一卡牌顶栏：所属武器体系（与 STG_UPGRADE_POOL.group 对应）
+     * @param {{ id?: string, group?: string }} u
+     * @returns {{ text: string, cssClass: string }}
+     */
+    function getUpgradeWeaponBadge(u) {
+        if (!u || u.id === 'pool_empty') {
+            return { text: '', cssClass: 'empty' };
+        }
+        const g = u.group || 'stat';
+        const map = {
+            spread: { key: 'upgrade.weapon.spread', cssClass: 'spread' },
+            focus_crystal: { key: 'upgrade.weapon.focusCrystal', cssClass: 'focus-crystal' },
+            focus_rage: { key: 'upgrade.weapon.focusRage', cssClass: 'focus-rage' },
+            ult_seal: { key: 'upgrade.weapon.ultSeal', cssClass: 'ult-seal' },
+            ult_dream: { key: 'upgrade.weapon.ultDream', cssClass: 'ult-dream' },
+            stat: { key: 'upgrade.weapon.stat', cssClass: 'stat' }
+        };
+        const m = map[g] || map.stat;
+        return { text: t(m.key), cssClass: m.cssClass };
     }
 
     function applyToolbar() {
@@ -263,13 +373,33 @@
         if (langBtn) langBtn.textContent = isEn() ? t('toolbar.langToZh') : t('toolbar.langToEn');
     }
 
+    function applyStgLevelUpHintLabels() {
+        const btn = document.getElementById('stgLevelUpHint');
+        if (!btn) return;
+        const textEl = btn.querySelector('.stg-level-up-hint-text');
+        const keyEl = btn.querySelector('.stg-level-up-hint-key');
+        if (textEl) textEl.textContent = t('levelUp.badge');
+        if (keyEl) keyEl.textContent = t('levelUp.key');
+        btn.setAttribute('title', t('levelUp.hintTitle'));
+        btn.setAttribute('aria-label', t('levelUp.ariaOpen'));
+    }
+
     function applyStaticStgPanels() {
         const hint = document.getElementById('stgHintBar');
         if (hint) hint.innerHTML = t('hint.controls');
-        const asideTitle = document.querySelector('.stg-aside-title');
+        const asideTitle = document.getElementById('stgAsideTitle') || document.querySelector('.stg-aside-title');
         if (asideTitle) asideTitle.textContent = t('aside.title');
-        const upTitle = document.querySelector('#stgUpgradeOverlay .stg-overlay-title');
+        if (typeof window.applyStgAsideToggleLabels === 'function') {
+            window.applyStgAsideToggleLabels();
+        }
+        const upTitle = document.getElementById('stgUpgradeTitle');
         if (upTitle) upTitle.textContent = t('upgrade.title');
+        const upSub = document.getElementById('stgUpgradeSubHint');
+        const modalRoot = document.getElementById('stgUpgradeModalRoot');
+        if (upSub && modalRoot && !modalRoot.classList.contains('hidden')) {
+            upSub.innerHTML = t('upgrade.subhint');
+        }
+        applyStgLevelUpHintLabels();
         const resBtn = document.getElementById('stgResultRestartBtn');
         if (resBtn) resBtn.textContent = t('result.restart');
         const resHint = document.querySelector('.stg-result-hint');
@@ -285,6 +415,9 @@
         applyStaticStgPanels();
         if (typeof window.refreshStgPlayerStatsPanel === 'function') {
             window.refreshStgPlayerStatsPanel();
+        }
+        if (typeof window.refreshStgReimuBonusAside === 'function') {
+            window.refreshStgReimuBonusAside();
         }
         if (window.StgMode && typeof window.StgMode.refreshUiLanguage === 'function') {
             window.StgMode.refreshUiLanguage();
@@ -307,9 +440,11 @@
         isEn,
         t,
         getUpgradeDisplay,
+        getUpgradeWeaponBadge,
         applyAll,
         applyToolbar,
         applyStaticStgPanels,
+        applyStgLevelUpHintLabels,
         init,
         toggleLang
     };

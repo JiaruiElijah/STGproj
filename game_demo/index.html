@@ -3,9 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 开发调试：减轻「改了 JS 仍像旧界面」的强缓存；正式部署可删 -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
     <title>STG 纵版射击</title>
-    <!-- ?v= 用于破坏浏览器缓存；修改 JS/CSS 后请改版本号否则可能一直用旧文件 -->
-    <link rel="stylesheet" href="styles.css?v=20260328c">
+    <!-- ?v= 用于破坏浏览器缓存；修改 JS/CSS 后请改版本号否则可能一直用旧文件。若界面未更新请 Ctrl+F5 强刷。 -->
+    <link rel="stylesheet" href="styles.css?v=20260331q">
 </head>
 <body>
     <!-- STG 纵版射击（默认首页） -->
@@ -15,33 +18,68 @@
                 <button type="button" class="open-shop-btn" id="stgOpenWaveFormationBtn" title="波次与阵型（唯一配置入口）">📋 波次阵型</button>
                 <button type="button" class="open-shop-btn" id="stgOpenMonsterEditorBtn" title="编辑敌人种类与 STG 弹幕">👹 怪物编辑器</button>
                 <button type="button" class="open-shop-btn" id="stgOpenHeroEditorBtn" title="英雄属性与物品栏数量">🦸 英雄编辑器</button>
-                <button type="button" class="open-shop-btn" id="stgOpenEnhanceItemsEditorBtn" title="自定义强化道具（合并入物品池）">📦 强化物品编辑器</button>
+                <button type="button" class="open-shop-btn" id="stgOpenStgBuildInventoryBtn" title="勾选本局开局持有的局内升级（与三选一池同源）">🧰 局内构筑道具</button>
                 <button type="button" class="open-shop-btn" id="stgOpenPlayerEditorBtn" title="移动判定与武器参数（普通/慢速/大招）">🎮 玩家与武器编辑器</button>
-                <button type="button" class="open-shop-btn" id="stgOpenScenePropsEditorBtn" title="P 点轨迹等场景道具">🧩 场景道具</button>
+                <button type="button" class="open-shop-btn" id="stgOpenScenePropsEditorBtn" title="P 点 / 充能点 外观与轨迹">🧩 场景道具</button>
                 <button type="button" class="open-shop-btn stg-primary-btn" id="stgStartBtn">▶ 开始游戏</button>
                 <button type="button" class="open-shop-btn hidden" id="stgRestartBtn">🔄 重新开始</button>
                 <button type="button" class="open-shop-btn" id="stgLangToggleBtn" title="切换界面语言 / UI language">English</button>
             </div>
             <div class="stg-body-row">
-                <aside id="stgAttackBuildPanel" class="stg-attack-build-aside" aria-label="当前攻击构筑与数值">
+                <aside class="stg-left-column" id="stgLeftColumn" aria-label="核心数值与攻击构筑">
+                    <div id="stgPriorityHud" class="stg-priority-hud">
+                        <div class="stg-priority-row">
+                            <span class="stg-priority-label" id="stgPriorityHpLabel">生命</span>
+                            <span id="stgPriorityHpCells" class="stg-priority-cells stg-priority-cells--life" role="img" aria-label="生命值"></span>
+                            <span id="stgPriorityHpDetail" class="stg-priority-hp-detail">—</span>
+                        </div>
+                        <div class="stg-priority-row">
+                            <span class="stg-priority-label" id="stgPriorityExpLabel">经验</span>
+                            <span id="stgPriorityExpCells" class="stg-priority-cells" role="img" aria-label="当前等级经验">
+                                <span class="stg-priority-cell"><span class="stg-priority-cell-inner"></span></span>
+                                <span class="stg-priority-cell"><span class="stg-priority-cell-inner"></span></span>
+                                <span class="stg-priority-cell"><span class="stg-priority-cell-inner"></span></span>
+                                <span class="stg-priority-cell"><span class="stg-priority-cell-inner"></span></span>
+                                <span class="stg-priority-cell"><span class="stg-priority-cell-inner"></span></span>
+                                <span class="stg-priority-cell"><span class="stg-priority-cell-inner"></span></span>
+                                <span class="stg-priority-cell"><span class="stg-priority-cell-inner"></span></span>
+                                <span class="stg-priority-cell"><span class="stg-priority-cell-inner"></span></span>
+                                <span class="stg-priority-cell"><span class="stg-priority-cell-inner"></span></span>
+                                <span class="stg-priority-cell"><span class="stg-priority-cell-inner"></span></span>
+                            </span>
+                            <span id="stgPriorityExpDetail" class="stg-priority-exp-detail">Lv.1 经验 —</span>
+                        </div>
+                        <div class="stg-priority-row stg-priority-row--ult">
+                            <span class="stg-priority-label" id="stgUltChargeLabel">大招（X）</span>
+                            <span id="stgUltChargeCells" class="stg-hud-ult-cells" role="img" aria-label="大招充能">
+                                <span class="stg-hud-ult-cell"><span class="stg-hud-ult-cell-inner"></span></span>
+                                <span class="stg-hud-ult-cell"><span class="stg-hud-ult-cell-inner"></span></span>
+                                <span class="stg-hud-ult-cell"><span class="stg-hud-ult-cell-inner"></span></span>
+                                <span class="stg-hud-ult-cell"><span class="stg-hud-ult-cell-inner"></span></span>
+                                <span class="stg-hud-ult-cell"><span class="stg-hud-ult-cell-inner"></span></span>
+                            </span>
+                        </div>
+                    </div>
+                    <div id="stgAttackBuildPanel" class="stg-attack-build-aside" aria-label="当前攻击构筑与数值">
                     <h3 id="stgAttackBuildTitle" class="stg-attack-build-title">攻击构筑</h3>
                     <div data-stg-attack-section="spread" class="stg-attack-section">
-                        <div id="stgAttackSpreadHeading" class="stg-attack-section-heading">扩散攻击（Z）</div>
-                        <ul id="stgAttackSpreadStats" class="stg-attack-stats"></ul>
+                        <div id="stgAttackSpreadHeading" class="stg-attack-section-heading">博丽御符（Z）</div>
+                        <div id="stgAttackSpreadStats" class="stg-attack-stat-grid" role="list"></div>
                         <div id="stgAttackSpreadUpgLabel" class="stg-attack-upgrades-label">已选构筑</div>
                         <div id="stgAttackSpreadUpgrades" class="stg-attack-upgrade-icons" role="list"></div>
                     </div>
                     <div data-stg-attack-section="focus" class="stg-attack-section">
-                        <div id="stgAttackFocusHeading" class="stg-attack-section-heading">集中攻击（慢速）</div>
-                        <ul id="stgAttackFocusStats" class="stg-attack-stats"></ul>
+                        <div id="stgAttackFocusHeading" class="stg-attack-section-heading">伏魔针（慢速 · Shift）</div>
+                        <div id="stgAttackFocusStats" class="stg-attack-stat-grid" role="list"></div>
                         <div id="stgAttackFocusUpgLabel" class="stg-attack-upgrades-label">已选构筑</div>
                         <div id="stgAttackFocusUpgrades" class="stg-attack-upgrade-icons" role="list"></div>
                     </div>
-                    <div data-stg-attack-section="ult" class="stg-attack-section">
-                        <div id="stgAttackUltHeading" class="stg-attack-section-heading">大招招式（X，非弹幕）</div>
-                        <ul id="stgAttackUltStats" class="stg-attack-stats"></ul>
+                    <div data-stg-attack-section="ult" class="stg-attack-section" data-stg-ult-variant="none">
+                        <div id="stgAttackUltHeading" class="stg-attack-section-heading">试做型封魔阵（X）</div>
+                        <div id="stgAttackUltStats" class="stg-attack-stat-grid" role="list"></div>
                         <div id="stgAttackUltUpgLabel" class="stg-attack-upgrades-label">已选构筑</div>
                         <div id="stgAttackUltUpgrades" class="stg-attack-upgrade-icons" role="list"></div>
+                    </div>
                     </div>
                 </aside>
                 <div class="stg-center-column">
@@ -49,31 +87,60 @@
                         <!-- 棋盘区单独一层：宽度仅由 canvas 决定，与下方 HUD 文案换行无关 -->
                         <div class="stg-board-slot">
                             <div class="stg-canvas-wrap">
-                                <canvas id="stgCanvas" width="540" height="765"></canvas>
+                                <canvas id="stgCanvas" width="720" height="945"></canvas>
+                                <button
+                                    type="button"
+                                    id="stgLevelUpHint"
+                                    class="stg-level-up-hint hidden"
+                                    aria-label="打开升级三选一"
+                                    title="按 E 打开升级（三选一）"
+                                >
+                                    <span class="stg-level-up-hint-icon" aria-hidden="true">⬆</span>
+                                    <span class="stg-level-up-hint-text">升级</span>
+                                    <kbd class="stg-level-up-hint-key">E</kbd>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- 升级三选一：全屏居中遮罩，由 stgMode 在按 E 时打开；局内暂停 -->
+                        <div
+                            id="stgUpgradeModalRoot"
+                            class="stg-upgrade-modal-root hidden"
+                            aria-hidden="true"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="stgUpgradeTitle"
+                        >
+                            <div class="stg-upgrade-modal-backdrop" aria-hidden="true"></div>
+                            <div id="stgUpgradeOverlay" class="stg-upgrade-panel-dialog" aria-label="升级三选一">
+                                <div class="stg-upgrade-panel-inner">
+                                    <div class="stg-upgrade-headline">
+                                        <h3 id="stgUpgradeTitle" class="stg-upgrade-panel-title">升级 — 三选一（博丽灵梦 · 构筑）</h3>
+                                        <p id="stgUpgradeSubHint" class="stg-upgrade-subhint" aria-live="polite"></p>
+                                    </div>
+                                    <div id="stgUpgradeCards" class="stg-upgrade-cards"></div>
+                                </div>
                             </div>
                         </div>
                         <div class="stg-meta-panel">
                             <div id="stgHudBar" class="stg-hud-bar">
-                                <span id="stgHpText" class="stg-hud-item">HP —</span>
-                                <span id="stgExpText" class="stg-hud-item">Lv.1 经验 —</span>
                                 <span id="stgWaveText" class="stg-hud-item">波次 —</span>
                                 <span id="stgNextWaveText" class="stg-hud-item">下一波 —</span>
                                 <span id="stgTimeText" class="stg-hud-item">时间 —</span>
                             </div>
-                            <p id="stgHintBar" class="stg-hint-bar">方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（需先升级选「封魔阵」或「梦想妙珠」） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · 升级三选一</p>
+                            <p id="stgHintBar" class="stg-hint-bar">方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（五格充能，<strong>充能点</strong>与<strong>擦弹</strong>小白球蓄能）默认「试做型封魔阵」；升级可抽 Q–V 分支强化（选 T 后改为梦想妙珠） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · 升级后右下提示，按 <strong>E</strong> 三选一（<strong>1/2/3</strong>，暂停）</p>
                         </div>
                     </div>
                 </div>
-                <aside class="stg-player-aside" aria-label="博丽灵梦 STG 新属性加成一览">
-                    <h3 class="stg-aside-title">博丽灵梦 · 新属性（加成）</h3>
-                    <div id="stgPlayerStatsList" class="player-stats-list stg-reimu-stats-list"></div>
+                <aside id="stgPlayerAside" class="stg-player-aside" aria-label="博丽灵梦 STG 属性加成（仅基础道具）">
+                    <div class="stg-aside-main">
+                        <div class="stg-aside-header-row">
+                            <h3 id="stgAsideTitle" class="stg-aside-title">博丽灵梦 · 属性加成</h3>
+                            <button type="button" id="stgAsideHideBtn" class="stg-aside-hide-btn open-shop-btn" title="隐藏">隐藏</button>
+                        </div>
+                        <div id="stgPlayerStatsList" class="player-stats-list stg-reimu-stats-list"></div>
+                    </div>
+                    <button type="button" id="stgAsideShowBtn" class="stg-aside-show-btn open-shop-btn" title="显示属性">显示属性</button>
                 </aside>
-            </div>
-        </div>
-        <div id="stgUpgradeOverlay" class="stg-overlay hidden" aria-label="升级三选一">
-            <div class="stg-overlay-inner">
-                <h3 class="stg-overlay-title">升级 — 三选一（博丽灵梦 · 构筑）</h3>
-                <div id="stgUpgradeCards" class="stg-upgrade-cards"></div>
             </div>
         </div>
         <div id="stgResultOverlay" class="stg-overlay hidden" aria-label="结算">
@@ -85,21 +152,57 @@
             </div>
         </div>
         <div id="stgPlayerEditorPanel" class="wave-config-panel hidden" aria-label="STG 玩家编辑器">
-            <div class="wave-config-panel-inner stg-player-editor-inner stg-player-editor-scroll">
+            <div class="wave-config-panel-inner stg-player-editor-inner">
                 <div class="wave-config-header">
                     <h3>玩家与武器编辑器</h3>
                     <button type="button" id="stgPlayerEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
                 </div>
                 <p class="wave-config-hint">保存到本地；点「应用」后当前局立即生效。「恢复默认」清除存档并按英雄模板重建自机（保留位置）。强化三选一仍叠加在射速/弹速/移速上。慢速武器未单独填写时沿用普通模式对应项。</p>
-                <div class="stg-player-editor-section-title">移动与判定</div>
-                <div class="stg-player-editor-fields">
-                    <label class="stg-player-editor-label">移速（px/s，60–520）<input type="number" id="stgPlayerEditMoveSpeed" min="60" max="520" step="10" value="200" /></label>
-                    <label class="stg-player-editor-label">慢速倍率（按住 Shift，0.05–0.98，越小越慢）<input type="number" id="stgPlayerEditFocusMult" min="0.05" max="0.98" step="0.01" value="0.34" title="在移速×局内强化后再乘此系数" /></label>
-                    <label class="stg-player-editor-label">判定点半径（px，2–48）<input type="number" id="stgPlayerEditHitRadius" min="2" max="48" step="1" value="24" /></label>
-                </div>
-                <div class="stg-player-editor-section-title">武器编辑器</div>
-                <p class="stg-player-editor-weapon-intro">每套武器填写<strong>基础攻击力</strong>；局内会再乘<strong>属性强化</strong>中的攻击力加成（如 attack_damage_bonus、总伤%、元素等）与<strong>三选一</strong>伤害加成。单发/扇形/环形<strong>发射参数</strong>仅在对应发射模式下显示。</p>
-                <div class="stg-player-editor-weapon-sub">普通模式（Z，不按 Shift）</div>
+                <div class="stg-player-editor-body-scroll">
+                <details class="stg-player-editor-section-details" open>
+                    <summary class="stg-player-editor-section-summary">移动与判定</summary>
+                    <div class="stg-player-editor-section-body">
+                        <div class="stg-player-editor-fields">
+                            <label class="stg-player-editor-label">移速（px/s，60–520）<input type="number" id="stgPlayerEditMoveSpeed" min="60" max="520" step="10" value="200" /></label>
+                            <label class="stg-player-editor-label">慢速倍率（按住 Shift，0.05–0.98，越小越慢）<input type="number" id="stgPlayerEditFocusMult" min="0.05" max="0.98" step="0.01" value="0.34" title="在移速×局内强化后再乘此系数" /></label>
+                            <label class="stg-player-editor-label">判定点半径（px，2–48）<input type="number" id="stgPlayerEditHitRadius" min="2" max="48" step="1" value="24" /></label>
+                            <label class="stg-player-editor-label">生命格数（整格，再乘局外生命加成；1–30）<input type="number" id="stgPlayerEditLifeCellsMax" min="1" max="30" step="1" value="6" title="每格含 2 个半格；敌弹通常扣半格，高攻击敌机子弹扣 1 格" /></label>
+                            <label class="stg-player-editor-label">受伤后无敌（毫秒，0=关闭）<input type="number" id="stgPlayerEditHitInvulnMs" min="0" max="20000" step="50" value="2000" title="敌弹与激光不伤血；可与消弹时长分别调" /></label>
+                            <label class="stg-player-editor-label">受伤后持续消敌弹（毫秒，0=仅当帧清屏）<input type="number" id="stgPlayerEditHitBulletClearMs" min="0" max="20000" step="50" value="1200" title="该时段内每帧清空敌弹数组；激光仍可能伤害除非无敌覆盖" /></label>
+                            <label class="stg-player-editor-label">受伤拉回出生点停滞（毫秒，0=关闭）<input type="number" id="stgPlayerEditHitSpawnHoldMs" min="0" max="30000" step="50" value="1000" title="敌弹/机体接触受伤后强制回到开局位置，期间无法移动与射击" /></label>
+                            <details class="stg-player-editor-section-details stg-player-graze-details" open>
+                                <summary class="stg-player-editor-section-summary">擦弹（敌弹掠过判定点 → 小白球吸附 + 大招蓄能）</summary>
+                                <div class="stg-player-editor-section-body stg-player-editor-fields">
+                                    <label class="stg-player-editor-label"><input type="checkbox" id="stgPlayerEditGrazeEnabled" checked /> 启用擦弹</label>
+                                    <label class="stg-player-editor-label">擦弹环宽度（px，0 关闭环；受击圆外侧额外距离，2–120）<input type="number" id="stgPlayerEditGrazeExtraPx" min="0" max="120" step="1" value="32" title="敌弹中心在「受击半径+敌弹半径」外、且在此宽度内时触发" /></label>
+                                    <label class="stg-player-editor-label">触发所需本帧位移（px/s 帧位移下限，0.2–20）<input type="number" id="stgPlayerEditGrazeMinMovePx" min="0.2" max="20" step="0.1" value="0.9" title="敌弹每帧必须移动超过此距离才可能擦弹" /></label>
+                                    <label class="stg-player-editor-label">蓄能收益（与充能点同量纲，乘局内道具9；1–80）<input type="number" id="stgPlayerEditGrazeMeterGain" min="1" max="80" step="1" value="6" /></label>
+                                    <label class="stg-player-editor-label">小白球半径（px，2–16）<input type="number" id="stgPlayerEditGrazeOrbRadius" min="2" max="16" step="1" value="5" /></label>
+                                    <label class="stg-player-editor-label">吸附速度（px/s，60–1200）<input type="number" id="stgPlayerEditGrazeOrbSpeed" min="60" max="1200" step="10" value="480" /></label>
+                                    <label class="stg-player-editor-label">光晕强度（0.05–1）<input type="number" id="stgPlayerEditGrazeOrbGlow" min="0.05" max="1" step="0.05" value="0.65" /></label>
+                                    <label class="stg-player-editor-label">擦弹外椭圆 · 水平倍率（左右宽，乘「环宽度」；0.2–3）<input type="number" id="stgPlayerEditGrazeEllH" min="0.2" max="3" step="0.02" value="1.42" title="Rx = 受击+弹半径 + 环宽×本值" /></label>
+                                    <label class="stg-player-editor-label">擦弹外椭圆 · 垂直倍率（上下窄，乘「环宽度」；0.2–3）<input type="number" id="stgPlayerEditGrazeEllV" min="0.2" max="3" step="0.02" value="0.76" title="Ry = 受击+弹半径 + 环宽×本值" /></label>
+                                    <label class="stg-player-editor-label">慢速模式机体透明度（0.08–1，越小越淡）<input type="number" id="stgPlayerEditFocusShipAlpha" min="0.08" max="1" step="0.02" value="0.42" /></label>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </details>
+                <details class="stg-player-editor-section-details" open>
+                    <summary class="stg-player-editor-section-summary">等级与经验槽</summary>
+                    <div class="stg-player-editor-section-body">
+                        <p class="stg-player-editor-mini-hint">从当前等级升到下一级所需经验 = <strong>基础经验</strong> + (当前等级−1)×<strong>每级线性增量</strong> + (当前等级−1)²×<strong>加速系数</strong>。加速系数为 0 时与旧版「100 + (L−1)×40」一致；增大加速系数后，高等级时升级条会变长得<strong>越来越快</strong>。</p>
+                        <div class="stg-player-editor-fields">
+                            <label class="stg-player-editor-label">基础经验（Lv1→Lv2 的槽长，1–500000）<input type="number" id="stgPlayerEditExpBase" min="1" max="500000" step="1" value="100" /></label>
+                            <label class="stg-player-editor-label">每级线性增量（0–50000，每升一级在基础上多出的固定部分）<input type="number" id="stgPlayerEditExpLinear" min="0" max="50000" step="1" value="40" /></label>
+                            <label class="stg-player-editor-label">加速系数（按等级平方，0–5000；&gt;0 时后期每级增长越来越快）<input type="number" id="stgPlayerEditExpAccel" min="0" max="5000" step="0.1" value="0" /></label>
+                        </div>
+                    </div>
+                </details>
+                <details class="stg-player-editor-section-details">
+                    <summary class="stg-player-editor-section-summary">武器编辑器 · 普通模式（Z）</summary>
+                    <div class="stg-player-editor-section-body">
+                <p class="stg-player-editor-weapon-intro">每套武器填写<strong>基础攻击力</strong>；局内会再乘<strong>属性强化</strong>与<strong>三选一</strong>伤害加成。<strong>发射模式</strong>及单发/扇形/环形专属参数收在下方折叠块内，避免与基础属性混杂。</p>
                 <div class="stg-player-editor-fields">
                     <label class="stg-player-editor-label">武器攻击力（基础值，0.5–9999）<input type="number" id="stgPlayerEditMainAttack" min="0.5" max="9999" step="0.5" value="10" title="再乘强化攻击力加成与局内三选一" /></label>
                     <label class="stg-player-editor-label">子弹半径（px，碰撞与大体尺寸，2–24）<input type="number" id="stgPlayerEditBulletRadius" min="2" max="24" step="1" value="4" /></label>
@@ -112,25 +215,39 @@
                     </label>
                     <label class="stg-player-editor-label">射速间隔（ms，40–400，越小越快）<input type="number" id="stgPlayerEditFireInterval" min="40" max="400" step="10" value="160" /></label>
                     <label class="stg-player-editor-label">弹幕速度（px/s，120–900）<input type="number" id="stgPlayerEditBulletSpeed" min="120" max="900" step="10" value="420" /></label>
-                    <label class="stg-player-editor-label">发射模式（决定下列可选参数）
-                        <select id="stgPlayerEditEmitStyle">
-                            <option value="single">单发（竖直）</option>
-                            <option value="fan">扇形</option>
-                            <option value="ring">环形</option>
-                        </select>
+                    <label class="stg-player-editor-label stg-player-editor-inline-check">
+                        <input type="checkbox" id="stgPlayerEditBulletPierce" />
+                        <span>允许穿透（同一发子弹可连续命中多名敌人）</span>
                     </label>
-                    <div id="stgPlayerMainSingleRow" class="stg-player-editor-fields">
-                        <label class="stg-player-editor-label">子弹数量（单发并列，1–5）<input type="number" id="stgPlayerEditSingleCount" min="1" max="5" step="1" value="1" /></label>
-                    </div>
-                    <div id="stgPlayerMainFanRow" class="stg-player-editor-fields hidden">
-                        <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditFanCount" min="2" max="24" value="5" /></label>
-                        <label class="stg-player-editor-label">扇形张角（°，10–180）<input type="number" id="stgPlayerEditFanSpread" min="10" max="180" value="60" /></label>
-                    </div>
-                    <div id="stgPlayerMainRingRow" class="stg-player-editor-fields hidden">
-                        <label class="stg-player-editor-label">环形发数（3–36）<input type="number" id="stgPlayerEditRingCount" min="3" max="36" value="12" /></label>
-                    </div>
+                    <label id="stgPlayerMainPierceHitsRow" class="stg-player-editor-label hidden">最多命中敌人数（含首次，2–20）<input type="number" id="stgPlayerEditBulletPierceHits" min="2" max="20" step="1" value="3" title="关闭穿透时忽略此项" /></label>
+                    <details class="stg-player-editor-emit-details">
+                        <summary class="stg-player-editor-emit-summary">发射模式与弹道参数（单发 / 扇形 / 环形）</summary>
+                        <div class="stg-player-editor-emit-body">
+                            <label class="stg-player-editor-label">发射模式
+                                <select id="stgPlayerEditEmitStyle">
+                                    <option value="single">单发（竖直）</option>
+                                    <option value="fan">扇形</option>
+                                    <option value="ring">环形</option>
+                                </select>
+                            </label>
+                            <div id="stgPlayerMainSingleRow" class="stg-player-editor-fields stg-player-editor-style-sub">
+                                <label class="stg-player-editor-label">子弹数量（单发并列，1–5）<input type="number" id="stgPlayerEditSingleCount" min="1" max="5" step="1" value="1" /></label>
+                            </div>
+                            <div id="stgPlayerMainFanRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
+                                <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditFanCount" min="2" max="24" value="5" /></label>
+                                <label class="stg-player-editor-label">扇形张角（°，10–180）<input type="number" id="stgPlayerEditFanSpread" min="10" max="180" value="60" /></label>
+                            </div>
+                            <div id="stgPlayerMainRingRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
+                                <label class="stg-player-editor-label">环形发数（3–36）<input type="number" id="stgPlayerEditRingCount" min="3" max="36" value="12" /></label>
+                            </div>
+                        </div>
+                    </details>
                 </div>
-                <div class="stg-player-editor-weapon-sub">慢速模式（Z + 按住 Shift，集中移动）</div>
+                    </div>
+                </details>
+                <details class="stg-player-editor-section-details">
+                    <summary class="stg-player-editor-section-summary">武器编辑器 · 慢速模式（Z + Shift）</summary>
+                    <div class="stg-player-editor-section-body">
                 <div class="stg-player-editor-fields">
                     <label class="stg-player-editor-label">武器攻击力（基础值）<input type="number" id="stgPlayerEditFocusAttack" min="0.5" max="9999" step="0.5" value="10" /></label>
                     <label class="stg-player-editor-label">子弹半径（px，2–24）<input type="number" id="stgPlayerEditFocusBulletRadius" min="2" max="24" step="1" value="4" /></label>
@@ -143,25 +260,40 @@
                     </label>
                     <label class="stg-player-editor-label">射速间隔（ms，40–400）<input type="number" id="stgPlayerEditFocusFireInterval" min="40" max="400" step="10" value="160" title="默认与普通模式一致；可单独改" /></label>
                     <label class="stg-player-editor-label">弹幕速度（px/s，120–900）<input type="number" id="stgPlayerEditFocusBulletSpeed" min="120" max="900" step="10" value="420" /></label>
-                    <label class="stg-player-editor-label">发射模式
-                        <select id="stgPlayerEditFocusEmitStyle">
-                            <option value="single">单发（竖直）</option>
-                            <option value="fan">扇形</option>
-                            <option value="ring">环形</option>
-                        </select>
+                    <label class="stg-player-editor-label stg-player-editor-inline-check">
+                        <input type="checkbox" id="stgPlayerEditFocusBulletPierce" />
+                        <span>允许穿透（同一发子弹可连续命中多名敌人）</span>
                     </label>
-                    <div id="stgPlayerFocusSingleRow" class="stg-player-editor-fields">
-                        <label class="stg-player-editor-label">子弹数量（1–5）<input type="number" id="stgPlayerEditFocusSingleCount" min="1" max="5" step="1" value="1" /></label>
-                    </div>
-                    <div id="stgPlayerFocusFanRow" class="stg-player-editor-fields hidden">
-                        <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditFocusFanCount" min="2" max="24" value="5" /></label>
-                        <label class="stg-player-editor-label">扇形张角（°）<input type="number" id="stgPlayerEditFocusFanSpread" min="10" max="180" value="60" /></label>
-                    </div>
-                    <div id="stgPlayerFocusRingRow" class="stg-player-editor-fields hidden">
-                        <label class="stg-player-editor-label">环形发数（3–36）<input type="number" id="stgPlayerEditFocusRingCount" min="3" max="36" value="12" /></label>
-                    </div>
+                    <label id="stgPlayerFocusPierceHitsRow" class="stg-player-editor-label hidden">最多命中敌人数（含首次，2–20）<input type="number" id="stgPlayerEditFocusBulletPierceHits" min="2" max="20" step="1" value="3" /></label>
+                    <details class="stg-player-editor-emit-details">
+                        <summary class="stg-player-editor-emit-summary">发射模式与弹道参数（单发 / 扇形 / 环形）</summary>
+                        <div class="stg-player-editor-emit-body">
+                            <label class="stg-player-editor-label">发射模式
+                                <select id="stgPlayerEditFocusEmitStyle">
+                                    <option value="single">单发（竖直）</option>
+                                    <option value="fan">扇形</option>
+                                    <option value="ring">环形</option>
+                                </select>
+                            </label>
+                            <div id="stgPlayerFocusSingleRow" class="stg-player-editor-fields stg-player-editor-style-sub">
+                                <label class="stg-player-editor-label">子弹数量（1–5）<input type="number" id="stgPlayerEditFocusSingleCount" min="1" max="5" step="1" value="1" /></label>
+                            </div>
+                            <div id="stgPlayerFocusFanRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
+                                <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditFocusFanCount" min="2" max="24" value="5" /></label>
+                                <label class="stg-player-editor-label">扇形张角（°）<input type="number" id="stgPlayerEditFocusFanSpread" min="10" max="180" value="60" /></label>
+                            </div>
+                            <div id="stgPlayerFocusRingRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
+                                <label class="stg-player-editor-label">环形发数（3–36）<input type="number" id="stgPlayerEditFocusRingCount" min="3" max="36" value="12" /></label>
+                            </div>
+                        </div>
+                    </details>
                 </div>
-                <div class="stg-player-editor-weapon-sub">大招参数（仅影响封魔阵/妙珠伤害与间隔；不发射弹幕）</div>
+                    </div>
+                </details>
+                <details class="stg-player-editor-section-details">
+                    <summary class="stg-player-editor-section-summary">武器编辑器 · 大招（默认试做型封魔阵 / 分支梦想妙珠）</summary>
+                    <div class="stg-player-editor-section-body">
+                <p class="stg-player-editor-mini-hint"><strong>试做型封魔阵</strong>为局内<strong>默认大招</strong>（按 X），不在升级三选一道具池中；局内 Q–S 与 T–V 二选一随机强化。局内<strong>五格大招</strong>靠拾取<strong>充能点</strong>蓄满阈值 +1 格，每格按 X 发动一次；下方「初始充能格数」为开局已有格数。下列数值为攻击力、间隔、冷却等共用参数；选道具 T 后 X 改为梦想妙珠。</p>
                 <div class="stg-player-editor-fields">
                     <label class="stg-player-editor-label">武器攻击力（基础值）<input type="number" id="stgPlayerEditSkillAttack" min="0.5" max="9999" step="0.5" value="10" /></label>
                     <label class="stg-player-editor-label">子弹半径（px，2–24）<input type="number" id="stgPlayerEditSkillBulletRadius" min="2" max="24" step="1" value="4" /></label>
@@ -174,26 +306,40 @@
                     </label>
                     <label class="stg-player-editor-label">触发间隔（ms，40–400）<input type="number" id="stgPlayerEditSkillFireIv" min="40" max="400" step="10" value="120" title="按住 X 时两次大招招式的最短间隔" /></label>
                     <label class="stg-player-editor-label">额外冷却（ms，0 关闭）<input type="number" id="stgPlayerEditSkillCooldown" min="0" max="60000" step="100" value="0" title="每次大招后追加等待" /></label>
+                    <label class="stg-player-editor-label">大招初始充能格数（0–5）<input type="number" id="stgPlayerEditUltInitialCharges" min="0" max="5" step="1" value="0" title="开局已拥有的可发动次数；每格按 X 消耗；其余格靠拾取充能点蓄满阈值" /></label>
                     <label class="stg-player-editor-label">弹幕速度（px/s）<input type="number" id="stgPlayerEditSkillBulletSpeed" min="120" max="900" step="10" value="420" /></label>
-                    <label class="stg-player-editor-label">发射模式
-                        <select id="stgPlayerEditSkillEmitStyle">
-                            <option value="single">单发（竖直）</option>
-                            <option value="fan">扇形</option>
-                            <option value="ring">环形</option>
-                        </select>
+                    <label class="stg-player-editor-label stg-player-editor-inline-check">
+                        <input type="checkbox" id="stgPlayerEditSkillBulletPierce" />
+                        <span>允许穿透（若将来使用技能弹幕时生效）</span>
                     </label>
-                    <div id="stgPlayerSkillSingleRow" class="stg-player-editor-fields">
-                        <label class="stg-player-editor-label">子弹数量（1–5）<input type="number" id="stgPlayerEditSkillSingleCount" min="1" max="5" step="1" value="1" /></label>
-                    </div>
-                    <div id="stgPlayerSkillFanRow" class="stg-player-editor-fields hidden">
-                        <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditSkillFanCount" min="2" max="24" value="5" /></label>
-                        <label class="stg-player-editor-label">扇形张角（°）<input type="number" id="stgPlayerEditSkillFanSpread" min="10" max="180" value="60" /></label>
-                    </div>
-                    <div id="stgPlayerSkillRingRow" class="stg-player-editor-fields hidden">
-                        <label class="stg-player-editor-label">环形发数（3–36）<input type="number" id="stgPlayerEditSkillRingCount" min="3" max="36" value="12" /></label>
-                    </div>
+                    <label id="stgPlayerSkillPierceHitsRow" class="stg-player-editor-label hidden">最多命中敌人数（含首次，2–20）<input type="number" id="stgPlayerEditSkillBulletPierceHits" min="2" max="20" step="1" value="3" /></label>
+                    <details class="stg-player-editor-emit-details">
+                        <summary class="stg-player-editor-emit-summary">发射模式与弹道参数（单发 / 扇形 / 环形）</summary>
+                        <div class="stg-player-editor-emit-body">
+                            <label class="stg-player-editor-label">发射模式
+                                <select id="stgPlayerEditSkillEmitStyle">
+                                    <option value="single">单发（竖直）</option>
+                                    <option value="fan">扇形</option>
+                                    <option value="ring">环形</option>
+                                </select>
+                            </label>
+                            <div id="stgPlayerSkillSingleRow" class="stg-player-editor-fields stg-player-editor-style-sub">
+                                <label class="stg-player-editor-label">子弹数量（1–5）<input type="number" id="stgPlayerEditSkillSingleCount" min="1" max="5" step="1" value="1" /></label>
+                            </div>
+                            <div id="stgPlayerSkillFanRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
+                                <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditSkillFanCount" min="2" max="24" value="5" /></label>
+                                <label class="stg-player-editor-label">扇形张角（°）<input type="number" id="stgPlayerEditSkillFanSpread" min="10" max="180" value="60" /></label>
+                            </div>
+                            <div id="stgPlayerSkillRingRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
+                                <label class="stg-player-editor-label">环形发数（3–36）<input type="number" id="stgPlayerEditSkillRingCount" min="3" max="36" value="12" /></label>
+                            </div>
+                        </div>
+                    </details>
                 </div>
-                <div class="wave-config-actions stg-player-editor-actions">
+                    </div>
+                </details>
+                </div>
+                <div class="wave-config-actions stg-player-editor-actions stg-player-editor-actions-bar">
                     <button type="button" id="stgPlayerEditorResetBtn" class="open-shop-btn">恢复默认</button>
                     <button type="button" id="stgPlayerEditorApplyBtn" class="open-shop-btn">应用并关闭</button>
                 </div>
@@ -205,27 +351,99 @@
                     <h3>场景道具编辑器</h3>
                     <button type="button" id="stgScenePropsEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
                 </div>
-                <p class="wave-config-hint">配置<strong>怪物死亡掉落的 P 点</strong>运动方式。保存到本地；「应用」后<strong>新产生</strong>的 P 点生效，已存在的 P 点保持原轨迹。</p>
-                <div class="stg-player-editor-section-title">P 点轨迹</div>
-                <div class="stg-player-editor-fields">
-                    <label class="stg-player-editor-label">轨迹类型
-                        <select id="stgScenePropsTrajectory">
-                            <option value="straight_down">直线向下</option>
-                            <option value="arc_up_down">先向上再向下</option>
-                        </select>
-                    </label>
-                    <div id="stgScenePropsStraightRow" class="stg-player-editor-fields">
-                        <label class="stg-player-editor-label">下落速度（px/s，20–400）<input type="number" id="stgScenePropsStraightVy" min="20" max="400" step="5" value="80" /></label>
+                <p class="wave-config-hint"><strong>P 点</strong>（经验）与<strong>充能点</strong>（大招蓄能）可分别设置<strong>形状、大小、轨迹类型与速率</strong>；<strong>已擦弹敌弹</strong>的显示透明度可单独调。弧线模式下上抛/下落可选匀速或多种曲线。保存到本地；「应用」后<strong>新产生</strong>的掉落物生效。</p>
+                <div class="stg-scene-props-editor-body">
+                    <div class="stg-scene-props-kind-section">
+                        <div class="stg-player-editor-section-title">P 点（经验）</div>
+                        <div class="stg-player-editor-fields stg-scene-props-editor-fields-root">
+                            <label class="stg-player-editor-label">形状
+                                <select id="stgScenePropsPShape" title="局内显示与拾取范围一致">
+                                    <option value="circle">圆形</option>
+                                    <option value="square">方形</option>
+                                    <option value="diamond">菱形</option>
+                                </select>
+                            </label>
+                            <label class="stg-player-editor-label">大小（像素，10–48，外接尺寸）<input type="number" id="stgScenePropsPSizePx" min="10" max="48" step="1" value="20" /></label>
+                            <label class="stg-player-editor-label">已擦弹敌弹透明度（0.05–0.98，填充 alpha）<input type="number" id="stgScenePropsGrazedBulletAlpha" min="0.05" max="0.98" step="0.02" value="0.38" title="由玩家编辑器擦弹触发后，敌弹变淡" /></label>
+                            <label class="stg-player-editor-label">轨迹类型
+                                <select id="stgScenePropsTrajectory">
+                                    <option value="straight_down">直线向下</option>
+                                    <option value="arc_up_down">先向上再向下</option>
+                                </select>
+                            </label>
+                            <div id="stgScenePropsStraightRow" class="stg-scene-props-subfields">
+                                <label class="stg-player-editor-label">下落速度（px/s，20–400）<input type="number" id="stgScenePropsStraightVy" min="20" max="400" step="5" value="80" /></label>
+                            </div>
+                            <div id="stgScenePropsArcRow" class="stg-scene-props-subfields hidden">
+                                <label class="stg-player-editor-label">上抛速度（px/s，40–400）<input type="number" id="stgScenePropsArcUpSpeed" min="40" max="400" step="10" value="120" /></label>
+                                <label class="stg-player-editor-label">上抛速率变化
+                                    <select id="stgScenePropsArcUpSpeedMode" title="匀速：固定向上速度。曲线：按弧段时间插值位移；先慢后快/先快后慢/两端慢中间快见各选项">
+                                        <option value="uniform">匀速</option>
+                                        <option value="ease_in">曲线（先慢后快）</option>
+                                        <option value="ease_out">曲线（先快后慢）</option>
+                                        <option value="ease_in_out">曲线（两端慢·中间快）</option>
+                                    </select>
+                                </label>
+                                <label class="stg-player-editor-label">弧顶高度（像素，相对出生点向上，10–220）<input type="number" id="stgScenePropsArcPeakPx" min="10" max="220" step="5" value="55" /></label>
+                                <label class="stg-player-editor-label">下落速度（px/s，40–600）<input type="number" id="stgScenePropsArcDownSpeed" min="40" max="600" step="5" value="85" /></label>
+                                <label class="stg-player-editor-label">下落速率变化
+                                    <select id="stgScenePropsArcDownSpeedMode" title="匀速：固定下落速度。曲线（先慢后快）：竖直速度从 0 趋近目标。曲线（先快后慢）：初速高于目标再趋近目标">
+                                        <option value="uniform">匀速</option>
+                                        <option value="ease_in">曲线（先慢后快）</option>
+                                        <option value="ease_out">曲线（先快后慢）</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
                     </div>
-                    <div id="stgScenePropsArcRow" class="stg-player-editor-fields hidden">
-                        <label class="stg-player-editor-label">上抛速度（px/s，40–400）<input type="number" id="stgScenePropsArcUpSpeed" min="40" max="400" step="10" value="120" /></label>
-                        <label class="stg-player-editor-label">弧顶高度（像素，相对出生点向上，10–220）<input type="number" id="stgScenePropsArcPeakPx" min="10" max="220" step="5" value="55" /></label>
-                        <label class="stg-player-editor-label">下落速度（px/s，40–600）<input type="number" id="stgScenePropsArcDownSpeed" min="40" max="600" step="5" value="85" /></label>
+                    <div class="stg-scene-props-kind-section">
+                        <div class="stg-player-editor-section-title">充能点（大招蓄能）</div>
+                        <p class="stg-scene-props-charge-hint">在<strong>怪物编辑器</strong>中为种类勾选「击杀掉落充能点」后击杀会额外掉落；仅加<strong>大招蓄能</strong>，不加升级经验。</p>
+                        <div class="stg-player-editor-fields stg-scene-props-editor-fields-root">
+                            <label class="stg-player-editor-label">形状
+                                <select id="stgScenePropsCShape">
+                                    <option value="square">方形</option>
+                                    <option value="circle">圆形</option>
+                                    <option value="diamond">菱形</option>
+                                </select>
+                            </label>
+                            <label class="stg-player-editor-label">大小（像素，10–48）<input type="number" id="stgScenePropsCSizePx" min="10" max="48" step="1" value="22" /></label>
+                            <label class="stg-player-editor-label">轨迹类型
+                                <select id="stgScenePropsCTrajectory">
+                                    <option value="straight_down">直线向下</option>
+                                    <option value="arc_up_down">先向上再向下</option>
+                                </select>
+                            </label>
+                            <div id="stgScenePropsCStraightRow" class="stg-scene-props-subfields">
+                                <label class="stg-player-editor-label">下落速度（px/s，20–400）<input type="number" id="stgScenePropsCStraightVy" min="20" max="400" step="5" value="80" /></label>
+                            </div>
+                            <div id="stgScenePropsCArcRow" class="stg-scene-props-subfields hidden">
+                                <label class="stg-player-editor-label">上抛速度（px/s，40–400）<input type="number" id="stgScenePropsCArcUpSpeed" min="40" max="400" step="10" value="120" /></label>
+                                <label class="stg-player-editor-label">上抛速率变化
+                                    <select id="stgScenePropsCArcUpSpeedMode">
+                                        <option value="uniform">匀速</option>
+                                        <option value="ease_in">曲线（先慢后快）</option>
+                                        <option value="ease_out">曲线（先快后慢）</option>
+                                        <option value="ease_in_out">曲线（两端慢·中间快）</option>
+                                    </select>
+                                </label>
+                                <label class="stg-player-editor-label">弧顶高度（像素，10–220）<input type="number" id="stgScenePropsCArcPeakPx" min="10" max="220" step="5" value="55" /></label>
+                                <label class="stg-player-editor-label">下落速度（px/s，40–600）<input type="number" id="stgScenePropsCArcDownSpeed" min="40" max="600" step="5" value="85" /></label>
+                                <label class="stg-player-editor-label">下落速率变化
+                                    <select id="stgScenePropsCArcDownSpeedMode">
+                                        <option value="uniform">匀速</option>
+                                        <option value="ease_in">曲线（先慢后快）</option>
+                                        <option value="ease_out">曲线（先快后慢）</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <label class="stg-player-editor-label">单颗基础蓄能数值（5–500）<input type="number" id="stgScenePropsChargeValue" min="5" max="500" step="5" value="45" title="再 × 怪物编辑器倍率" /></label>
+                        </div>
                     </div>
                 </div>
-                <div class="wave-config-actions stg-player-editor-actions">
+                <div class="wave-config-actions stg-player-editor-actions stg-scene-props-editor-actions">
                     <button type="button" id="stgScenePropsEditorResetBtn" class="open-shop-btn">恢复默认</button>
-                    <button type="button" id="stgScenePropsEditorApplyBtn" class="open-shop-btn">应用并关闭</button>
+                    <button type="button" id="stgScenePropsEditorApplyBtn" class="open-shop-btn stg-primary-btn">应用并关闭</button>
                 </div>
             </div>
         </div>
@@ -243,21 +461,17 @@
         <div id="enhancePlayerStatsList"></div>
     </div>
 
-    <!-- 强化物品编辑器：本地 JSON 合并入 ITEM_POOL，同 id 覆盖 enhance_items.json -->
-    <div id="enhanceItemsEditorPanel" class="wave-config-panel hidden" aria-label="强化物品编辑器">
+    <!-- STG 局内构筑道具：勾选后下局开局自动持有（localStorage stg_build_inventory_granted） -->
+    <div id="stgBuildInventoryPanel" class="wave-config-panel hidden" aria-label="STG 局内构筑道具">
         <div class="wave-config-panel-inner tower-editor-inner">
             <div class="wave-config-header">
-                <h3>强化物品编辑器</h3>
-                <button type="button" id="enhanceItemsEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+                <h3>局内构筑道具</h3>
+                <button type="button" id="stgBuildInventoryCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
             </div>
-            <p class="wave-config-hint">在此添加的条目会保存到浏览器本地，并<strong>合并</strong>进物品池（<code>category</code> 固定为「强化」）。与 <code>obj_list/enhance_items.json</code> 中<strong>相同 id</strong> 时，以本编辑器为准。<code>effects</code> 为对象，键名与 <code>player_stats</code> / 前台强化一致（如 <code>attack_damage_bonus</code> 小数表示加成）。</p>
-            <div class="stg-formation-toolbar" style="flex-wrap:wrap;gap:8px;">
-                <button type="button" id="enhanceItemsEditorAddBtn" class="open-shop-btn">＋ 添加一条</button>
-                <button type="button" id="enhanceItemsEditorImportBtn" class="open-shop-btn" title="把当前物品池中已有强化项复制到列表中再编辑">从物品池导入强化项</button>
-            </div>
-            <div id="enhanceItemsEditorList" class="wave-config-list"></div>
+            <p class="wave-config-hint">勾选<strong>本局开局</strong>即持有的升级（与 <code>stgMode.js</code> 中 <code>STG_UPGRADE_POOL</code> 一致）。未选前置卡时不会在三选一里出现后续卡；此处勾选子卡会自动隐含前置（如 R→含 Q）。水晶/狂怒、封魔阵线/妙珠线<strong>互斥</strong>。保存后<strong>重新开始</strong>或<strong>开始游戏</strong>时生效。与「玩家强化物品栏」（局外 meta）无关。</p>
+            <div id="stgBuildInventoryList" class="wave-config-list stg-build-inv-list"></div>
             <div class="wave-config-actions">
-                <button type="button" id="enhanceItemsEditorApplyBtn" class="open-shop-btn stg-primary-btn">应用并保存</button>
+                <button type="button" id="stgBuildInventoryApplyBtn" class="open-shop-btn stg-primary-btn">保存并关闭</button>
             </div>
         </div>
     </div>
@@ -292,7 +506,7 @@
                 <h3>怪物编辑器</h3>
                 <button type="button" id="monsterEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
             </div>
-            <p class="wave-config-hint"><strong>此处为全局最高优先级：</strong>敌人生命、攻击、移速、金币、检测范围、<strong>碰撞半径</strong>等均由本面板决定，并保存到本地；战斗中生成敌人时<strong>只读此处</strong>，波次配置不再覆盖数值。<strong>STG 纵版射击</strong>另可编辑每种怪的<strong>弹幕类型</strong>（瞄准玩家 / 直线向下 / 随机 / <strong>无弹幕</strong>）、弹幕冷却与敌弹速度。</p>
+            <p class="wave-config-hint monster-editor-top-hint"><strong>此处为全局最高优先级：</strong>敌人生命、攻击、移速、金币、检测范围、<strong>碰撞半径</strong>等均由本面板决定，并保存到本地；战斗中生成敌人时<strong>只读此处</strong>，波次配置不再覆盖数值。<strong>STG 纵版射击</strong>另可编辑每种怪的<strong>弹幕类型</strong>（瞄准玩家 / 直线向下 / 随机 / <strong>无弹幕</strong>）、弹幕冷却与敌弹速度。<span class="monster-editor-fold-tip">下方每种怪默认折叠，点击标题行展开。</span></p>
             <div class="monster-editor-add-bar">
                 <label class="monster-editor-add-label" for="monsterEditorNewIdInput">新种类 ID</label>
                 <input type="text" id="monsterEditorNewIdInput" class="monster-editor-new-id-input" maxlength="32" placeholder="英文/数字/下划线，如 elite_1" autocomplete="off" />
@@ -312,12 +526,29 @@
                 <h3>波次阵型编辑器</h3>
                 <button type="button" id="stgWaveFormationCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
             </div>
-            <p class="wave-config-hint"><strong>种类与数量仅由下方格子决定</strong>。三块棋盘为主战场上/左/右延伸；<strong>左键按住拖动</strong>可连续摆放；<strong>右键</strong>擦除一格。同一格多只怪可写 <code>type1|type2</code>（需分次填入或导入）。「出兵间隔 / 灵力 / 下一波」为全局节奏参数；出怪顺序与格子遍历顺序一致（同类型合并为连续组）。旧存档仅有种类+数量时，会尝试摆到上棋盘以便编辑。</p>
+            <p class="wave-config-hint"><strong>种类与数量仅由下方格子决定</strong>。三块棋盘为主战场上/左/右延伸；<strong>左键按住拖动</strong>可连续摆放；<strong>右键</strong>擦除一格。同一格多只怪可写 <code>type1|type2</code>（需分次填入或导入）。用<strong>「在此波前/后插入」</strong>可在任意两波之间加入新波并自动选中新波编辑；选最后一波再点「之后插入」即末尾追加。「出兵间隔 / 灵力 / 下一波 / <strong>本波血量倍率</strong>」随当前波次变化；出怪顺序与格子遍历顺序一致（同类型合并为连续组）。旧存档仅有种类+数量时，会尝试摆到上棋盘以便编辑。</p>
+            <div class="stg-formation-hp-scale-block">
+                <div class="stg-formation-hp-scale-title">怪物血量倍率（按当前波次）</div>
+                <p class="stg-formation-hp-scale-hint">以<strong>怪物编辑器</strong>中该种类的血量为基准，在下方「当前波次」一行中设置<strong>本波敌人血量倍率</strong>（每一波可单独填写）。<strong>全局随波次自动增长公式已暂时禁用</strong>；旧档里若仍含「基础/线性/加速」系数，仅用于<strong>首次打开面板时</strong>把未写倍率的波次换算成数值，保存后即写入各波的 <code>enemyHpMult</code>。</p>
+                <div class="stg-formation-hp-scale-inputs stg-formation-hp-legacy-hidden" style="display:none" aria-hidden="true">
+                    <label class="stg-formation-hp-label">（兼容存档）基础倍率<input type="number" id="stgFormationHpBaseMult" class="stg-formation-num" min="0.05" max="100" step="0.01" value="1" tabindex="-1" /></label>
+                    <label class="stg-formation-hp-label">（兼容存档）线性系数<input type="number" id="stgFormationHpLinear" class="stg-formation-num" min="-5" max="5" step="0.001" value="0" tabindex="-1" /></label>
+                    <label class="stg-formation-hp-label">（兼容存档）加速系数<input type="number" id="stgFormationHpAccel" class="stg-formation-num" min="-2" max="2" step="0.0001" value="0" tabindex="-1" /></label>
+                </div>
+            </div>
+            <div class="stg-formation-fire-stop-block">
+                <div class="stg-formation-hp-scale-title">敌弹停火判定（全局 · 按行）</div>
+                <p class="stg-formation-hp-scale-hint">主战场棋盘<strong>从上往下</strong>数第几行（与 STG 棋盘行一致）。敌人<strong>中心 Y 到达或超过该行下沿</strong>后，不再发射<strong>战斗弹幕</strong>；<strong>未进入棋盘前</strong>也不发射。死后弹幕不受影响。留空=不启用。旧存档若仅有像素线，打开面板时会按约 45px/行估算成行号。</p>
+                <div class="stg-formation-hp-scale-inputs">
+                    <label class="stg-formation-hp-label">停火行号（1=最上行下沿，空=不启用）<input type="number" id="stgFormationEnemyFireStopRow" class="stg-formation-num" min="1" max="21" step="1" placeholder="" title="与主棋盘行数一致；窗口变化时格高会变，行号不变则停火带始终对齐同一行" /></label>
+                </div>
+            </div>
             <div class="stg-formation-toolbar">
                 <label class="stg-formation-label">当前波次
                     <select id="stgFormationWaveSelect" class="stg-formation-select"></select>
                 </label>
-                <button type="button" id="stgFormationAddWaveBtn" class="open-shop-btn">＋ 添加波次</button>
+                <button type="button" id="stgFormationInsertWaveBeforeBtn" class="open-shop-btn" title="在当前选中波次与上一波之间插入空波（含默认节奏/血量倍率）">在此波前插入</button>
+                <button type="button" id="stgFormationInsertWaveAfterBtn" class="open-shop-btn" title="在当前选中波次与下一波之间插入空波；若当前为最后一波则追加在末尾">在此波后插入</button>
                 <button type="button" id="stgFormationRemoveWaveBtn" class="open-shop-btn">删除当前波</button>
             </div>
             <div class="stg-formation-toolbar stg-formation-wave-meta">
@@ -329,6 +560,9 @@
                 </label>
                 <label class="stg-formation-label">下一波倒计时（秒）
                     <input type="number" id="stgFormationNextDelaySec" class="stg-formation-num" min="0" value="15" />
+                </label>
+                <label class="stg-formation-label">本波敌人血量倍率（相对怪物编辑器基础血）
+                    <input type="number" id="stgFormationWaveEnemyHpMult" class="stg-formation-num" min="0.05" max="500" step="0.05" value="1" title="该波所有敌人 maxHp 先乘此倍率再取整" />
                 </label>
             </div>
             <div class="stg-formation-toolbar">
@@ -357,16 +591,16 @@
         </div>
     </div>
 
-    <script src="pageManager.js?v=20260328c"></script>
-    <script src="stgUiI18n.js?v=20260328d"></script>
-    <script src="stgMode.js?v=20260328c"></script>
-    <script src="stgPlayerEditorPanel.js?v=20260328c"></script>
-    <script src="stgScenePropsEditorPanel.js?v=20260328c"></script>
-    <script src="stgWaveFormationPanel.js?v=20260328c"></script>
-    <script src="monsterEditorPanel.js?v=20260328c"></script>
-    <script src="heroEditorPanel.js?v=20260328c"></script>
-    <script src="enhanceItemsEditorPanel.js?v=20260328d"></script>
-    <script src="game.js?v=20260328d"></script>
+    <script src="pageManager.js?v=20260329z"></script>
+    <script src="stgUiI18n.js?v=20260331q"></script>
+    <script src="stgMode.js?v=20260331v"></script>
+    <script src="stgBuildInventoryPanel.js?v=20260331o"></script>
+    <script src="stgPlayerEditorPanel.js?v=20260331l"></script>
+    <script src="stgScenePropsEditorPanel.js?v=20260329z"></script>
+    <script src="stgWaveFormationPanel.js?v=20260331f"></script>
+    <script src="monsterEditorPanel.js?v=20260331u"></script>
+    <script src="heroEditorPanel.js?v=20260329z"></script>
+    <script src="game.js?v=20260331q"></script>
     <!-- Debug 工具栏：固定定位，不参与文档流，不影响游戏布局 -->
     <div id="debugToolbar" class="debug-toolbar">
         <span class="debug-toolbar-label">Debug</span>

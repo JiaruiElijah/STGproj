@@ -1,4 +1,9 @@
 {
+  "enemyHpScale": {
+    "baseMult": 1,
+    "linearPerWave": 0,
+    "accelPerWaveSq": 0
+  },
   "waves": [
     {
       "waveNumber": 1,

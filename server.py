@@ -29,6 +29,10 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        # 本地开发：避免浏览器强缓存 HTML/JS/CSS，与 index.html 的 ?v= 双保险
+        path_clean = self.path.split('?')[0]
+        if path_clean.endswith(('.html', '.js', '.css')):
+            self.send_header('Cache-Control', 'no-store, must-revalidate')
         # 设置JSON文件的Content-Type
         if self.path.endswith('.json'):
             self.send_header('Content-Type', 'application/json; charset=utf-8')

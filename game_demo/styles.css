@@ -1694,89 +1694,153 @@ body {
     padding: 16px 20px;
 }
 
-/* 怪物编辑器行 */
-.monster-editor-row {
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    margin-bottom: 12px;
-    overflow: hidden;
+/* 怪物编辑器：列表区紧凑 + 每条默认折叠 */
+#monsterEditorPanel #monsterEditorList.wave-config-list {
+    padding: 8px 10px 12px;
 }
-.monster-editor-row-head {
+#monsterEditorPanel .monster-editor-top-hint {
+    font-size: 12px;
+    line-height: 1.45;
+    margin-bottom: 8px;
+}
+.monster-editor-fold-tip {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #1a5276;
+}
+
+.monster-editor-row {
+    border: 1px solid #cfd8dc;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    overflow: hidden;
+    background: #fff;
+}
+.monster-editor-details {
+    margin: 0;
+    border: none;
+}
+.monster-editor-summary {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 8px 12px;
-    background: #f8f9fa;
-    font-weight: bold;
-    font-size: 13px;
-}
-.monster-editor-id { color: #555; }
-.monster-editor-remove-type {
+    gap: 6px 10px;
+    padding: 6px 10px;
+    cursor: pointer;
+    list-style: none;
     font-size: 12px;
-    padding: 4px 10px;
+    background: linear-gradient(180deg, #f5f7f8, #eef1f3);
+    border-bottom: 1px solid #e0e4e7;
+    user-select: none;
+}
+.monster-editor-summary::-webkit-details-marker {
+    display: none;
+}
+.monster-editor-chevron {
+    display: inline-block;
+    font-size: 10px;
+    color: #546e7a;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+}
+.monster-editor-details[open] > .monster-editor-summary .monster-editor-chevron {
+    transform: rotate(90deg);
+}
+.monster-editor-summary-icon {
+    font-size: 1.1em;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.monster-editor-id {
+    font-size: 11px;
+    font-weight: 700;
+    color: #37474f;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+.monster-editor-preview {
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    color: #607d8b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.monster-editor-remove-type {
+    font-size: 11px;
+    padding: 2px 8px;
     font-weight: 600;
+    margin-left: auto;
+    flex-shrink: 0;
 }
 .monster-editor-remove-type:disabled {
     opacity: 0.45;
     cursor: not-allowed;
 }
+.monster-editor-details-inner {
+    padding: 0;
+}
+
 .monster-editor-add-bar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 10px 14px;
-    padding: 10px 12px;
-    margin-bottom: 10px;
+    gap: 8px 10px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
     background: #eef6ff;
     border: 1px solid #cfe2f3;
-    border-radius: 8px;
+    border-radius: 6px;
 }
 .monster-editor-add-label {
-    font-size: 13px;
+    font-size: 12px;
     color: #2c3e50;
     font-weight: 600;
     margin: 0;
 }
 .monster-editor-new-id-input {
     flex: 1;
-    min-width: 180px;
-    max-width: 320px;
-    padding: 6px 10px;
+    min-width: 140px;
+    max-width: 280px;
+    padding: 4px 8px;
     border: 1px solid #aac;
     border-radius: 4px;
-    font-size: 13px;
+    font-size: 12px;
 }
 .monster-editor-row-body {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 16px;
-    padding: 12px;
+    gap: 4px 10px;
+    padding: 8px 10px;
 }
-.monster-editor-row-body label { font-size: 12px; color: #666; min-width: 48px; }
+.monster-editor-row-body label { font-size: 11px; color: #666; min-width: 44px; }
 .monster-editor-row-body input {
-    padding: 4px 8px;
+    padding: 3px 6px;
     border: 1px solid #ccc;
-    border-radius: 4px;
-    font-size: 13px;
+    border-radius: 3px;
+    font-size: 12px;
 }
-.monster-editor-row-body input[type="number"] { width: 64px; }
-.monster-editor-empty { text-align: center; color: #999; padding: 20px; margin: 0; }
+.monster-editor-row-body input[type="number"] { width: 56px; }
+.monster-editor-empty { text-align: center; color: #999; padding: 16px; margin: 0; font-size: 12px; }
 
 .monster-editor-stg-block {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 12px;
-    padding: 10px 12px 12px;
+    gap: 8px;
+    padding: 8px 10px 10px;
     background: linear-gradient(180deg, #f0f7ff, #fafcff);
     border-top: 1px dashed #cfe2f3;
 }
 .monster-editor-stg-title {
     width: 100%;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
     color: #1a5276;
     margin-bottom: 0;
@@ -1784,52 +1848,60 @@ body {
 .monster-editor-stg-section {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid rgba(26, 82, 118, 0.12);
+    gap: 5px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(26, 82, 118, 0.1);
 }
 .monster-editor-stg-section:last-child {
     border-bottom: none;
     padding-bottom: 0;
 }
-.monster-editor-stg-section-title {
+.monster-stg-burst-hint {
+    margin: 0 0 6px;
     font-size: 11px;
+    line-height: 1.4;
+    color: #5d6d7e;
+}
+.monster-editor-stg-section-title {
+    font-size: 10px;
     font-weight: 700;
     color: #1a5276;
     letter-spacing: 0.02em;
     margin: 0;
+    text-transform: none;
 }
 .monster-stg-row {
     display: grid;
-    grid-template-columns: 108px minmax(0, 1fr);
+    grid-template-columns: 92px minmax(0, 1fr);
     align-items: center;
-    gap: 8px 12px;
+    gap: 4px 8px;
     width: 100%;
 }
 .monster-stg-row > label {
-    font-size: 12px;
+    font-size: 11px;
     color: #555;
     margin: 0;
     text-align: right;
-    padding-right: 4px;
+    padding-right: 2px;
 }
 .monster-editor-stg-block input[type="number"] {
     width: 100%;
-    max-width: 220px;
-    padding: 4px 8px;
+    max-width: 200px;
+    padding: 3px 6px;
     border: 1px solid #aac;
-    border-radius: 4px;
-    font-size: 13px;
+    border-radius: 3px;
+    font-size: 12px;
     box-sizing: border-box;
 }
 .monster-editor-stg-block select.monster-stg-danmaku-style,
-.monster-editor-stg-block select.monster-stg-main-dir {
+.monster-editor-stg-block select.monster-stg-main-dir,
+.monster-editor-stg-block select.monster-stg-move-mode {
     width: 100%;
-    max-width: 320px;
-    padding: 6px 8px;
+    max-width: 100%;
+    padding: 4px 6px;
     border: 1px solid #aac;
-    border-radius: 4px;
-    font-size: 13px;
+    border-radius: 3px;
+    font-size: 11px;
     box-sizing: border-box;
 }
 /**
@@ -1847,8 +1919,257 @@ body {
 .monster-stg-emit-when-row.hidden,
 .monster-stg-bullet-speed-row.hidden,
 .monster-stg-bullet-props-wrap.hidden,
-.monster-stg-homing-row.hidden {
+.monster-stg-homing-row.hidden,
+.monster-stg-burst-section.hidden {
     display: none !important;
+}
+
+/* 玩家强化物品栏（从池设置持有数） */
+.player-enh-inv-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: min(70vh, 520px);
+}
+.player-enh-inv-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid #dfe6e9;
+    border-radius: 6px;
+    background: #fafbfc;
+    font-size: 12px;
+}
+.player-enh-inv-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+.player-enh-inv-icon {
+    font-size: 1.25em;
+    flex-shrink: 0;
+}
+.player-enh-inv-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 10px;
+}
+.player-enh-inv-desc {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #5d6d7e;
+}
+.player-enh-inv-effects {
+    margin: 0;
+    padding: 6px 8px;
+    background: rgba(236, 240, 241, 0.9);
+    border-radius: 4px;
+    border: 1px solid #e8ecef;
+    font-size: 11px;
+    line-height: 1.45;
+}
+.player-enh-inv-effects-empty {
+    color: #95a5a6;
+    font-style: italic;
+}
+.player-enh-inv-effect-line {
+    color: #34495e;
+}
+.player-enh-inv-effect-line + .player-enh-inv-effect-line {
+    margin-top: 2px;
+}
+.player-enh-inv-name {
+    font-weight: 600;
+    color: #2c3e50;
+}
+.player-enh-inv-id {
+    font-size: 10px;
+    color: #7f8c8d;
+    background: #ecf0f1;
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+.player-enh-inv-rarity {
+    font-size: 10px;
+    color: #8e44ad;
+}
+.player-enh-inv-count-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: 12px;
+    color: #555;
+    flex-shrink: 0;
+}
+.player-enh-inv-count {
+    width: 56px;
+    padding: 4px 6px;
+    font-size: 13px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+/* STG 局内构筑道具（勾选开局持有） */
+.stg-build-inv-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: min(70vh, 560px);
+    overflow: auto;
+}
+.stg-build-inv-section {
+    border: 1px solid #dfe6e9;
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: #fafbfc;
+}
+.stg-build-inv-section-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #2c3e50;
+    margin-bottom: 8px;
+}
+.stg-build-inv-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 12px;
+    cursor: pointer;
+}
+.stg-build-inv-row input[type='checkbox'] {
+    flex-shrink: 0;
+    margin-top: 3px;
+}
+.stg-build-inv-row-content {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.stg-build-inv-line1 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    width: 100%;
+}
+.stg-build-inv-line1 .stg-build-inv-toggle {
+    margin-left: auto;
+}
+.stg-build-inv-icon {
+    flex-shrink: 0;
+}
+.stg-build-inv-name {
+    font-weight: 600;
+    color: #333;
+}
+.stg-build-inv-id {
+    font-size: 10px;
+    color: #7f8c8d;
+}
+.stg-build-inv-req {
+    font-size: 10px;
+    color: #95a5a6;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+/** 与三选一池同源 desc，便于在编辑器中辨认 */
+.stg-build-inv-desc {
+    font-size: 11px;
+    line-height: 1.45;
+    color: #5d6d7e;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(236, 240, 241, 0.85);
+    border-left: 3px solid rgba(52, 152, 219, 0.45);
+}
+.stg-build-inv-item {
+    border-bottom: 1px solid #ecf0f1;
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+}
+.stg-build-inv-item:last-child {
+    border-bottom: none;
+}
+.stg-build-inv-toggle {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    border: 1px solid #bdc3c7;
+    border-radius: 4px;
+    background: #fff;
+}
+.stg-build-inv-detail {
+    margin: 6px 0 4px 26px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: #fff;
+    border: 1px solid #dfe6e9;
+    font-size: 11px;
+}
+.stg-build-inv-detail.hidden {
+    display: none;
+}
+.stg-build-inv-detail-inner--empty {
+    color: #7f8c8d;
+}
+.stg-build-inv-detail-title {
+    font-weight: 700;
+    color: #2c3e50;
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+.stg-build-inv-detail-subtitle {
+    font-size: 10px;
+    font-weight: 600;
+    color: #7f8c8d;
+    margin: 10px 0 6px;
+    text-transform: none;
+}
+.stg-build-inv-detail-subtitle:first-of-type {
+    margin-top: 0;
+}
+.stg-build-inv-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+.stg-build-inv-field select,
+.stg-build-inv-field input[type='number'] {
+    min-width: 100px;
+    max-width: 160px;
+    padding: 2px 6px;
+    font-size: 12px;
+}
+.stg-build-inv-field input[type='color'] {
+    width: 44px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid #ccc;
+    cursor: pointer;
+}
+.stg-build-inv-detail-hint {
+    margin: 8px 0 0;
+    font-size: 10px;
+    color: #95a5a6;
+    line-height: 1.4;
+}
+.stg-build-inv-detail-placeholder {
+    margin: 0;
 }
 
 .tower-editor-inner { max-width: 720px; }
@@ -2609,7 +2930,7 @@ body {
 
 /* ========== STG 纵版射击 ========== */
 .stg-container {
-    max-width: 980px;
+    max-width: 1180px;
     margin: 0 auto;
     display: flex;
     flex-direction: column;
@@ -2647,11 +2968,82 @@ body {
 }
 .stg-player-editor-inner,
 .stg-scene-props-editor-inner {
-    max-width: 520px;
+    max-width: 760px;
 }
-.stg-player-editor-scroll {
-    max-height: min(88vh, 720px);
+/** 玩家编辑器：中间可滚动，避免整卡 flex 子项被压扁导致 summary 重叠 */
+#stgPlayerEditorPanel.wave-config-panel .wave-config-panel-inner.stg-player-editor-inner {
+    width: min(720px, calc(100vw - 24px));
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+    align-self: center;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    max-height: min(92vh, 900px);
+    overflow: hidden;
+}
+#stgPlayerEditorPanel .stg-player-editor-body-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+}
+#stgPlayerEditorPanel .stg-player-editor-actions-bar {
+    flex-shrink: 0;
+    background: linear-gradient(180deg, rgba(250, 251, 252, 0.98) 0%, #fff 35%);
+    border-top: 1px solid #e8ecef;
+    box-shadow: 0 -6px 14px rgba(0, 0, 0, 0.04);
+}
+/** 玩家编辑器：大区块折叠（移动 / 等级 / 三套武器） */
+.stg-player-editor-section-details {
+    margin: 10px 12px 12px;
+    padding: 0;
+    border: 1px solid #dfe6e9;
+    border-radius: 10px;
+    background: rgba(252, 253, 254, 0.96);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.stg-player-editor-section-details > summary.stg-player-editor-section-summary {
+    cursor: pointer;
+    list-style: none;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 16px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.45;
+    color: #2c3e50;
+    background: linear-gradient(180deg, rgba(236, 240, 241, 0.65) 0%, rgba(250, 251, 252, 0.4) 100%);
+    border-bottom: 1px solid transparent;
+}
+.stg-player-editor-section-details[open] > summary.stg-player-editor-section-summary {
+    border-bottom-color: #ecf0f1;
+}
+.stg-player-editor-section-details > summary.stg-player-editor-section-summary::-webkit-details-marker {
+    display: none;
+}
+.stg-player-editor-section-details > summary.stg-player-editor-section-summary::before {
+    content: '▸ ';
+    display: inline-block;
+    transition: transform 0.15s ease;
+    margin-right: 4px;
+}
+.stg-player-editor-section-details[open] > summary.stg-player-editor-section-summary::before {
+    transform: rotate(90deg);
+}
+.stg-player-editor-section-body {
+    padding: 8px 10px 14px;
+}
+.stg-player-editor-mini-hint {
+    margin: 0 0 10px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #5d6d7e;
 }
 .stg-player-editor-weapon-intro {
     margin: 0 0 10px;
@@ -2681,6 +3073,54 @@ body {
     gap: 12px;
     margin: 12px 0 8px;
 }
+/* 发射模式折叠：扇形/环形专属参数仅在展开且选中对应模式时出现（由 JS 控制 hidden） */
+.stg-player-editor-emit-details {
+    margin: 4px 0 8px;
+    padding: 8px 10px;
+    border: 1px solid #dfe6e9;
+    border-radius: 8px;
+    background: rgba(236, 240, 241, 0.45);
+}
+.stg-player-editor-emit-summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #2c3e50;
+    list-style: none;
+}
+.stg-player-editor-emit-summary::-webkit-details-marker {
+    display: none;
+}
+.stg-player-editor-emit-summary::before {
+    content: '▸ ';
+    display: inline-block;
+    transition: transform 0.15s ease;
+}
+.stg-player-editor-emit-details[open] .stg-player-editor-emit-summary::before {
+    transform: rotate(90deg);
+}
+.stg-player-editor-emit-body {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.stg-player-editor-style-sub {
+    margin: 0;
+    padding-left: 6px;
+    border-left: 2px solid rgba(52, 152, 219, 0.35);
+}
+.stg-player-editor-inline-check {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
+}
+.stg-player-editor-inline-check input[type='checkbox'] {
+    width: auto;
+    max-width: none;
+    margin-top: 3px;
+    flex-shrink: 0;
+}
 .stg-player-editor-label {
     display: flex;
     flex-direction: column;
@@ -2703,15 +3143,53 @@ body {
     padding: 12px 16px 18px;
 }
 
-/* STG：玩家编辑器 / 场景道具 — 弹层卡片水平居中、表单与标题对齐 */
-#stgPlayerEditorPanel.wave-config-panel .wave-config-panel-inner,
+/* STG：场景道具保持较窄（玩家编辑器宽度见上 #stgPlayerEditorPanel … stg-player-editor-inner） */
+/** 场景道具编辑器：中间可滚动、底部按钮固定可见（避免 wave-config-panel-inner 的 overflow:hidden 裁掉操作栏） */
 #stgScenePropsEditorPanel.wave-config-panel .wave-config-panel-inner {
-    width: min(440px, calc(100vw - 32px));
-    max-width: 440px;
+    width: min(520px, calc(100vw - 24px));
+    max-width: 520px;
+    max-height: min(88vh, 820px);
     margin-left: auto;
     margin-right: auto;
     align-self: center;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#stgScenePropsEditorPanel .stg-scene-props-editor-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+#stgScenePropsEditorPanel .stg-scene-props-editor-actions {
+    flex-shrink: 0;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 14px 16px 16px;
+    background: linear-gradient(180deg, rgba(250, 251, 252, 0.98) 0%, #fff 40%);
+    border-top: 1px solid #e8ecef;
+    box-shadow: 0 -6px 14px rgba(0, 0, 0, 0.04);
+}
+#stgScenePropsEditorPanel .stg-scene-props-editor-fields-root {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-bottom: 16px;
+}
+#stgScenePropsEditorPanel .stg-scene-props-subfields {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 0 4px;
+    margin: 0;
+}
+#stgScenePropsEditorPanel .stg-player-editor-section-title {
+    margin-top: 4px;
+    margin-bottom: 2px;
 }
 #stgPlayerEditorPanel .wave-config-header,
 #stgScenePropsEditorPanel .wave-config-header {
@@ -2753,7 +3231,7 @@ body {
 #stgPlayerEditorPanel .stg-player-editor-label,
 #stgScenePropsEditorPanel .stg-player-editor-label {
     width: 100%;
-    max-width: 380px;
+    max-width: 560px;
     align-items: stretch;
     text-align: left;
 }
@@ -2765,6 +3243,7 @@ body {
     width: 100%;
 }
 
+/** STG 主行：横向 flex 三栏（左构筑 / 中棋盘 / 右属性），与网格方案相比更不易把侧栏压成细条 */
 .stg-body-row {
     display: flex;
     flex-direction: row;
@@ -2775,65 +3254,308 @@ body {
     flex: 1;
     min-height: 0;
 }
-/** STG 左侧：三种攻击方式数值 + 已选三选一 */
-.stg-attack-build-aside {
-    flex: 0 0 248px;
-    width: 248px;
+/** STG 左侧：顶部核心数值（生命/经验/大招格）+ 下方攻击构筑 */
+.stg-left-column {
+    flex: 0 0 300px;
+    width: 300px;
     max-width: 100%;
     max-height: min(78vh, 720px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    box-sizing: border-box;
+}
+.stg-priority-hud {
+    flex-shrink: 0;
+    padding: 10px 10px 8px;
+    background: rgba(255, 255, 255, 0.98);
+    border-radius: 12px;
+    border: 1px solid rgba(44, 62, 80, 0.15);
+    box-shadow: 0 3px 14px rgba(0, 0, 0, 0.1);
+    font-size: 11px;
+    color: #2c3e50;
+}
+.stg-priority-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    margin-bottom: 8px;
+}
+.stg-priority-row:last-child {
+    margin-bottom: 0;
+}
+.stg-priority-label {
+    flex: 0 0 auto;
+    min-width: 2.8em;
+    font-weight: 800;
+    color: #2c3e50;
+    letter-spacing: 0.04em;
+}
+.stg-priority-row--ult .stg-priority-label {
+    color: #1a5c2a;
+}
+.stg-priority-row--ult .stg-hud-ult-cells {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.stg-scene-props-charge-hint {
+    font-size: 11px;
+    color: #5d6d7e;
+    margin: 0 0 10px;
+    line-height: 1.45;
+}
+.stg-scene-props-kind-section {
+    margin-bottom: 4px;
+}
+.stg-scene-props-kind-section + .stg-scene-props-kind-section {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px dashed rgba(44, 62, 80, 0.14);
+}
+.stg-priority-cells {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 3px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+/** 生命：格数随配置变化，可多行排列；与经验 10 段条区分 */
+.stg-priority-cells--life {
+    flex-wrap: wrap;
+    align-content: flex-start;
+}
+.stg-priority-hp-detail {
+    flex: 1 1 100%;
+    font-size: 10px;
+    color: #566573;
+    margin-left: calc(2.8em + 8px);
+    padding-top: 2px;
+}
+.stg-priority-cell {
+    position: relative;
+    width: 11px;
+    height: 11px;
+    box-sizing: border-box;
+    border: 1px solid rgba(189, 195, 199, 0.75);
+    border-radius: 2px;
+    background: rgba(236, 240, 241, 0.85);
+    overflow: hidden;
+}
+.stg-priority-cell--on {
+    border-color: rgba(30, 132, 73, 0.55);
+}
+.stg-priority-cell-inner {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(180deg, #58d68d, #27ae60);
+    transition: width 0.1s ease-out;
+}
+.stg-priority-row:first-child .stg-priority-cell-inner {
+    background: linear-gradient(180deg, #f1948a, #e74c3c);
+}
+.stg-priority-row:first-child .stg-priority-cell--half {
+    border-color: rgba(231, 76, 60, 0.5);
+}
+.stg-priority-row:first-child .stg-priority-cell--half .stg-priority-cell-inner {
+    width: 50% !important;
+}
+.stg-priority-row:nth-child(2) .stg-priority-cell-inner {
+    background: linear-gradient(180deg, #85c1e9, #2874a6);
+}
+.stg-priority-cell--on .stg-priority-cell-inner {
+    width: 100% !important;
+}
+.stg-priority-exp-detail {
+    flex: 1 1 100%;
+    font-size: 10px;
+    color: #566573;
+    margin-left: calc(2.8em + 8px);
+    padding-top: 2px;
+}
+.stg-attack-build-aside {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: 10px 12px;
-    background: rgba(255, 255, 255, 0.96);
+    padding: 10px 10px 12px;
+    background: rgba(255, 255, 255, 0.97);
     border-radius: 12px;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
     box-sizing: border-box;
-    font-size: 12px;
+    font-size: 11px;
     color: #2c3e50;
 }
 .stg-attack-build-title {
     margin: 0 0 8px;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     border-bottom: 1px solid rgba(44, 62, 80, 0.15);
     padding-bottom: 6px;
 }
 .stg-attack-section {
-    margin-bottom: 12px;
+    margin-bottom: 8px;
+    padding: 6px 8px 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(189, 195, 199, 0.45);
+    background: rgba(251, 252, 253, 0.9);
 }
 .stg-attack-section:last-child {
     margin-bottom: 0;
 }
+/** 扩散（Z）：蓝色系 — 与三选一 spread、构筑图标一致 */
+.stg-attack-section[data-stg-attack-section='spread'] {
+    border-color: rgba(41, 128, 185, 0.5);
+    background: linear-gradient(90deg, rgba(52, 152, 219, 0.1) 0%, rgba(251, 252, 253, 0.96) 14px);
+    box-shadow: inset 4px 0 0 rgba(41, 128, 185, 0.72);
+}
+/** 集中（Shift）：淡粉色系 — 水晶 / 狂怒 共用伏魔针分区（避免与史诗紫混淆） */
+.stg-attack-section[data-stg-attack-section='focus'] {
+    border-color: rgba(232, 165, 180, 0.55);
+    background: linear-gradient(90deg, rgba(255, 192, 203, 0.14) 0%, rgba(251, 252, 253, 0.96) 14px);
+    box-shadow: inset 4px 0 0 rgba(219, 112, 147, 0.58);
+}
+/** 大招：默认（未选分支）与「试做型封魔阵」同为绿色系；选妙珠后切换为紫红色系 */
+.stg-attack-section[data-stg-attack-section='ult'][data-stg-ult-variant='none'],
+.stg-attack-section[data-stg-attack-section='ult'][data-stg-ult-variant='seal'] {
+    border-color: rgba(30, 132, 73, 0.48);
+    background: linear-gradient(90deg, rgba(39, 174, 96, 0.09) 0%, rgba(251, 252, 253, 0.96) 14px);
+    box-shadow: inset 4px 0 0 rgba(30, 132, 73, 0.68);
+}
+.stg-attack-section[data-stg-attack-section='ult'][data-stg-ult-variant='dream'] {
+    border-color: rgba(142, 68, 173, 0.52);
+    background: linear-gradient(90deg, rgba(175, 122, 197, 0.11) 0%, rgba(251, 252, 253, 0.96) 14px);
+    box-shadow: inset 4px 0 0 rgba(118, 68, 138, 0.72);
+}
 .stg-attack-section-heading {
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     color: #5d6d7e;
-    margin: 8px 0 4px;
+    margin: 0 0 4px;
     letter-spacing: 0.02em;
+    line-height: 1.25;
+    word-break: break-word;
+}
+.stg-attack-section[data-stg-attack-section='spread'] .stg-attack-section-heading {
+    color: #1a5276;
+}
+.stg-attack-section[data-stg-attack-section='focus'] .stg-attack-section-heading {
+    color: #6c3483;
+}
+.stg-attack-section[data-stg-attack-section='ult'][data-stg-ult-variant='none'] .stg-attack-section-heading,
+.stg-attack-section[data-stg-attack-section='ult'][data-stg-ult-variant='seal'] .stg-attack-section-heading {
+    color: #1a5c2a;
+}
+.stg-attack-section[data-stg-attack-section='ult'][data-stg-ult-variant='dream'] .stg-attack-section-heading {
+    color: #5b2c6f;
 }
 .stg-attack-section:first-of-type .stg-attack-section-heading {
     margin-top: 0;
 }
-.stg-attack-stats {
+/** 构筑四项：横向一排图标 + 数值，省纵向空间 */
+.stg-attack-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px 6px;
     margin: 0;
-    padding: 0 0 0 14px;
-    list-style: disc;
+    padding: 2px 0 4px;
+    list-style: none;
+    box-sizing: border-box;
 }
-.stg-attack-stats li {
-    margin: 2px 0;
-    line-height: 1.35;
-    word-break: break-word;
+.stg-attack-stat-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 2px;
+    min-width: 0;
+}
+.stg-attack-stat-icon {
+    font-size: 13px;
+    line-height: 1;
+    opacity: 0.92;
+    user-select: none;
+}
+/** 与已选构筑小字同级：四格内可见「攻击 / 攻速 / 弹速 / 暴击」，非仅 emoji */
+.stg-attack-stat-label {
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.1;
+    color: #5d6d7e;
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: none;
+}
+.stg-attack-stat-val {
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    line-height: 1.15;
+    color: #1c2833;
+    word-break: break-all;
+}
+.stg-attack-stat-grid-msg {
+    grid-column: 1 / -1;
+    font-size: 10px;
+    color: #7f8c8d;
+    text-align: center;
+    padding: 4px 2px;
+    line-height: 1.3;
+}
+.stg-attack-upgrades-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #7f8c8d;
+    line-height: 1.2;
+    margin: 0 0 4px;
+    cursor: default;
+    user-select: none;
 }
 .stg-attack-upgrade-icons {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
-    min-height: 26px;
-    align-items: center;
+    gap: 8px 10px;
+    min-height: 40px;
+    /** 顶端对齐：避免 flex-end 底对齐时窄栏内多行项看起来像「只有方块图标」 */
+    align-items: flex-start;
 }
 .stg-attack-upgrade-icons .stg-attack-upgrade-empty {
     color: #95a5a6;
     font-size: 11px;
+}
+/** 单项：图标在上，名称小字在下 */
+.stg-attack-up-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    max-width: 76px;
+    flex-shrink: 0;
+    cursor: help;
+    outline: none;
+}
+.stg-attack-up-item:focus-visible {
+    border-radius: 6px;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.45);
+}
+.stg-attack-up-name {
+    font-size: 10px;
+    line-height: 1.2;
+    font-weight: 600;
+    color: #2c3e50;
+    text-align: center;
+    word-break: break-word;
+    width: 100%;
+    min-height: 2.4em;
+    flex-shrink: 0;
 }
 .stg-attack-up-icon {
     display: inline-flex;
@@ -2841,6 +3563,7 @@ body {
     justify-content: center;
     width: 26px;
     height: 26px;
+    flex-shrink: 0;
     font-size: 15px;
     line-height: 1;
     border-radius: 6px;
@@ -2851,6 +3574,48 @@ body {
 }
 .stg-attack-up-icon:hover {
     background: rgba(52, 152, 219, 0.22);
+}
+.stg-attack-up-icon--spread {
+    background: rgba(41, 128, 185, 0.14);
+    border-color: rgba(41, 128, 185, 0.45);
+}
+.stg-attack-up-icon--spread:hover {
+    background: rgba(41, 128, 185, 0.24);
+}
+.stg-attack-up-icon--focus-crystal {
+    background: rgba(255, 182, 193, 0.35);
+    border-color: rgba(219, 112, 147, 0.5);
+}
+.stg-attack-up-icon--focus-crystal:hover {
+    background: rgba(255, 182, 193, 0.52);
+}
+.stg-attack-up-icon--focus-rage {
+    background: rgba(231, 76, 60, 0.14);
+    border-color: rgba(231, 76, 60, 0.45);
+}
+.stg-attack-up-icon--focus-rage:hover {
+    background: rgba(231, 76, 60, 0.24);
+}
+.stg-attack-up-icon--ult-seal {
+    background: rgba(30, 132, 73, 0.14);
+    border-color: rgba(30, 132, 73, 0.48);
+}
+.stg-attack-up-icon--ult-seal:hover {
+    background: rgba(30, 132, 73, 0.26);
+}
+.stg-attack-up-icon--ult-dream {
+    background: rgba(118, 68, 138, 0.14);
+    border-color: rgba(118, 68, 138, 0.45);
+}
+.stg-attack-up-icon--ult-dream:hover {
+    background: rgba(118, 68, 138, 0.26);
+}
+.stg-attack-up-icon--stat {
+    background: rgba(127, 140, 141, 0.16);
+    border-color: rgba(127, 140, 141, 0.42);
+}
+.stg-attack-up-icon--stat:hover {
+    background: rgba(127, 140, 141, 0.26);
 }
 /** 构筑图标说明：fixed 层，避免父级 overflow 导致原生 title 不显示 */
 .stg-upgrade-icon-tooltip {
@@ -2885,11 +3650,9 @@ body {
 .stg-upgrade-icon-tooltip-desc.stg-upgrade-icon-tooltip-desc-empty {
     display: none;
 }
-.stg-attack-upgrades-label {
-    font-size: 10px;
-    font-weight: 600;
-    color: #7f8c8d;
-    margin: 6px 0 2px;
+.stg-attack-section .stg-attack-upgrades-label {
+    margin-top: 1px;
+    color: #5d6d7e;
 }
 .stg-center-column {
     flex: 0 1 auto;
@@ -2909,6 +3672,68 @@ body {
     border-radius: 12px;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
     box-sizing: border-box;
+}
+/** 折叠后仅保留「显示属性」竖条 */
+.stg-player-aside.stg-player-aside--collapsed {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    max-width: 56px;
+    max-height: none;
+    overflow: visible;
+    padding: 0 0 0 2px;
+    align-self: flex-start;
+}
+.stg-player-aside.stg-player-aside--collapsed .stg-aside-main {
+    display: none !important;
+}
+/** 展开时：主内容区；折叠时由 .stg-aside-show-btn 显示 */
+.stg-aside-show-btn {
+    display: none;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 12px 8px;
+    min-height: 100px;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.3;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    letter-spacing: 0.06em;
+}
+.stg-player-aside.stg-player-aside--collapsed .stg-aside-show-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.stg-aside-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(44, 62, 80, 0.15);
+}
+.stg-aside-header-row .stg-aside-title {
+    margin: 0;
+    padding: 0;
+    border: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: #2c3e50;
+}
+.stg-aside-hide-btn {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 5px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 6px;
+    white-space: nowrap;
 }
 .stg-aside-title {
     margin: 0 0 10px;
@@ -2947,7 +3772,7 @@ body {
         flex-direction: column;
         align-items: stretch;
     }
-    .stg-attack-build-aside {
+    .stg-left-column {
         flex: 1 1 auto;
         width: 100%;
         max-height: 38vh;
@@ -2974,6 +3799,57 @@ body {
     max-width: min(1180px, 98vw);
     max-height: min(92vh, 900px);
     overflow: auto;
+}
+.stg-formation-hp-scale-block,
+.stg-formation-fire-stop-block {
+    margin: 10px 12px 14px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(52, 152, 219, 0.35);
+    background: linear-gradient(180deg, rgba(236, 248, 255, 0.65) 0%, rgba(252, 253, 254, 0.96) 100%);
+    box-sizing: border-box;
+}
+.stg-formation-fire-stop-block {
+    border-color: rgba(39, 174, 96, 0.35);
+    background: linear-gradient(180deg, rgba(232, 254, 240, 0.65) 0%, rgba(252, 253, 254, 0.96) 100%);
+}
+.stg-formation-hp-scale-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1a5276;
+    margin: 0 0 8px;
+}
+.stg-formation-hp-scale-hint {
+    margin: 0 0 12px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: #566573;
+}
+.stg-formation-hp-scale-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+@media (min-width: 900px) {
+    .stg-formation-hp-scale-inputs {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 12px 20px;
+    }
+}
+.stg-formation-hp-label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+    color: #2c3e50;
+    min-width: min(100%, 220px);
+    flex: 1 1 200px;
+}
+.stg-formation-hp-label .stg-formation-num {
+    width: 100%;
+    max-width: 200px;
 }
 .stg-formation-toolbar {
     display: flex;
@@ -3072,10 +3948,11 @@ body {
     flex-direction: column;
     align-items: center;
     width: 100%;
-    max-width: 640px;
+    max-width: min(860px, 100%);
     margin-left: auto;
     margin-right: auto;
-    overflow-x: hidden;
+    /** 仅 hidden 会导致部分浏览器把 overflow-y 算成 auto，棋盘+HUD 像被裁切；横向溢出由子项 max-width 约束 */
+    overflow: visible;
 }
 /** 仅承载棋盘：宽度 = canvas + 内边距，不受 HUD/说明文字影响 */
 .stg-board-slot {
@@ -3096,6 +3973,59 @@ body {
     width: fit-content;
     max-width: 100%;
     box-sizing: border-box;
+}
+/** 经验升级后可点按或按 E 打开三选一 */
+.stg-level-up-hint {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 5;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px 6px 8px;
+    border: none;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 800;
+    color: #1a5276;
+    background: linear-gradient(145deg, #fef9e7, #f9e79f);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    animation: stg-level-up-pulse 1.25s ease-in-out infinite;
+}
+.stg-level-up-hint.hidden {
+    display: none !important;
+}
+.stg-level-up-hint:hover {
+    filter: brightness(1.05);
+}
+.stg-level-up-hint-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+.stg-level-up-hint-key {
+    display: inline-block;
+    min-width: 1.25em;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-weight: 900;
+    font-family: inherit;
+    color: #1b4f72;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(26, 82, 118, 0.35);
+    border-radius: 4px;
+}
+@keyframes stg-level-up-pulse {
+    0%,
+    100% {
+        transform: scale(1);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    }
+    50% {
+        transform: scale(1.04);
+        box-shadow: 0 4px 14px rgba(241, 196, 15, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    }
 }
 /** 状态与说明：独占一行，可换行、变高，不改变 .stg-board-slot 的宽度 */
 .stg-meta-panel {
@@ -3118,6 +4048,42 @@ body {
 .stg-hud-item {
     white-space: nowrap;
 }
+/** 大招充能：五个方形格（现位于左侧优先区） */
+.stg-hud-ult-cells {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 4px;
+}
+.stg-hud-ult-cell {
+    position: relative;
+    width: 14px;
+    height: 14px;
+    box-sizing: border-box;
+    border: 2px solid rgba(44, 62, 80, 0.45);
+    border-radius: 2px;
+    background: rgba(236, 240, 241, 0.85);
+    overflow: hidden;
+}
+.stg-hud-ult-cell--on {
+    border-color: rgba(30, 132, 73, 0.85);
+    background: rgba(213, 245, 227, 0.95);
+}
+.stg-hud-ult-cell--on .stg-hud-ult-cell-inner {
+    width: 100% !important;
+    background: #27ae60;
+}
+.stg-hud-ult-cell--next {
+    border-color: rgba(30, 132, 73, 0.55);
+}
+.stg-hud-ult-cell-inner {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(180deg, #58d68d, #27ae60);
+    transition: width 0.12s ease-out;
+}
 .stg-hint-bar {
     margin-top: 8px;
     margin-bottom: 0;
@@ -3128,6 +4094,98 @@ body {
 }
 .stg-hint-bar.hidden {
     display: none;
+}
+/** 升级三选一：全屏居中遮罩，打开时局内暂停 */
+.stg-upgrade-modal-root {
+    position: fixed;
+    inset: 0;
+    z-index: 160;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: max(12px, env(safe-area-inset-top, 0px));
+    box-sizing: border-box;
+}
+.stg-upgrade-modal-root.hidden {
+    display: none !important;
+}
+.stg-upgrade-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+}
+.stg-upgrade-panel-dialog {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: min(920px, 96vw);
+    max-height: min(90vh, 900px);
+    overflow: auto;
+    box-sizing: border-box;
+}
+.stg-upgrade-panel.hidden {
+    display: none !important;
+}
+.stg-upgrade-panel-inner {
+    background: rgba(255, 255, 255, 0.97);
+    border-radius: 8px;
+    padding: 6px 8px 8px;
+    border: 1px solid rgba(44, 62, 80, 0.12);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+    box-sizing: border-box;
+    width: 100%;
+}
+/** 标题与 1/2/3 提示同一行，节省纵向空间 */
+.stg-upgrade-headline {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px 10px;
+    margin-bottom: 4px;
+    min-width: 0;
+}
+.stg-upgrade-panel-title {
+    text-align: center;
+    margin: 0;
+    font-size: 13px;
+    font-weight: 800;
+    color: #2c3e50;
+    flex: 0 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.stg-upgrade-subhint {
+    margin: 0;
+    font-size: 10px;
+    color: #5d6d7e;
+    line-height: 1.25;
+    flex: 1 1 120px;
+    min-width: 0;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.stg-upgrade-subhint strong {
+    font-weight: 700;
+}
+@media (max-width: 520px) {
+    .stg-upgrade-headline {
+        flex-wrap: wrap;
+    }
+    .stg-upgrade-panel-title {
+        white-space: normal;
+        text-align: center;
+        width: 100%;
+    }
+    .stg-upgrade-subhint {
+        flex: 1 1 100%;
+        text-align: center;
+        white-space: normal;
+    }
 }
 .stg-overlay {
     position: fixed;
@@ -3150,6 +4208,13 @@ body {
     width: 100%;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
+/** 升级三选一：与棋盘同宽；紧凑单行三卡；全屏遮罩上加强阴影 */
+#stgUpgradeOverlay .stg-upgrade-panel-inner {
+    max-width: min(920px, 100%);
+    margin-left: auto;
+    margin-right: auto;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
+}
 .stg-result-restart-btn {
     display: block;
     width: 100%;
@@ -3168,31 +4233,205 @@ body {
     flex-direction: column;
     gap: 10px;
 }
+/** 始终一行三列；窄屏由 minmax(0,1fr) 均分，文案在卡内换行 */
+#stgUpgradeOverlay .stg-upgrade-cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    align-items: stretch;
+}
+#stgUpgradeOverlay .stg-upgrade-card {
+    min-height: 0;
+    padding: 6px 8px 8px;
+    gap: 4px;
+    font-size: 12px;
+    border-radius: 8px;
+    border-width: 1px;
+}
+#stgUpgradeOverlay .stg-upgrade-hotkey {
+    top: 4px;
+    right: 5px;
+    width: 18px;
+    height: 18px;
+    line-height: 16px;
+    font-size: 10px;
+    border-radius: 4px;
+}
 .stg-upgrade-card {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-    padding: 12px 14px;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 12px 12px;
     border: 2px solid #3498db;
     border-radius: 10px;
-    background: linear-gradient(180deg, #eaf4fb, #fff);
+    background: linear-gradient(180deg, #f8fbfd, #fff);
     cursor: pointer;
     font-size: 14px;
     text-align: left;
-    transition: transform 0.08s ease, box-shadow 0.08s ease;
+    transition: transform 0.08s ease, box-shadow 0.08s ease, border-color 0.12s ease;
+    overflow: hidden;
+    position: relative;
+}
+.stg-upgrade-hotkey {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 22px;
+    height: 22px;
+    line-height: 20px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 800;
+    color: #1a5276;
+    background: rgba(236, 240, 241, 0.95);
+    border: 1px solid rgba(44, 62, 80, 0.2);
+    border-radius: 6px;
+    pointer-events: none;
 }
 .stg-upgrade-card:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.35);
+    transform: translateY(-2px);
+}
+/** 无顶栏类时（极少）保留蓝系悬停 */
+.stg-upgrade-card:hover:not([class*='stg-upgrade-card--']) {
+    box-shadow: 0 8px 20px rgba(52, 152, 219, 0.28);
+}
+.stg-upgrade-card.stg-upgrade-card--spread {
+    border-color: rgba(41, 128, 185, 0.92);
+    background: linear-gradient(180deg, #eaf4fb, #fff);
+}
+.stg-upgrade-card.stg-upgrade-card--spread:hover {
+    box-shadow: 0 8px 22px rgba(41, 128, 185, 0.32);
+}
+.stg-upgrade-card.stg-upgrade-card--focus-crystal {
+    border-color: rgba(219, 112, 147, 0.82);
+    background: linear-gradient(180deg, #fff0f3, #fff);
+}
+.stg-upgrade-card.stg-upgrade-card--focus-crystal:hover {
+    box-shadow: 0 8px 22px rgba(219, 112, 147, 0.28);
+}
+.stg-upgrade-card.stg-upgrade-card--focus-rage {
+    border-color: rgba(231, 76, 60, 0.88);
+    background: linear-gradient(180deg, #fdedec, #fff);
+}
+.stg-upgrade-card.stg-upgrade-card--focus-rage:hover {
+    box-shadow: 0 8px 22px rgba(231, 76, 60, 0.28);
+}
+/** 试做型封魔阵：绿色系（与左侧 ult·seal 一致） */
+.stg-upgrade-card.stg-upgrade-card--ult-seal {
+    border-color: rgba(30, 132, 73, 0.9);
+    background: linear-gradient(180deg, #eafaf1, #fff);
+}
+.stg-upgrade-card.stg-upgrade-card--ult-seal:hover {
+    box-shadow: 0 8px 22px rgba(30, 132, 73, 0.3);
+}
+/** 梦想妙珠：紫红色系（与 ult·dream 区分于封魔阵） */
+.stg-upgrade-card.stg-upgrade-card--ult-dream {
+    border-color: rgba(118, 68, 138, 0.88);
+    background: linear-gradient(180deg, #f5eef8, #fff);
+}
+.stg-upgrade-card.stg-upgrade-card--ult-dream:hover {
+    box-shadow: 0 8px 22px rgba(118, 68, 138, 0.28);
+}
+.stg-upgrade-card.stg-upgrade-card--stat {
+    border-color: rgba(127, 140, 141, 0.88);
+    background: linear-gradient(180deg, #f4f6f6, #fff);
+}
+.stg-upgrade-card.stg-upgrade-card--stat:hover {
+    box-shadow: 0 8px 20px rgba(127, 140, 141, 0.22);
+}
+/** 三选一：所属武器顶栏（与构筑分区配色呼应；负边距铺满卡顶） */
+.stg-up-weapon-badge {
+    display: block;
+    box-sizing: border-box;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    padding: 8px 10px;
+    margin: -10px -12px 8px -12px;
+    width: calc(100% + 24px);
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+#stgUpgradeOverlay .stg-up-weapon-badge {
+    font-size: 9px;
+    padding: 4px 6px;
+    margin: -6px -8px 4px -8px;
+    width: calc(100% + 16px);
+    letter-spacing: 0.04em;
+}
+.stg-up-weapon--spread {
+    background: linear-gradient(135deg, #aed6f1 0%, #d4e6f1 100%);
+    color: #1b4f72;
+    border-color: rgba(52, 152, 219, 0.45);
+}
+.stg-up-weapon--focus-crystal {
+    background: linear-gradient(135deg, #ffd6e0 0%, #ffe8ee 100%);
+    color: #8b4a5a;
+    border-color: rgba(219, 112, 147, 0.42);
+}
+.stg-up-weapon--focus-rage {
+    background: linear-gradient(135deg, #f5b7b1 0%, #fadbd8 100%);
+    color: #78281f;
+    border-color: rgba(231, 76, 60, 0.35);
+}
+.stg-up-weapon--ult-seal {
+    background: linear-gradient(135deg, #abebc6 0%, #d5f5e3 100%);
+    color: #145a32;
+    border-color: rgba(30, 132, 73, 0.38);
+}
+.stg-up-weapon--ult-dream {
+    background: linear-gradient(135deg, #e8daef 0%, #f5eef8 100%);
+    color: #5b2c6f;
+    border-color: rgba(118, 68, 138, 0.38);
+}
+.stg-up-weapon--stat {
+    background: linear-gradient(135deg, #e5e7e9 0%, #f4f6f6 100%);
+    color: #34495e;
+    border-color: rgba(127, 140, 141, 0.45);
 }
 .stg-up-title {
     font-weight: 700;
     color: #1a5276;
+    line-height: 1.35;
+}
+#stgUpgradeOverlay .stg-up-title {
+    font-size: 12px;
+    line-height: 1.2;
+}
+.stg-upgrade-card--spread .stg-up-title {
+    color: #1b4f72;
+}
+.stg-upgrade-card--focus-crystal .stg-up-title {
+    color: #8b4a5a;
+}
+.stg-upgrade-card--focus-rage .stg-up-title {
+    color: #78281f;
+}
+.stg-upgrade-card--ult-seal .stg-up-title {
+    color: #145a32;
+}
+.stg-upgrade-card--ult-dream .stg-up-title {
+    color: #5b2c6f;
+}
+.stg-upgrade-card--stat .stg-up-title {
+    color: #34495e;
 }
 .stg-up-desc {
     font-size: 12px;
     color: #5d6d7e;
+    line-height: 1.45;
+}
+#stgUpgradeOverlay .stg-up-desc {
+    font-size: 10px;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 .stg-result-inner {
     text-align: center;

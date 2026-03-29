@@ -40,7 +40,38 @@
         skillSingleCount: 1,
         skillFanCount: 5,
         skillRingCount: 12,
-        skillFanSpreadDeg: 60
+        skillFanSpreadDeg: 60,
+        bulletPierceEnabled: false,
+        bulletPierceHits: 3,
+        focusBulletPierceEnabled: false,
+        focusBulletPierceHits: 3,
+        skillBulletPierceEnabled: false,
+        skillBulletPierceHits: 3,
+        /** 升级条：与 stgMode computeExpToNextForLevel 一致；加速为 0 时等同旧版 100+(L-1)*40 */
+        expBase: 100,
+        expLinearPerLevel: 40,
+        expAccelPerLevelSq: 0,
+        /** 开局大招充能格数（0–5），与局内五格上限一致 */
+        ultInitialCharges: 0,
+        /** 擦弹：敌弹掠过判定点外环时触发，每弹一次；小白球吸附后灌大招蓄能 */
+        grazeEnabled: true,
+        grazeExtraPx: 32,
+        grazeMinMovePx: 0.9,
+        grazeMeterGain: 6,
+        grazeOrbRadius: 5,
+        grazeOrbSpeedPx: 480,
+        grazeOrbGlowAlpha: 0.65,
+        grazeEllipseHorizMult: 1.42,
+        grazeEllipseVertMult: 0.76,
+        focusShipAlpha: 0.42,
+        /** 生命整格数（每格 2 半格；再乘局外 max_health_bonus） */
+        lifeCellsMax: 6,
+        /** 被敌弹/激光命中后的无敌时间（毫秒）；0=不无敌 */
+        hitInvulnMs: 2000,
+        /** 受伤后持续清空场上敌弹的时长（毫秒）；0=仅受伤当帧清一次 */
+        hitBulletClearMs: 1200,
+        /** 受伤后拉回开局位置并禁止移动/开火的时长（毫秒）；0=关闭 */
+        hitSpawnHoldMs: 1000
     };
 
     function load() {
@@ -109,6 +140,34 @@
         if (rowRing) rowRing.classList.toggle('hidden', v !== 'ring');
     }
 
+    /** 穿透勾选时显示「最多命中数」；未勾选时隐藏并避免误改 */
+    function syncMainPierceRow() {
+        const cb = document.getElementById('stgPlayerEditBulletPierce');
+        const row = document.getElementById('stgPlayerMainPierceHitsRow');
+        const num = document.getElementById('stgPlayerEditBulletPierceHits');
+        const on = !!(cb && cb.checked);
+        if (row) row.classList.toggle('hidden', !on);
+        if (num) num.disabled = !on;
+    }
+
+    function syncFocusPierceRow() {
+        const cb = document.getElementById('stgPlayerEditFocusBulletPierce');
+        const row = document.getElementById('stgPlayerFocusPierceHitsRow');
+        const num = document.getElementById('stgPlayerEditFocusBulletPierceHits');
+        const on = !!(cb && cb.checked);
+        if (row) row.classList.toggle('hidden', !on);
+        if (num) num.disabled = !on;
+    }
+
+    function syncSkillPierceRow() {
+        const cb = document.getElementById('stgPlayerEditSkillBulletPierce');
+        const row = document.getElementById('stgPlayerSkillPierceHitsRow');
+        const num = document.getElementById('stgPlayerEditSkillBulletPierceHits');
+        const on = !!(cb && cb.checked);
+        if (row) row.classList.toggle('hidden', !on);
+        if (num) num.disabled = !on;
+    }
+
     function fillInputs() {
         const cfg = load();
         const setNum = (id, x) => {
@@ -118,6 +177,32 @@
         setNum('stgPlayerEditMoveSpeed', Math.round(val(cfg, 'moveSpeed', DEFAULTS.moveSpeed)));
         setNum('stgPlayerEditFocusMult', val(cfg, 'focusMoveMult', DEFAULTS.focusMoveMult));
         setNum('stgPlayerEditHitRadius', Math.round(val(cfg, 'hitRadius', DEFAULTS.hitRadius)));
+        const lc =
+            cfg && cfg.lifeCellsMax != null
+                ? val(cfg, 'lifeCellsMax', DEFAULTS.lifeCellsMax)
+                : cfg && cfg.maxHpBase != null
+                  ? Math.max(1, Math.min(30, Math.round(val(cfg, 'maxHpBase', 80) / 13)))
+                  : DEFAULTS.lifeCellsMax;
+        setNum('stgPlayerEditLifeCellsMax', Math.round(lc));
+        setNum('stgPlayerEditHitInvulnMs', Math.round(val(cfg, 'hitInvulnMs', DEFAULTS.hitInvulnMs)));
+        setNum('stgPlayerEditHitBulletClearMs', Math.round(val(cfg, 'hitBulletClearMs', DEFAULTS.hitBulletClearMs)));
+        setNum('stgPlayerEditHitSpawnHoldMs', Math.round(val(cfg, 'hitSpawnHoldMs', DEFAULTS.hitSpawnHoldMs)));
+
+        const ge = document.getElementById('stgPlayerEditGrazeEnabled');
+        if (ge) ge.checked = cfg && cfg.grazeEnabled === false ? false : true;
+        setNum('stgPlayerEditGrazeExtraPx', Math.round(val(cfg, 'grazeExtraPx', DEFAULTS.grazeExtraPx)));
+        setNum('stgPlayerEditGrazeMinMovePx', val(cfg, 'grazeMinMovePx', DEFAULTS.grazeMinMovePx));
+        setNum('stgPlayerEditGrazeMeterGain', Math.round(val(cfg, 'grazeMeterGain', DEFAULTS.grazeMeterGain)));
+        setNum('stgPlayerEditGrazeOrbRadius', Math.round(val(cfg, 'grazeOrbRadius', DEFAULTS.grazeOrbRadius)));
+        setNum('stgPlayerEditGrazeOrbSpeed', Math.round(val(cfg, 'grazeOrbSpeedPx', DEFAULTS.grazeOrbSpeedPx)));
+        setNum('stgPlayerEditGrazeOrbGlow', val(cfg, 'grazeOrbGlowAlpha', DEFAULTS.grazeOrbGlowAlpha));
+        setNum('stgPlayerEditGrazeEllH', val(cfg, 'grazeEllipseHorizMult', DEFAULTS.grazeEllipseHorizMult));
+        setNum('stgPlayerEditGrazeEllV', val(cfg, 'grazeEllipseVertMult', DEFAULTS.grazeEllipseVertMult));
+        setNum('stgPlayerEditFocusShipAlpha', val(cfg, 'focusShipAlpha', DEFAULTS.focusShipAlpha));
+
+        setNum('stgPlayerEditExpBase', Math.round(val(cfg, 'expBase', DEFAULTS.expBase)));
+        setNum('stgPlayerEditExpLinear', Math.round(val(cfg, 'expLinearPerLevel', DEFAULTS.expLinearPerLevel)));
+        setNum('stgPlayerEditExpAccel', val(cfg, 'expAccelPerLevelSq', DEFAULTS.expAccelPerLevelSq));
 
         let mainAtk = val(cfg, 'mainWeaponAttack', NaN);
         if (!Number.isFinite(mainAtk)) {
@@ -141,6 +226,14 @@
         setNum('stgPlayerEditFanCount', Math.round(val(cfg, 'fanCount', DEFAULTS.fanCount)));
         setNum('stgPlayerEditRingCount', Math.round(val(cfg, 'ringCount', DEFAULTS.ringCount)));
         setNum('stgPlayerEditFanSpread', Math.round(val(cfg, 'fanSpreadDeg', DEFAULTS.fanSpreadDeg)));
+
+        const mainPierce = cfg && (cfg.bulletPierceEnabled === true || cfg.bulletPierce === true);
+        const mainPierceEl = document.getElementById('stgPlayerEditBulletPierce');
+        if (mainPierceEl) mainPierceEl.checked = mainPierce;
+        setNum(
+            'stgPlayerEditBulletPierceHits',
+            Math.round(val(cfg, 'bulletPierceHits', DEFAULTS.bulletPierceHits))
+        );
 
         let focusAtk = val(cfg, 'focusWeaponAttack', NaN);
         if (!Number.isFinite(focusAtk)) {
@@ -182,6 +275,14 @@
             Math.round(val(cfg, 'focusFanSpreadDeg', val(cfg, 'fanSpreadDeg', DEFAULTS.focusFanSpreadDeg)))
         );
 
+        const fPierce = cfg && (cfg.focusBulletPierceEnabled === true || cfg.focusBulletPierce === true);
+        const fPierceEl = document.getElementById('stgPlayerEditFocusBulletPierce');
+        if (fPierceEl) fPierceEl.checked = fPierce;
+        setNum(
+            'stgPlayerEditFocusBulletPierceHits',
+            Math.round(val(cfg, 'focusBulletPierceHits', DEFAULTS.focusBulletPierceHits))
+        );
+
         setNum(
             'stgPlayerEditFocusBulletRadius',
             Math.round(val(cfg, 'focusBulletRadius', val(cfg, 'bulletRadius', DEFAULTS.bulletRadius)))
@@ -219,9 +320,24 @@
         setNum('stgPlayerEditSkillRingCount', Math.round(val(cfg, 'skillRingCount', DEFAULTS.skillRingCount)));
         setNum('stgPlayerEditSkillFanSpread', Math.round(val(cfg, 'skillFanSpreadDeg', DEFAULTS.skillFanSpreadDeg)));
 
+        const sPierce = cfg && (cfg.skillBulletPierceEnabled === true || cfg.skillBulletPierce === true);
+        const sPierceEl = document.getElementById('stgPlayerEditSkillBulletPierce');
+        if (sPierceEl) sPierceEl.checked = sPierce;
+        setNum(
+            'stgPlayerEditSkillBulletPierceHits',
+            Math.round(val(cfg, 'skillBulletPierceHits', DEFAULTS.skillBulletPierceHits))
+        );
+        setNum(
+            'stgPlayerEditUltInitialCharges',
+            Math.round(val(cfg, 'ultInitialCharges', DEFAULTS.ultInitialCharges))
+        );
+
         syncMainStyleRows();
         syncFocusStyleRows();
         syncSkillStyleRows();
+        syncMainPierceRow();
+        syncFocusPierceRow();
+        syncSkillPierceRow();
     }
 
     function open() {
@@ -263,10 +379,17 @@
             if (!Number.isFinite(n)) return def;
             return Math.max(0.5, Math.min(9999, n));
         };
+        const gCheck = (id) => {
+            const el = document.getElementById(id);
+            return !!(el && el.type === 'checkbox' && el.checked);
+        };
         return {
             moveSpeed: gi('stgPlayerEditMoveSpeed', 60, 520, DEFAULTS.moveSpeed),
             focusMoveMult: gf('stgPlayerEditFocusMult', 0.05, 0.98, DEFAULTS.focusMoveMult),
             hitRadius: gi('stgPlayerEditHitRadius', 2, 48, DEFAULTS.hitRadius),
+            expBase: gi('stgPlayerEditExpBase', 1, 500000, DEFAULTS.expBase),
+            expLinearPerLevel: gi('stgPlayerEditExpLinear', 0, 50000, DEFAULTS.expLinearPerLevel),
+            expAccelPerLevelSq: gf('stgPlayerEditExpAccel', 0, 5000, DEFAULTS.expAccelPerLevelSq),
             mainWeaponAttack: gWeaponAtk('stgPlayerEditMainAttack', DEFAULTS.mainWeaponAttack),
             bulletRadius: gi('stgPlayerEditBulletRadius', 2, 24, DEFAULTS.bulletRadius),
             bulletVisualShape: gShape('stgPlayerEditBulletVisual'),
@@ -277,6 +400,8 @@
             fanCount: gi('stgPlayerEditFanCount', 2, 24, DEFAULTS.fanCount),
             ringCount: gi('stgPlayerEditRingCount', 3, 36, DEFAULTS.ringCount),
             fanSpreadDeg: gi('stgPlayerEditFanSpread', 10, 180, DEFAULTS.fanSpreadDeg),
+            bulletPierceEnabled: gCheck('stgPlayerEditBulletPierce'),
+            bulletPierceHits: gi('stgPlayerEditBulletPierceHits', 2, 20, DEFAULTS.bulletPierceHits),
             focusFireIntervalMs: gi('stgPlayerEditFocusFireInterval', 40, 400, DEFAULTS.focusFireIntervalMs),
             focusBulletSpeed: gi('stgPlayerEditFocusBulletSpeed', 120, 900, DEFAULTS.focusBulletSpeed),
             focusEmitStyle: fStyle === 'fan' || fStyle === 'ring' ? fStyle : 'single',
@@ -284,6 +409,8 @@
             focusFanCount: gi('stgPlayerEditFocusFanCount', 2, 24, DEFAULTS.focusFanCount),
             focusRingCount: gi('stgPlayerEditFocusRingCount', 3, 36, DEFAULTS.focusRingCount),
             focusFanSpreadDeg: gi('stgPlayerEditFocusFanSpread', 10, 180, DEFAULTS.focusFanSpreadDeg),
+            focusBulletPierceEnabled: gCheck('stgPlayerEditFocusBulletPierce'),
+            focusBulletPierceHits: gi('stgPlayerEditFocusBulletPierceHits', 2, 20, DEFAULTS.focusBulletPierceHits),
             focusWeaponAttack: gWeaponAtk('stgPlayerEditFocusAttack', DEFAULTS.focusWeaponAttack),
             focusBulletRadius: gi('stgPlayerEditFocusBulletRadius', 2, 24, DEFAULTS.focusBulletRadius),
             focusBulletVisualShape: gShape('stgPlayerEditFocusBulletVisual'),
@@ -297,7 +424,24 @@
             skillSingleCount: gi('stgPlayerEditSkillSingleCount', 1, 5, DEFAULTS.skillSingleCount),
             skillFanCount: gi('stgPlayerEditSkillFanCount', 2, 24, DEFAULTS.skillFanCount),
             skillRingCount: gi('stgPlayerEditSkillRingCount', 3, 36, DEFAULTS.skillRingCount),
-            skillFanSpreadDeg: gi('stgPlayerEditSkillFanSpread', 10, 180, DEFAULTS.skillFanSpreadDeg)
+            skillFanSpreadDeg: gi('stgPlayerEditSkillFanSpread', 10, 180, DEFAULTS.skillFanSpreadDeg),
+            skillBulletPierceEnabled: gCheck('stgPlayerEditSkillBulletPierce'),
+            skillBulletPierceHits: gi('stgPlayerEditSkillBulletPierceHits', 2, 20, DEFAULTS.skillBulletPierceHits),
+            ultInitialCharges: gi('stgPlayerEditUltInitialCharges', 0, 5, DEFAULTS.ultInitialCharges),
+            grazeEnabled: !!(document.getElementById('stgPlayerEditGrazeEnabled') && document.getElementById('stgPlayerEditGrazeEnabled').checked),
+            grazeExtraPx: gi('stgPlayerEditGrazeExtraPx', 0, 120, DEFAULTS.grazeExtraPx),
+            grazeMinMovePx: gf('stgPlayerEditGrazeMinMovePx', 0.2, 20, DEFAULTS.grazeMinMovePx),
+            grazeMeterGain: gi('stgPlayerEditGrazeMeterGain', 1, 80, DEFAULTS.grazeMeterGain),
+            grazeOrbRadius: gi('stgPlayerEditGrazeOrbRadius', 2, 16, DEFAULTS.grazeOrbRadius),
+            grazeOrbSpeedPx: gi('stgPlayerEditGrazeOrbSpeed', 60, 1200, DEFAULTS.grazeOrbSpeedPx),
+            grazeOrbGlowAlpha: gf('stgPlayerEditGrazeOrbGlow', 0.05, 1, DEFAULTS.grazeOrbGlowAlpha),
+            grazeEllipseHorizMult: gf('stgPlayerEditGrazeEllH', 0.2, 3, DEFAULTS.grazeEllipseHorizMult),
+            grazeEllipseVertMult: gf('stgPlayerEditGrazeEllV', 0.2, 3, DEFAULTS.grazeEllipseVertMult),
+            focusShipAlpha: gf('stgPlayerEditFocusShipAlpha', 0.08, 1, DEFAULTS.focusShipAlpha),
+            lifeCellsMax: gi('stgPlayerEditLifeCellsMax', 1, 30, DEFAULTS.lifeCellsMax),
+            hitInvulnMs: gi('stgPlayerEditHitInvulnMs', 0, 20000, DEFAULTS.hitInvulnMs),
+            hitBulletClearMs: gi('stgPlayerEditHitBulletClearMs', 0, 20000, DEFAULTS.hitBulletClearMs),
+            hitSpawnHoldMs: gi('stgPlayerEditHitSpawnHoldMs', 0, 30000, DEFAULTS.hitSpawnHoldMs)
         };
     }
 
@@ -343,6 +487,12 @@
         if (ms) ms.addEventListener('change', syncMainStyleRows);
         if (fs) fs.addEventListener('change', syncFocusStyleRows);
         if (ss) ss.addEventListener('change', syncSkillStyleRows);
+        const mp = document.getElementById('stgPlayerEditBulletPierce');
+        const fp = document.getElementById('stgPlayerEditFocusBulletPierce');
+        const sp = document.getElementById('stgPlayerEditSkillBulletPierce');
+        if (mp) mp.addEventListener('change', syncMainPierceRow);
+        if (fp) fp.addEventListener('change', syncFocusPierceRow);
+        if (sp) sp.addEventListener('change', syncSkillPierceRow);
     }
 
     window.StgPlayerEditorPanel = { init, open, close, load, STORAGE_KEY };

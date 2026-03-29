@@ -56,7 +56,9 @@
             m === 'arc_edges' ||
             m === 'homing_legacy' ||
             m === 'horizontal_left' ||
-            m === 'horizontal_right'
+            m === 'horizontal_right' ||
+            m === 'lock_y' ||
+            m === 'lock_x'
         ) {
             return m;
         }
@@ -70,9 +72,15 @@
         const rs = row.querySelector('.monster-stg-move-straight');
         const an = row.querySelector('.monster-stg-move-anchor');
         const ar = row.querySelector('.monster-stg-move-arc');
+        const lk = row.querySelector('.monster-stg-move-lock');
+        const lkY = row.querySelector('.monster-stg-lock-y-block');
+        const lkX = row.querySelector('.monster-stg-lock-x-block');
         if (rs) rs.classList.toggle('hidden', v !== 'straight');
         if (an) an.classList.toggle('hidden', v !== 'anchor');
         if (ar) ar.classList.toggle('hidden', v !== 'arc_edges');
+        if (lk) lk.classList.toggle('hidden', v !== 'lock_y' && v !== 'lock_x');
+        if (lkY) lkY.classList.toggle('hidden', v !== 'lock_y');
+        if (lkX) lkX.classList.toggle('hidden', v !== 'lock_x');
     }
 
     function syncBulletKindRow(row) {
@@ -119,9 +127,11 @@
         const bulletSpeedRow = row.querySelector('.monster-stg-bullet-speed-row');
         const bulletProps = row.querySelector('.monster-stg-bullet-props-wrap');
         const homingRow = row.querySelector('.monster-stg-homing-row');
+        const burstSec = row.querySelector('.monster-stg-burst-section');
         if (emitRow) emitRow.classList.toggle('hidden', none);
         if (bulletSpeedRow) bulletSpeedRow.classList.toggle('hidden', none);
         if (bulletProps) bulletProps.classList.toggle('hidden', none);
+        if (burstSec) burstSec.classList.toggle('hidden', none);
         /** 激光为瞬时射线，跟踪强度对激光无效，折叠避免误解 */
         if (homingRow) homingRow.classList.toggle('hidden', none || isLaser);
         const cdRow = row.querySelector('.monster-stg-cooldown-row');
@@ -203,12 +213,13 @@
             const stgMoveAngle = row.querySelector('.monster-stg-move-angle');
             const stgAnchorX = row.querySelector('.monster-stg-anchor-x');
             const stgAnchorY = row.querySelector('.monster-stg-anchor-y');
-            const stgArc1x = row.querySelector('.monster-stg-arc1-x');
-            const stgArc1y = row.querySelector('.monster-stg-arc1-y');
-            const stgArc2x = row.querySelector('.monster-stg-arc2-x');
-            const stgArc2y = row.querySelector('.monster-stg-arc2-y');
-            const stgArcB1 = row.querySelector('.monster-stg-arc-bulge1');
-            const stgArcB2 = row.querySelector('.monster-stg-arc-bulge2');
+            const stgArcExitRowInp = row.querySelector('.monster-stg-arc-exit-row-main');
+            const stgArcBulgeInp = row.querySelector('.monster-stg-arc-bulge');
+            const stgLockTargetY = row.querySelector('.monster-stg-lock-target-y');
+            const stgLockTargetX = row.querySelector('.monster-stg-lock-target-x');
+            const stgBurstCnt = row.querySelector('.monster-stg-burst-count');
+            const stgBurstIv = row.querySelector('.monster-stg-burst-interval');
+            const stgBurstSpd = row.querySelector('.monster-stg-burst-speed-mode');
 
             const style = stgStyleSel ? stgStyleSel.value : 'single_random';
             const md = stgMainDirSel && (stgMainDirSel.value === 'aim' || stgMainDirSel.value === 'straight')
@@ -281,7 +292,9 @@
                         'arc_edges',
                         'homing_legacy',
                         'horizontal_left',
-                        'horizontal_right'
+                        'horizontal_right',
+                        'lock_y',
+                        'lock_x'
                     ].indexOf(stgMoveModeSel.value) >= 0
                         ? stgMoveModeSel.value
                         : 'homing_legacy',
@@ -291,12 +304,23 @@
                 ),
                 stgAnchorXNorm: Math.max(0.02, Math.min(0.98, parseFloat(stgAnchorX && stgAnchorX.value) || 0.5)),
                 stgAnchorYNorm: Math.max(0.02, Math.min(0.98, parseFloat(stgAnchorY && stgAnchorY.value) || 0.45)),
-                stgArcEdge1XNorm: Math.max(0.02, Math.min(0.98, parseFloat(stgArc1x && stgArc1x.value) || 0.12)),
-                stgArcEdge1YNorm: Math.max(0.05, Math.min(0.98, parseFloat(stgArc1y && stgArc1y.value) || 0.42)),
-                stgArcEdge2XNorm: Math.max(0.02, Math.min(0.98, parseFloat(stgArc2x && stgArc2x.value) || 0.88)),
-                stgArcEdge2YNorm: Math.max(0.05, Math.min(0.98, parseFloat(stgArc2y && stgArc2y.value) || 0.58)),
-                stgArcBulge1: Math.max(15, Math.min(220, parseInt(stgArcB1 && stgArcB1.value, 10) || 80)),
-                stgArcBulge2: Math.max(15, Math.min(220, parseInt(stgArcB2 && stgArcB2.value, 10) || 80))
+                stgLockTargetYNorm: Math.max(0.02, Math.min(0.98, parseFloat(stgLockTargetY && stgLockTargetY.value) || 0.45)),
+                stgLockTargetXNorm: Math.max(0.02, Math.min(0.98, parseFloat(stgLockTargetX && stgLockTargetX.value) || 0.5)),
+                stgBurstCount: Math.max(1, Math.min(16, parseInt(stgBurstCnt && stgBurstCnt.value, 10) || 1)),
+                stgBurstIntervalMs: Math.max(40, Math.min(500, parseInt(stgBurstIv && stgBurstIv.value, 10) || 100)),
+                stgBurstSpeedMode: stgBurstSpd && stgBurstSpd.value === 'spread_wave' ? 'spread_wave' : 'average',
+                stgArcExitRow: Math.max(0, Math.min(20, parseInt(stgArcExitRowInp && stgArcExitRowInp.value, 10) || 12)),
+                stgArcBulge: Math.max(15, Math.min(280, parseInt(stgArcBulgeInp && stgArcBulgeInp.value, 10) || 80)),
+                stgContactDamagePlayer: (() => {
+                    const cb = row.querySelector('.monster-stg-contact-damage');
+                    return !cb || cb.checked;
+                })(),
+                stgDropChargePickup: !!(row.querySelector('.monster-stg-drop-charge') && row.querySelector('.monster-stg-drop-charge').checked),
+                stgChargeDropMult: (() => {
+                    const el = row.querySelector('.monster-stg-charge-mult');
+                    const n = parseFloat(el && el.value);
+                    return Number.isFinite(n) ? Math.max(0.25, Math.min(4, n)) : 1;
+                })()
             };
         });
         return types;
@@ -312,8 +336,14 @@
             stgEnemyBulletRadius: 5, stgEnemyBulletShape: 'circle',
             stgMoveMode: 'homing_legacy', stgMoveStraightAngleDeg: 0,
             stgAnchorXNorm: 0.5, stgAnchorYNorm: 0.45,
+            stgLockTargetYNorm: 0.45, stgLockTargetXNorm: 0.5,
+            stgBurstCount: 1, stgBurstIntervalMs: 100, stgBurstSpeedMode: 'average',
+            stgArcExitRow: 12,
+            stgArcBulge: 80,
             stgArcEdge1XNorm: 0.12, stgArcEdge1YNorm: 0.42, stgArcEdge2XNorm: 0.88, stgArcEdge2YNorm: 0.58,
-            stgArcBulge1: 80, stgArcBulge2: 80
+            stgArcBulge1: 80, stgArcBulge2: 80,
+            stgContactDamagePlayer: true,
+            stgDropChargePickup: false, stgChargeDropMult: 1
         };
         const dmStyle = danmakuStyleFromData(d);
         const mainDir = mainDirFromData(d);
@@ -323,16 +353,39 @@
         const splitCnt = d.stgSplitCount != null ? d.stgSplitCount : 4;
         const moveMode = moveModeFromData(d);
         const bulletShape = d.stgEnemyBulletShape === 'triangle' ? 'triangle' : 'circle';
+        const lockTy = d.stgLockTargetYNorm != null ? d.stgLockTargetYNorm : 0.45;
+        const lockTx = d.stgLockTargetXNorm != null ? d.stgLockTargetXNorm : 0.5;
+        const showLockPanel = moveMode === 'lock_y' || moveMode === 'lock_x';
+        const burstCnt = d.stgBurstCount != null ? d.stgBurstCount : 1;
+        const burstIv = d.stgBurstIntervalMs != null ? d.stgBurstIntervalMs : 100;
+        const burstSpd = d.stgBurstSpeedMode === 'spread_wave' ? 'spread_wave' : 'average';
+        const arcExitRowMain =
+            d.stgArcExitRow != null ? Math.max(0, Math.min(20, parseInt(d.stgArcExitRow, 10) || 0)) : 12;
+        const arcBulgeSingle =
+            d.stgArcBulge != null && Number.isFinite(Number(d.stgArcBulge))
+                ? Number(d.stgArcBulge)
+                : Math.round(((Number(d.stgArcBulge1) || 80) + (Number(d.stgArcBulge2) || 80)) * 0.5);
+        const previewHp = d.defaultHealth != null ? d.defaultHealth : 50;
+        const safePreviewName = String(d.name || typeId)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/"/g, '&quot;');
+        const iconPrev = String(d.icon || '👹').replace(/</g, '');
 
         const row = document.createElement('div');
         row.className = 'monster-editor-row';
         row.dataset.typeId = typeId;
         const isBuiltin = BUILTIN_TYPE_IDS.indexOf(typeId) >= 0;
         row.innerHTML = `
-            <div class="monster-editor-row-head">
-                <span class="monster-editor-id">种类 ID: ${typeId}</span>
-                <button type="button" class="monster-editor-remove-type open-shop-btn" ${isBuiltin ? 'disabled title="内置种类不可删除"' : 'title="从列表移除（点击「应用」后写入存档）"'}">删除</button>
-            </div>
+            <details class="monster-editor-details">
+                <summary class="monster-editor-summary">
+                    <span class="monster-editor-chevron" aria-hidden="true">▸</span>
+                    <span class="monster-editor-summary-icon">${iconPrev}</span>
+                    <code class="monster-editor-id">${typeId}</code>
+                    <span class="monster-editor-preview">${safePreviewName} · ${previewHp} HP</span>
+                    <button type="button" class="monster-editor-remove-type open-shop-btn" ${isBuiltin ? 'disabled title="内置种类不可删除"' : 'title="从列表移除（点击「应用」后写入存档）"'}">删除</button>
+                </summary>
+                <div class="monster-editor-details-inner">
             <div class="monster-editor-row-body">
                 <label>名称</label>
                 <input type="text" class="monster-name" value="${(d.name || typeId).replace(/"/g, '&quot;')}" placeholder="显示名称">
@@ -367,10 +420,27 @@
                             <option value="straight" ${moveMode === 'straight' ? 'selected' : ''}>直线移动</option>
                             <option value="homing" ${moveMode === 'homing' ? 'selected' : ''}>朝向玩家</option>
                             <option value="anchor" ${moveMode === 'anchor' ? 'selected' : ''}>到点后静止</option>
-                            <option value="arc_edges" ${moveMode === 'arc_edges' ? 'selected' : ''}>双边缘弧线后离场</option>
+                            <option value="arc_edges" ${moveMode === 'arc_edges' ? 'selected' : ''}>弧线：入第0行→靠边离场行</option>
                             <option value="horizontal_left" ${moveMode === 'horizontal_left' ? 'selected' : ''}>水平向左</option>
                             <option value="horizontal_right" ${moveMode === 'horizontal_right' ? 'selected' : ''}>水平向右</option>
+                            <option value="lock_y" ${moveMode === 'lock_y' ? 'selected' : ''}>锁 Y（仅竖直移动至目标 Y 后停止）</option>
+                            <option value="lock_x" ${moveMode === 'lock_x' ? 'selected' : ''}>锁 X（仅水平移动至目标 X 后停止）</option>
                         </select>
+                    </div>
+                    <div class="monster-stg-move-lock monster-editor-stg-section ${showLockPanel ? '' : 'hidden'}">
+                        <div class="monster-editor-stg-section-title">锁轴目标（相对画布 0~1，与「到点后静止」坐标系一致）</div>
+                        <div class="monster-stg-lock-y-block monster-editor-stg-section ${moveMode === 'lock_y' ? '' : 'hidden'}">
+                            <div class="monster-stg-row">
+                                <label>目标 Y（0 上 — 1 下），到达后停止移动</label>
+                                <input type="number" class="monster-stg-lock-target-y" min="0.02" max="0.98" step="0.01" value="${lockTy}">
+                            </div>
+                        </div>
+                        <div class="monster-stg-lock-x-block monster-editor-stg-section ${moveMode === 'lock_x' ? '' : 'hidden'}">
+                            <div class="monster-stg-row">
+                                <label>目标 X（0 左 — 1 右），到达后停止移动</label>
+                                <input type="number" class="monster-stg-lock-target-x" min="0.02" max="0.98" step="0.01" value="${lockTx}">
+                            </div>
+                        </div>
                     </div>
                     <div class="monster-stg-move-straight monster-editor-stg-section ${moveMode === 'straight' ? '' : 'hidden'}">
                         <div class="monster-editor-stg-section-title">直线参数</div>
@@ -391,31 +461,26 @@
                         </div>
                     </div>
                     <div class="monster-stg-move-arc monster-editor-stg-section ${moveMode === 'arc_edges' ? '' : 'hidden'}">
-                        <div class="monster-editor-stg-section-title">弧线：出生 → 边缘点1 → 边缘点2 → 离场</div>
+                        <div class="monster-editor-stg-section-title">弧线：主棋盘第 0 行入阵 → 靠边离场</div>
+                        <p class="monster-stg-arc-hint" style="margin:4px 0 8px;font-size:12px;color:#555;">起点=<strong>主棋盘第 1 行（行号 0）</strong>与<strong>阵型摆放列</strong>（波次里该格 col）；入场先竖直再水平对齐。终点列=<strong>第 0 列或最后一列</strong>中离机体更近的一侧（自动）；此处只填<strong>靠边那一行的行号</strong>（0–20）。</p>
                         <div class="monster-stg-row">
-                            <label>边缘点1 X（0~1）</label>
-                            <input type="number" class="monster-stg-arc1-x" min="0.02" max="0.98" step="0.01" value="${d.stgArcEdge1XNorm != null ? d.stgArcEdge1XNorm : 0.12}">
+                            <label>靠边离场行 row（0–20）</label>
+                            <input type="number" class="monster-stg-arc-exit-row-main" min="0" max="20" step="1" value="${arcExitRowMain}">
                         </div>
                         <div class="monster-stg-row">
-                            <label>边缘点1 Y（0~1）</label>
-                            <input type="number" class="monster-stg-arc1-y" min="0.05" max="0.98" step="0.01" value="${d.stgArcEdge1YNorm != null ? d.stgArcEdge1YNorm : 0.42}">
+                            <label>弧高（px，弦中点法向鼓包）</label>
+                            <input type="number" class="monster-stg-arc-bulge" min="15" max="280" step="5" value="${arcBulgeSingle}">
                         </div>
-                        <div class="monster-stg-row">
-                            <label>边缘点2 X（0~1）</label>
-                            <input type="number" class="monster-stg-arc2-x" min="0.02" max="0.98" step="0.01" value="${d.stgArcEdge2XNorm != null ? d.stgArcEdge2XNorm : 0.88}">
-                        </div>
-                        <div class="monster-stg-row">
-                            <label>边缘点2 Y（0~1）</label>
-                            <input type="number" class="monster-stg-arc2-y" min="0.05" max="0.98" step="0.01" value="${d.stgArcEdge2YNorm != null ? d.stgArcEdge2YNorm : 0.58}">
-                        </div>
-                        <div class="monster-stg-row">
-                            <label>弧高1（px，弦中点向上鼓包）</label>
-                            <input type="number" class="monster-stg-arc-bulge1" min="15" max="220" step="5" value="${d.stgArcBulge1 != null ? d.stgArcBulge1 : 80}">
-                        </div>
-                        <div class="monster-stg-row">
-                            <label>弧高2（px）</label>
-                            <input type="number" class="monster-stg-arc-bulge2" min="15" max="220" step="5" value="${d.stgArcBulge2 != null ? d.stgArcBulge2 : 80}">
-                        </div>
+                    </div>
+                </div>
+
+                <div class="monster-editor-stg-section">
+                    <div class="monster-editor-stg-section-title">自机碰撞（STG）</div>
+                    <div class="monster-stg-row">
+                        <label title="关闭后敌机身体与自机重叠时不扣血；弹幕与激光仍按原逻辑伤害">机体接触伤害</label>
+                        <label class="monster-stg-contact-wrap"><input type="checkbox" class="monster-stg-contact-damage" ${
+                            d.stgContactDamagePlayer !== false ? 'checked' : ''
+                        } /> 启用（与攻击力对应半格/整格）</label>
                     </div>
                 </div>
 
@@ -457,6 +522,17 @@
                     </div>
                 </div>
 
+                <div class="monster-editor-stg-section">
+                    <div class="monster-editor-stg-section-title">击杀掉落</div>
+                    <div class="monster-stg-row">
+                        <label class="monster-stg-drop-charge-label"><input type="checkbox" class="monster-stg-drop-charge" ${d.stgDropChargePickup ? 'checked' : ''}/> 击杀掉落充能点（仅大招蓄能，价值见场景道具编辑器）</label>
+                    </div>
+                    <div class="monster-stg-row">
+                        <label>充能点倍率（× 场景道具基础值）</label>
+                        <input type="number" class="monster-stg-charge-mult" min="0.25" max="4" step="0.25" value="${d.stgChargeDropMult != null ? d.stgChargeDropMult : 1}">
+                    </div>
+                </div>
+
                 <div class="monster-stg-fan-params monster-editor-stg-section hidden">
                     <div class="monster-editor-stg-section-title">扇形参数</div>
                     <div class="monster-stg-row">
@@ -490,6 +566,26 @@
                     <div class="monster-stg-row">
                         <label>激光持续(ms)</label>
                         <input type="number" class="monster-stg-laser-dur" min="100" max="3000" step="50" value="${d.stgLaserDurationMs != null ? d.stgLaserDurationMs : 450}">
+                    </div>
+                </div>
+
+                <div class="monster-stg-burst-section monster-editor-stg-section hidden">
+                    <div class="monster-editor-stg-section-title">连射（当前弹幕样式）</div>
+                    <p class="monster-stg-burst-hint">一次冷却触发内，按相同样式连续发射多轮；「扩散波」下越靠后的波次弹速越高，相邻波次速度差递减。死后弹幕仍为单轮。</p>
+                    <div class="monster-stg-row">
+                        <label>连射次数（1=不连射）</label>
+                        <input type="number" class="monster-stg-burst-count" min="1" max="16" step="1" value="${burstCnt}">
+                    </div>
+                    <div class="monster-stg-row">
+                        <label>连射间隔(ms)</label>
+                        <input type="number" class="monster-stg-burst-interval" min="40" max="500" step="10" value="${burstIv}" title="相邻两轮弹幕之间的时间">
+                    </div>
+                    <div class="monster-stg-row">
+                        <label>连射速率</label>
+                        <select class="monster-stg-burst-speed-mode" title="平均：每轮弹速相同；扩散波：后发波次更快，且相邻波次速度差递减">
+                            <option value="average" ${burstSpd === 'spread_wave' ? '' : 'selected'}>平均</option>
+                            <option value="spread_wave" ${burstSpd === 'spread_wave' ? 'selected' : ''}>扩散波</option>
+                        </select>
                     </div>
                 </div>
 
@@ -539,6 +635,8 @@
                     </div>
                 </div>
             </div>
+                </div>
+            </details>
         `;
         listEl.appendChild(row);
         syncStgSubPanels(row);
@@ -637,6 +735,7 @@
         listEl.addEventListener('click', (e) => {
             const btn = e.target.closest('.monster-editor-remove-type');
             if (!btn || btn.disabled) return;
+            e.stopPropagation();
             const row = btn.closest('.monster-editor-row');
             if (!row) return;
             if (!confirm('确定从列表中移除该种类？\n若波次配置仍引用该 ID，需在「波次配置」中改选其它种类。\n点击「应用」后才会写入存档。')) return;

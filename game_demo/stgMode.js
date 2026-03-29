@@ -6,8 +6,9 @@
     'use strict';
 
     /** 棋盘格数：横向/纵向较早期版本各多 3 格，战场更宽更长 */
-    const GRID_COLS = 12;
-    const GRID_ROWS = 17;
+    /** 主战场格数：四边各再扩 2 格 → 12+4 × 17+4 */
+    const GRID_COLS = 16;
+    const GRID_ROWS = 21;
     /** 与棋盘思路一致：竖向长条战场 */
     const WAVE_STORAGE_KEY = 'tower_defense_wave_config';
     const MONSTER_STORAGE_KEY = 'tower_defense_enemy_types';
@@ -20,6 +21,10 @@
     const STG_PLAYER_CONFIG_KEY = 'stg_player_config';
     /** 与 stgScenePropsEditorPanel 共用：P 点轨迹等场景道具 */
     const STG_SCENE_PROPS_KEY = 'stg_scene_props_config';
+    /** 局内构筑道具预设：勾选保存到 localStorage，每局 resetRun 时应用 */
+    const STG_BUILD_INV_KEY = 'stg_build_inventory_granted';
+    /** 穿透弹需避免对同一敌人重复结算：每实例唯一 id */
+    let stgEnemyInstanceSeq = 0;
     /** 避免每帧读盘：应用编辑器或新开局时清空 */
     let scenePropsCache = null;
     /** 按住 Shift 慢速模式：在 bonusMoveMult 之后再乘此系数（可被玩家编辑器 focusMoveMult 覆盖） */
@@ -33,22 +38,73 @@
         return '';
     }
 
-    function loadStgScenePropsConfigRaw() {
-        const def = {
+    /** 场景道具默认：P 点与充能点可分别配置轨迹/速率/视觉；旧存档无 c* 时从 p* 镜像 */
+    function getStgScenePropsDefaults() {
+        return {
             pTrajectory: 'straight_down',
             pStraightVy: 80,
             pArcUpSpeed: 120,
             pArcPeakPx: 55,
-            pArcDownSpeed: 85
+            pArcDownSpeed: 85,
+            pArcUpSpeedMode: 'uniform',
+            pArcDownSpeedMode: 'uniform',
+            /** P 点外观：circle | square | diamond；大小为外接尺寸（像素） */
+            pShape: 'circle',
+            pSizePx: 20,
+            cTrajectory: 'straight_down',
+            cStraightVy: 80,
+            cArcUpSpeed: 120,
+            cArcPeakPx: 55,
+            cArcDownSpeed: 85,
+            cArcUpSpeedMode: 'uniform',
+            cArcDownSpeedMode: 'uniform',
+            cShape: 'square',
+            cSizePx: 22,
+            chargePointValue: 45,
+            /** 已触发擦弹的敌弹填充透明度（场景道具） */
+            grazedBulletAlpha: 0.38
         };
+    }
+
+    /**
+     * 合并本地存档与默认；无 c* 键的旧档：充能点轨迹参数跟随当时已保存的 p*（手感不变）
+     */
+    function normalizeScenePropsConfig(raw) {
+        const base = getStgScenePropsDefaults();
+        const o = raw && typeof raw === 'object' ? raw : {};
+        const m = { ...base, ...o };
+        if (!('cTrajectory' in o)) {
+            m.cTrajectory = m.pTrajectory;
+            m.cStraightVy = m.pStraightVy;
+            m.cArcUpSpeed = m.pArcUpSpeed;
+            m.cArcPeakPx = m.pArcPeakPx;
+            m.cArcDownSpeed = m.pArcDownSpeed;
+            m.cArcUpSpeedMode = m.pArcUpSpeedMode;
+            m.cArcDownSpeedMode = m.pArcDownSpeedMode;
+        }
+        if (!('pShape' in o)) m.pShape = base.pShape;
+        if (!('pSizePx' in o)) m.pSizePx = base.pSizePx;
+        if (!('cShape' in o)) m.cShape = base.cShape;
+        if (!('cSizePx' in o)) m.cSizePx = base.cSizePx;
+        const shp = (v) => (v === 'square' || v === 'diamond' ? v : 'circle');
+        m.pShape = shp(m.pShape);
+        m.cShape = m.cShape === 'circle' || m.cShape === 'square' || m.cShape === 'diamond' ? m.cShape : 'square';
+        m.pSizePx = Math.max(10, Math.min(48, Number(m.pSizePx) || base.pSizePx));
+        m.cSizePx = Math.max(10, Math.min(48, Number(m.cSizePx) || base.cSizePx));
+        const gba = Number(m.grazedBulletAlpha);
+        m.grazedBulletAlpha = Number.isFinite(gba) ? Math.max(0.05, Math.min(0.98, gba)) : base.grazedBulletAlpha;
+        return m;
+    }
+
+    function loadStgScenePropsConfigRaw() {
         try {
             const raw = localStorage.getItem(STG_SCENE_PROPS_KEY);
-            if (!raw) return def;
+            if (!raw) return normalizeScenePropsConfig(null);
             const o = JSON.parse(raw);
-            if (!o || typeof o !== 'object') return def;
-            return { ...def, ...o };
+            if (!o || typeof o !== 'object') return normalizeScenePropsConfig(null);
+            return normalizeScenePropsConfig(o);
         } catch (e) {
-            return def;
+            return normalizeScenePropsConfig(null);
         }
     }
 
@@ -63,28 +119,112 @@
         scenePropsCache = null;
     }
 
+    /** 场景道具：上抛曲线模式（兼容旧存档 curve → ease_in_out） */
+    function normalizeArcUpSpeedMode(m) {
+        if (m === 'ease_in' || m === 'ease_out' || m === 'ease_in_out') return m;
+        if (m === 'curve') return 'ease_in_out';
+        return 'uniform';
+    }
+
+    /** 场景道具：下落曲线模式（兼容旧存档 curve → ease_in，即先慢后快） */
+    function normalizeArcDownSpeedMode(m) {
+        if (m === 'ease_in' || m === 'ease_out') return m;
+        if (m === 'curve') return 'ease_in';
+        return 'uniform';
+    }
+
+    /** 弧顶结束：根据下落模式初始化竖直速度状态 */
+    function stgPickupOnArcUpFinished(p) {
+        p.arcUpDone = true;
+        p.y = p.peakY;
+        const dm = normalizeArcDownSpeedMode(p.arcDownMode);
+        if (dm === 'ease_out') {
+            /** 先快后慢：初速高于目标，再向目标回落 */
+            p.fallVCurrent = p.fallVy * 1.42;
+        } else if (dm === 'ease_in') {
+            p.fallVCurrent = 0;
+        } else {
+            delete p.fallVCurrent;
+        }
+    }
+
     /**
-     * 击杀掉落 P 点：直线向下 或 先上抛至弧顶再下落
+     * 按前缀 p / c 从场景配置生成掉落运动与碰撞/绘制参数（不写入 exp / charge）
+     * @param {'p'|'c'} prefix
      */
-    function createPickupAtKill(ex, ey, pExp) {
+    function buildPickupMotionFromScene(ex, ey, prefix) {
         const cfg = getScenePropsConfig();
-        const traj = cfg.pTrajectory === 'arc_up_down' ? 'arc_up_down' : 'straight_down';
+        const trajKey = prefix + 'Trajectory';
+        const traj = cfg[trajKey] === 'arc_up_down' ? 'arc_up_down' : 'straight_down';
+        const sizePx = Math.max(10, Math.min(48, Number(cfg[prefix + 'SizePx']) || (prefix === 'p' ? 20 : 22)));
+        let shape = cfg[prefix + 'Shape'];
+        if (prefix === 'p') {
+            shape = shape === 'square' || shape === 'diamond' ? shape : 'circle';
+        } else {
+            shape = shape === 'circle' || shape === 'square' || shape === 'diamond' ? shape : 'square';
+        }
+        const pickupRadius = sizePx * 0.5;
+
         if (traj === 'arc_up_down') {
-            const peakPx = Math.max(10, Math.min(220, Number(cfg.pArcPeakPx) || 55));
-            const up = Math.max(40, Math.min(400, Number(cfg.pArcUpSpeed) || 120));
-            const fall = Math.max(40, Math.min(600, Number(cfg.pArcDownSpeed) || 85));
+            const peakPx = Math.max(10, Math.min(220, Number(cfg[prefix + 'ArcPeakPx']) || 55));
+            const up = Math.max(40, Math.min(400, Number(cfg[prefix + 'ArcUpSpeed']) || 120));
+            const fall = Math.max(40, Math.min(600, Number(cfg[prefix + 'ArcDownSpeed']) || 85));
+            const upMode = normalizeArcUpSpeedMode(cfg[prefix + 'ArcUpSpeedMode']);
+            const downMode = normalizeArcDownSpeedMode(cfg[prefix + 'ArcDownSpeedMode']);
+            const arcUpDurSec = peakPx / up;
             return {
                 x: ex,
                 y: ey,
-                exp: pExp,
                 vy: -up,
                 mode: 'arc',
                 peakY: ey - peakPx,
-                fallVy: fall
+                fallVy: fall,
+                arcStartY: ey,
+                arcUpMode: upMode,
+                arcDownMode: downMode,
+                arcUpT: 0,
+                arcUpDurSec: Math.max(0.04, arcUpDurSec),
+                arcUpDone: false,
+                fallVCurrent: 0,
+                pickupRadius,
+                shape,
+                sizePx
             };
         }
-        const vy = Math.max(20, Math.min(400, Number(cfg.pStraightVy) || 80));
-        return { x: ex, y: ey, exp: pExp, vy, mode: 'straight' };
+        const vy = Math.max(20, Math.min(400, Number(cfg[prefix + 'StraightVy']) || 80));
+        return { x: ex, y: ey, vy, mode: 'straight', pickupRadius, shape, sizePx };
+    }
+
+    /**
+     * 击杀掉落 P 点：直线向下 或 先上抛至弧顶再下落（参数见场景道具「P 点」）
+     */
+    function createPickupAtKill(ex, ey, pExp) {
+        const o = buildPickupMotionFromScene(ex, ey, 'p');
+        o.exp = pExp;
+        return o;
+    }
+
+    /**
+     * 充能点掉落：独立轨迹与外观（场景道具「充能点」）；拾取只增加大招蓄能条
+     * @param {number} chargeValue 场景道具 chargePointValue × 怪物倍率后的整数值
+     */
+    function createPickupChargeAtKill(ex, ey, chargeValue) {
+        const o = buildPickupMotionFromScene(ex, ey, 'c');
+        o.pickupKind = 'charge';
+        o.chargeValue = Math.max(1, Math.floor(chargeValue));
+        o.exp = 0;
+        return o;
+    }
+
+    /** 种类勾选「击杀掉落充能点」时追加掉落（子弹击杀 / 大招 DoT / 阴阳玉等路径共用） */
+    function pushStgChargePickupOnEnemyKillIfConfigured(e) {
+        if (!e || !e.stgDropChargePickup) return;
+        const scfg = getScenePropsConfig();
+        const baseCh = Math.max(5, Math.min(500, Number(scfg.chargePointValue) || 45));
+        const mult = e.stgChargeDropMult != null && Number.isFinite(e.stgChargeDropMult) ? e.stgChargeDropMult : 1;
+        const amt = Math.max(1, Math.floor(baseCh * mult));
+        pickups.push(createPickupChargeAtKill(e.x, e.y, amt));
+        console.log('[STG] 击杀敌人，额外充能点', amt);
     }
 
     /** 受击火星/血雾粒子（径向爆出 + 重力下落） */
@@ -137,6 +277,49 @@
     }
 
     /**
+     * 玩家编辑器中的「升级所需经验」三参数；缺省与旧版 floor(100 + (level-1)*40) 一致。
+     */
+    function getStgExpFormulaParams() {
+        const cfg = loadStgPlayerConfig();
+        const defB = 100;
+        const defL = 40;
+        const defA = 0;
+        if (!cfg) {
+            return { expBase: defB, expLinearPerLevel: defL, expAccelPerLevelSq: defA };
+        }
+        const b =
+            cfg.expBase != null && Number.isFinite(Number(cfg.expBase))
+                ? Math.max(1, Math.min(500000, Math.floor(Number(cfg.expBase))))
+                : defB;
+        const lin =
+            cfg.expLinearPerLevel != null && Number.isFinite(Number(cfg.expLinearPerLevel))
+                ? Math.max(0, Math.min(50000, Math.floor(Number(cfg.expLinearPerLevel))))
+                : defL;
+        const acc =
+            cfg.expAccelPerLevelSq != null && Number.isFinite(Number(cfg.expAccelPerLevelSq))
+                ? Math.max(0, Math.min(5000, Number(cfg.expAccelPerLevelSq)))
+                : defA;
+        return { expBase: b, expLinearPerLevel: lin, expAccelPerLevelSq: acc };
+    }
+
+    /**
+     * 从当前等级升到下一级所需经验：floor(基础 + (L-1)*线性 + (L-1)²*加速)。
+     * L 为当前等级（与旧逻辑一致：Lv1 时槽长为 expBase）。
+     */
+    function computeExpToNextForLevel(level) {
+        const L = Math.max(1, Math.floor(level));
+        const c = getStgExpFormulaParams();
+        const t = L - 1;
+        const n = c.expBase + t * c.expLinearPerLevel + c.expAccelPerLevelSq * t * t;
+        return Math.max(1, Math.floor(n));
+    }
+
+    /** 编辑器应用后刷新局内升级条长度（不改变 level/exp，仅重算 expToNext） */
+    function applyStgExpBarFromEditorConfig() {
+        expToNext = computeExpToNextForLevel(level);
+    }
+
+    /**
      * 敌弹/激光对自机的受击半径：可来自编辑器 hitRadius，否则为 固定余量 + 机体显示半径
      */
     function getStgPlayerHitRadius() {
@@ -145,6 +328,283 @@
             return Math.max(1, player.hitRadius);
         }
         return STG_PLAYER_HIT_EXTRA + player.radius;
+    }
+
+    /** 自机生命：整格数 ×2 = 半格单位（敌弹只扣 1 或 2 个半格） */
+    function getStgPlayerMaxLifeHalfUnits() {
+        if (!player) return 12;
+        const c = player.stgLifeCellsMax != null ? player.stgLifeCellsMax | 0 : 6;
+        return Math.max(2, Math.min(60, c * 2));
+    }
+
+    function syncStgPlayerLifeHpMirror() {
+        if (!player) return;
+        const maxH = getStgPlayerMaxLifeHalfUnits();
+        let rem = player.stgLifeHalfUnitsRemain != null ? player.stgLifeHalfUnitsRemain | 0 : maxH;
+        rem = Math.max(0, Math.min(maxH, rem));
+        player.stgLifeHalfUnitsRemain = rem;
+        player.maxHp = maxH;
+        player.hp = rem;
+    }
+
+    /**
+     * 按敌机攻击力决定弹幕扣几「半格」：attack 小于 2 为半格，否则为 1 整格（与内置 normal/fast vs tank 一致）。
+     */
+    function resolveStgBulletLifeDamageHalvesFromEnemy(e) {
+        if (!e) return 1;
+        const atk = e.attack != null ? Number(e.attack) : 1;
+        return Number.isFinite(atk) && atk >= 2 ? 2 : 1;
+    }
+
+    /** 受伤无敌窗口内：不受敌弹与激光伤害 */
+    function isStgPlayerInvulnerable(nowMs) {
+        return !!(player && player._invulnUntil != null && nowMs < player._invulnUntil);
+    }
+
+    function getStgPlayerHitInvulnMsFromPlayer() {
+        if (!player) return 2000;
+        const v = player.hitInvulnMs;
+        if (v != null && Number.isFinite(Number(v))) return Math.max(0, Math.min(20000, Number(v)));
+        return 2000;
+    }
+
+    function getStgPlayerHitBulletClearMsFromPlayer() {
+        if (!player) return 1200;
+        const v = player.hitBulletClearMs;
+        if (v != null && Number.isFinite(Number(v))) return Math.max(0, Math.min(20000, Number(v)));
+        return 1200;
+    }
+
+    /** 受伤拉回：在出生点停滞的毫秒数；0=不拉回、不禁输入（与玩家编辑器一致） */
+    function getStgPlayerHitSpawnHoldMsFromPlayer() {
+        if (!player) return 1000;
+        const v = player.hitSpawnHoldMs;
+        if (v != null && Number.isFinite(Number(v))) return Math.max(0, Math.min(30000, Number(v)));
+        return 1000;
+    }
+
+    /**
+     * 将自机对齐到「开局出生点」（画布中下、与 buildPlayerFromHero 一致）；无画布时跳过。
+     */
+    function snapStgPlayerToSpawn() {
+        if (!player || !canvas) return;
+        const cw = canvas.width;
+        const ch = canvas.height;
+        const sx = player._stgSpawnX != null ? player._stgSpawnX : cw * 0.5;
+        const sy = player._stgSpawnY != null ? player._stgSpawnY : ch - cellSize * 1.8;
+        const pr = player.radius != null ? player.radius : 14;
+        player.x = Math.max(pr, Math.min(cw - pr, sx));
+        player.y = Math.max(pr, Math.min(ch - pr, sy));
+    }
+
+    /**
+     * 受伤后：立即清空敌弹，并按编辑器启动无敌与「持续消弹」计时。
+     * 可选：拉回出生点并停滞若干毫秒（见 hitSpawnHoldMs）。
+     * 持续消弹时段内每帧在敌机开火之后再次清空数组，避免新弹停留。
+     */
+    function applyStgPlayerHitResponse(nowMs) {
+        if (!player) return;
+        const invMs = getStgPlayerHitInvulnMsFromPlayer();
+        if (invMs > 0) {
+            player._invulnUntil = nowMs + invMs;
+        } else {
+            player._invulnUntil = null;
+        }
+        const clrMs = getStgPlayerHitBulletClearMsFromPlayer();
+        enemyBullets.length = 0;
+        if (clrMs > 0) {
+            player._bulletClearUntil = nowMs + clrMs;
+        } else {
+            player._bulletClearUntil = null;
+        }
+        const holdMs = getStgPlayerHitSpawnHoldMsFromPlayer();
+        if (holdMs > 0) {
+            snapStgPlayerToSpawn();
+            player._stgHitHoldUntil = nowMs + holdMs;
+        } else {
+            player._stgHitHoldUntil = null;
+        }
+    }
+
+    /** 擦弹参数默认值（与玩家编辑器一致；未存档时用内置默认） */
+    function getStgGrazeRuntimeParams() {
+        if (!player) {
+            return {
+                enabled: false,
+                extra: 32,
+                minMove: 0.9,
+                gain: 6,
+                orbR: 5,
+                orbSpd: 480,
+                glow: 0.65,
+                /** 外椭圆：水平半轴倍率（左右宽） */
+                ellipseHorizMult: 1.42,
+                /** 外椭圆：垂直半轴倍率（上下窄） */
+                ellipseVertMult: 0.76,
+                /** 慢速时机体 globalAlpha */
+                focusShipAlpha: 0.42
+            };
+        }
+        const p = player;
+        return {
+            enabled: p.grazeEnabled !== false,
+            extra: p.grazeExtraPx != null ? Math.max(0, Math.min(160, p.grazeExtraPx)) : 32,
+            minMove: p.grazeMinMovePx != null ? Math.max(0.05, Math.min(30, p.grazeMinMovePx)) : 0.9,
+            gain: p.grazeMeterGain != null ? Math.max(0, Math.min(200, p.grazeMeterGain)) : 6,
+            orbR: p.grazeOrbRadius != null ? Math.max(2, Math.min(16, p.grazeOrbRadius)) : 5,
+            orbSpd: p.grazeOrbSpeedPx != null ? Math.max(60, Math.min(1200, p.grazeOrbSpeedPx)) : 480,
+            glow: p.grazeOrbGlowAlpha != null ? Math.max(0.05, Math.min(1, p.grazeOrbGlowAlpha)) : 0.65,
+            ellipseHorizMult:
+                p.grazeEllipseHorizMult != null ? Math.max(0.2, Math.min(3, Number(p.grazeEllipseHorizMult))) : 1.42,
+            ellipseVertMult:
+                p.grazeEllipseVertMult != null ? Math.max(0.2, Math.min(3, Number(p.grazeEllipseVertMult))) : 0.76,
+            focusShipAlpha:
+                p.focusShipAlpha != null ? Math.max(0.08, Math.min(1, Number(p.focusShipAlpha))) : 0.42
+        };
+    }
+
+    /**
+     * 擦弹外椭圆半轴：以判定点为中心，左右（x）为长轴、上下（y）为短轴；在受击圆外、该椭圆内为可擦区域
+     */
+    function getStgGrazeOuterEllipseRadii(hitDist, g) {
+        const ex = g.extra > 0 ? g.extra : 0;
+        const h = g.ellipseHorizMult != null ? g.ellipseHorizMult : 1.42;
+        const v = g.ellipseVertMult != null ? g.ellipseVertMult : 0.76;
+        return {
+            rx: hitDist + ex * h,
+            ry: hitDist + ex * v
+        };
+    }
+
+    /**
+     * 敌弹本帧位移后检测擦弹：在受击圆外、在外椭圆内，且本帧有位移 → 每弹仅一次
+     */
+    function tryStgGrazeEnemyBullet(b, movedPx) {
+        if (!player || phase !== 'playing' || !b || !b.alive || b._stgGrazed) return;
+        const g = getStgGrazeRuntimeParams();
+        if (!g.enabled || g.extra <= 0 || g.gain <= 0) return;
+        if (movedPx < g.minMove) return;
+        const prHit = getStgPlayerHitRadius();
+        const br = b.radius != null ? b.radius : 5;
+        const hitDist = prHit + br;
+        const dx = b.x - player.x;
+        const dy = b.y - player.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= hitDist * hitDist) return;
+        const { rx, ry } = getStgGrazeOuterEllipseRadii(hitDist, g);
+        if (rx <= 0 || ry <= 0) return;
+        const ne = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+        if (ne > 1) return;
+        b._stgGrazed = true;
+        stgGrazeOrbs.push({
+            x: b.x,
+            y: b.y,
+            meterGain: g.gain,
+            r: g.orbR,
+            spd: g.orbSpd,
+            glow: g.glow,
+            alive: true
+        });
+        /** 渐隐提示擦弹范围：以判定点为中心，外椭圆与受击圆之间的环带 */
+        if (stgGrazeRangeFlashes.length < STG_GRAZE_RANGE_FLASH_MAX) {
+            stgGrazeRangeFlashes.push({
+                cx: player.x,
+                cy: player.y,
+                rx,
+                ry,
+                rHit: hitDist,
+                startMs: performance.now(),
+                durationMs: STG_GRAZE_RANGE_FLASH_MS
+            });
+        }
+        console.log('[STG] 擦弹触发，本帧位移 px=', movedPx.toFixed(2));
+    }
+
+    /** 移除过期的擦弹范围提示，避免数组无限增长 */
+    function updateStgGrazeRangeFlashes(nowMs) {
+        if (!stgGrazeRangeFlashes.length) return;
+        stgGrazeRangeFlashes = stgGrazeRangeFlashes.filter((f) => nowMs < f.startMs + f.durationMs);
+    }
+
+    /**
+     * 绘制擦弹范围闪：外椭圆半透明填充 + 内圆挖空形成环带，边缘加亮；随时间渐隐。
+     */
+    function drawStgGrazeRangeFlashes(ctx) {
+        if (!stgGrazeRangeFlashes.length || !player) return;
+        const now = performance.now();
+        for (let i = 0; i < stgGrazeRangeFlashes.length; i++) {
+            const f = stgGrazeRangeFlashes[i];
+            const elapsed = now - f.startMs;
+            if (elapsed < 0 || elapsed >= f.durationMs) continue;
+            const u = elapsed / f.durationMs;
+            /** 前快后慢淡出，末尾更明显留一点亮度 */
+            const fade = (1 - u) * (1 - u);
+            const aFill = 0.38 * fade;
+            const aEdge = 0.72 * fade;
+            ctx.save();
+            ctx.translate(f.cx, f.cy);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, f.rx, f.ry, 0, 0, Math.PI * 2);
+            /** 环带主色：青白，与小白球、慢速判定点区分 */
+            const grd = ctx.createRadialGradient(0, 0, f.rHit, 0, 0, Math.max(f.rx, f.ry) * 1.02);
+            grd.addColorStop(0, `rgba(160, 235, 255, ${aFill * 0.15})`);
+            grd.addColorStop(0.45, `rgba(120, 210, 255, ${aFill * 0.85})`);
+            grd.addColorStop(1, `rgba(220, 250, 255, ${aFill * 0.55})`);
+            ctx.fillStyle = grd;
+            ctx.fill();
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(0, 0, f.rHit, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.strokeStyle = `rgba(240, 252, 255, ${aEdge})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, f.rx, f.ry, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.strokeStyle = `rgba(255, 200, 120, ${0.35 * fade})`;
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(0, 0, f.rHit, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    /** 擦弹小白球飞向判定点，吸附后按「收益」灌入大招蓄能条（叠乘 bonusUltChargeMult · bonusGrazeChargeMult） */
+    function updateStgGrazeOrbs(dtSec) {
+        if (!player || phase !== 'playing') return;
+        const prHit = getStgPlayerHitRadius();
+        const absorb = prHit + 10;
+        for (let i = stgGrazeOrbs.length - 1; i >= 0; i--) {
+            const o = stgGrazeOrbs[i];
+            if (!o || !o.alive) {
+                stgGrazeOrbs.splice(i, 1);
+                continue;
+            }
+            const dx = player.x - o.x;
+            const dy = player.y - o.y;
+            const d = Math.hypot(dx, dy);
+            if (d < absorb) {
+                const gain = o.meterGain != null ? o.meterGain : 6;
+                stgUltChargeMeter += gain * bonusUltChargeMult * bonusGrazeChargeMult;
+                const th = getUltChargeMeterThreshold();
+                while (stgUltChargeMeter >= th && stgUltCharges < STG_ULT_CHARGE_MAX) {
+                    stgUltCharges++;
+                    stgUltChargeMeter -= th;
+                }
+                if (stgUltCharges >= STG_ULT_CHARGE_MAX) stgUltChargeMeter = 0;
+                stgGrazeOrbs.splice(i, 1);
+                console.log('[STG] 擦弹球吸附，蓄能折算', gain);
+                continue;
+            }
+            const spd = o.spd != null ? o.spd : 480;
+            if (d > 0.5) {
+                o.x += (dx / d) * spd * dtSec;
+                o.y += (dy / d) * spd * dtSec;
+            }
+        }
     }
 
     /**
@@ -353,6 +813,144 @@
         } else {
             delete p.skillBulletVisualShape;
         }
+        /** 穿透：未存档时按单段命中（runtime 与 pushBullet 一致） */
+        if (cfg.bulletPierceEnabled != null || cfg.bulletPierce != null) {
+            p.bulletPierceEnabled = !!(cfg.bulletPierceEnabled === true || cfg.bulletPierce === true);
+        } else {
+            delete p.bulletPierceEnabled;
+        }
+        if (cfg.bulletPierceHits != null) {
+            const n = parseInt(cfg.bulletPierceHits, 10);
+            if (Number.isFinite(n)) p.bulletPierceHits = Math.max(2, Math.min(20, n));
+        } else {
+            delete p.bulletPierceHits;
+        }
+        if (cfg.focusBulletPierceEnabled != null || cfg.focusBulletPierce != null) {
+            p.focusBulletPierceEnabled = !!(cfg.focusBulletPierceEnabled === true || cfg.focusBulletPierce === true);
+        } else {
+            delete p.focusBulletPierceEnabled;
+        }
+        if (cfg.focusBulletPierceHits != null) {
+            const n = parseInt(cfg.focusBulletPierceHits, 10);
+            if (Number.isFinite(n)) p.focusBulletPierceHits = Math.max(2, Math.min(20, n));
+        } else {
+            delete p.focusBulletPierceHits;
+        }
+        if (cfg.skillBulletPierceEnabled != null || cfg.skillBulletPierce != null) {
+            p.skillBulletPierceEnabled = !!(cfg.skillBulletPierceEnabled === true || cfg.skillBulletPierce === true);
+        } else {
+            delete p.skillBulletPierceEnabled;
+        }
+        if (cfg.skillBulletPierceHits != null) {
+            const n = parseInt(cfg.skillBulletPierceHits, 10);
+            if (Number.isFinite(n)) p.skillBulletPierceHits = Math.max(2, Math.min(20, n));
+        } else {
+            delete p.skillBulletPierceHits;
+        }
+        /** 开局已拥有的大招充能格数（0–5），与局内五格上限一致 */
+        if (cfg.ultInitialCharges != null) {
+            const n = parseInt(cfg.ultInitialCharges, 10);
+            if (Number.isFinite(n)) p.ultInitialCharges = Math.max(0, Math.min(5, n));
+        } else {
+            delete p.ultInitialCharges;
+        }
+        /** 擦弹：敌弹掠过判定点外环时触发一次，生成小白球吸附并转化为大招蓄能 */
+        if (cfg.grazeEnabled != null) {
+            p.grazeEnabled = !!cfg.grazeEnabled;
+        } else {
+            delete p.grazeEnabled;
+        }
+        if (cfg.grazeExtraPx != null) {
+            const n = Number(cfg.grazeExtraPx);
+            if (Number.isFinite(n)) p.grazeExtraPx = Math.max(0, Math.min(160, n));
+        } else {
+            delete p.grazeExtraPx;
+        }
+        if (cfg.grazeMeterGain != null) {
+            const n = Number(cfg.grazeMeterGain);
+            if (Number.isFinite(n)) p.grazeMeterGain = Math.max(0, Math.min(200, n));
+        } else {
+            delete p.grazeMeterGain;
+        }
+        if (cfg.grazeMinMovePx != null) {
+            const n = Number(cfg.grazeMinMovePx);
+            if (Number.isFinite(n)) p.grazeMinMovePx = Math.max(0.05, Math.min(30, n));
+        } else {
+            delete p.grazeMinMovePx;
+        }
+        if (cfg.grazeOrbRadius != null) {
+            const n = Number(cfg.grazeOrbRadius);
+            if (Number.isFinite(n)) p.grazeOrbRadius = Math.max(2, Math.min(16, n));
+        } else {
+            delete p.grazeOrbRadius;
+        }
+        if (cfg.grazeOrbSpeedPx != null) {
+            const n = Number(cfg.grazeOrbSpeedPx);
+            if (Number.isFinite(n)) p.grazeOrbSpeedPx = Math.max(60, Math.min(1200, n));
+        } else {
+            delete p.grazeOrbSpeedPx;
+        }
+        if (cfg.grazeOrbGlowAlpha != null) {
+            const n = Number(cfg.grazeOrbGlowAlpha);
+            if (Number.isFinite(n)) p.grazeOrbGlowAlpha = Math.max(0.05, Math.min(1, n));
+        } else {
+            delete p.grazeOrbGlowAlpha;
+        }
+        if (cfg.grazeEllipseHorizMult != null) {
+            const n = Number(cfg.grazeEllipseHorizMult);
+            if (Number.isFinite(n)) p.grazeEllipseHorizMult = Math.max(0.2, Math.min(3, n));
+        } else {
+            delete p.grazeEllipseHorizMult;
+        }
+        if (cfg.grazeEllipseVertMult != null) {
+            const n = Number(cfg.grazeEllipseVertMult);
+            if (Number.isFinite(n)) p.grazeEllipseVertMult = Math.max(0.2, Math.min(3, n));
+        } else {
+            delete p.grazeEllipseVertMult;
+        }
+        if (cfg.focusShipAlpha != null) {
+            const n = Number(cfg.focusShipAlpha);
+            if (Number.isFinite(n)) p.focusShipAlpha = Math.max(0.08, Math.min(1, n));
+        } else {
+            delete p.focusShipAlpha;
+        }
+        if (cfg.lifeCellsMax != null) {
+            const bc = Number(cfg.lifeCellsMax);
+            if (Number.isFinite(bc)) {
+                const baseCells = Math.max(1, Math.min(30, Math.round(bc)));
+                let cells = baseCells;
+                if (playerStatsRef && playerStatsRef.getStat) {
+                    cells = Math.max(1, Math.round(baseCells * (1 + (playerStatsRef.getStat('max_health_bonus') || 0))));
+                }
+                const prevMaxHalf = Math.max(2, (p.stgLifeCellsMax != null ? p.stgLifeCellsMax : 6) * 2);
+                const prevRem =
+                    p.stgLifeHalfUnitsRemain != null ? (p.stgLifeHalfUnitsRemain | 0) : prevMaxHalf;
+                p.stgLifeCellsMax = cells;
+                const newMaxHalf = cells * 2;
+                p.stgLifeHalfUnitsRemain = Math.min(newMaxHalf, Math.max(0, Math.round((prevRem / prevMaxHalf) * newMaxHalf)));
+            }
+        }
+        if (cfg.hitInvulnMs != null) {
+            const v = Number(cfg.hitInvulnMs);
+            if (Number.isFinite(v)) p.hitInvulnMs = Math.max(0, Math.min(20000, v));
+        } else {
+            delete p.hitInvulnMs;
+        }
+        if (cfg.hitBulletClearMs != null) {
+            const v = Number(cfg.hitBulletClearMs);
+            if (Number.isFinite(v)) p.hitBulletClearMs = Math.max(0, Math.min(20000, v));
+        } else {
+            delete p.hitBulletClearMs;
+        }
+        if (cfg.hitSpawnHoldMs != null) {
+            const v = Number(cfg.hitSpawnHoldMs);
+            if (Number.isFinite(v)) p.hitSpawnHoldMs = Math.max(0, Math.min(30000, v));
+        } else {
+            delete p.hitSpawnHoldMs;
+        }
+        if (p.stgLifeCellsMax != null) {
+            syncStgPlayerLifeHpMirror();
+        }
     }
 
     /** 应用本地玩家属性到当前局内 player（无存档时整对象按英雄模板重建并保留当前坐标） */
@@ -369,9 +967,11 @@
             Object.assign(player, fresh);
             player.x = px;
             player.y = py;
+            applyStgExpBarFromEditorConfig();
             return;
         }
         mergeStgPlayerEditorIntoPlayer(player, cfg);
+        applyStgExpBarFromEditorConfig();
     }
 
     /** @type {HTMLCanvasElement|null} */
@@ -400,8 +1000,12 @@
         ShiftRight: false
     };
 
-    /** 游戏阶段：title | playing | levelup | dead | win */
+    /** 游戏阶段：title | playing | levelup（三选一，暂停局内）| dead | win */
     let phase = 'title';
+    /** 三选一全屏弹层是否打开 */
+    let stgUpgradePickOpen = false;
+    /** 已升级但未打开弹层：棋盘右下提示，按 E 或点击打开 */
+    let stgUpgradePending = false;
 
     /** @type {Array<{x:number,y:number,vx:number,vy:number,dmg:number,alive:boolean}>} */
     let playerBullets = [];
@@ -411,8 +1015,44 @@
     let enemyBullets = [];
     /** 直线激光：线段 + 线宽 + 持续时间内每帧检测与玩家距离 */
     let enemyLasers = [];
-    /** @type {Array<{x:number,y:number,exp:number,vy:number,mode?:string,peakY?:number,fallVy?:number}>} */
+    /** @type {Array<{x:number,y:number,exp:number,vy:number,mode?:string,peakY?:number,fallVy?:number,pickupKind?:string,pickupRadius?:number,shape?:string,sizePx?:number,chargeValue?:number}>} */
     let pickups = [];
+    /** 擦弹产生的小白球：飞向判定点，吸附后增加大招蓄能 */
+    let stgGrazeOrbs = [];
+    /** 擦弹成功时短暂显示「可擦区域」：外椭圆环带渐隐（与判定用椭圆一致） */
+    /** @type {Array<{cx:number,cy:number,rx:number,ry:number,rHit:number,startMs:number,durationMs:number}>} */
+    let stgGrazeRangeFlashes = [];
+    const STG_GRAZE_RANGE_FLASH_MS = 560;
+    const STG_GRAZE_RANGE_FLASH_MAX = 8;
+
+    /** 道具E：阴阳玉（《新玩法--STG模式》间隔产球、圆形绕机、挡弹、对敌持续伤、限时存在） */
+    /** @type {Array<{x:number,y:number,r:number,visR?:number,alive:boolean,lifeMs:number,maxLifeMs:number,phaseRad?:number,orbitR?:number,orbitOmega?:number}>} */
+    let stgYinYangOrbs = [];
+    /** 扩散模式下下次生成阴阳玉的 performance.now()（毫秒）；未持有道具时为 null */
+    let stgYinYangNextSpawnWallMs = null;
+    /** 与策划「每次隔 N 秒产生一枚」一致 */
+    const STG_YINYANG_SPAWN_INTERVAL_MS = 10000;
+    /** 与策划「持续时间」一致（毫秒） */
+    const STG_YINYANG_ORB_DURATION_MS = 3000;
+    /** 同时存在上限（10s 周期 + 3s 寿命下通常 1～2 枚，留余量防极端） */
+    const STG_YINYANG_MAX_ORBS = 8;
+    /** 道具I：集中主武器命中满该次数触发水晶齐射（与 HUD「还剩几次」同源） */
+    const STG_CRYSTAL_FOCUS_HITS_NEEDED = 30;
+    /** 道具M：慢速下每击杀该数量叠一层狂怒（与 HUD「再杀几只」同源） */
+    const STG_RAGE_KILLS_PER_STACK = 5;
+    /** 局内构筑面板：按道具 id 存 JSON，与勾选 grants 分键 */
+    const STG_BUILD_OVERRIDES_KEY = 'stg_build_upgrade_overrides';
+    /** @type {Record<string, Record<string, unknown>>} */
+    let stgBuildUpgradeOverrides = {};
+    /** 道具I：慢速+水晶分支下，主武器命中次数（满阈值触发水晶齐射） */
+    let stgCrystalFocusHitAcc = 0;
+    /** 道具M–P：狂怒层数、当前段结束时刻（叠层整段重置 CD；到期先掉最高层再开下一段） */
+    let stgRageStacks = 0;
+    /** 当前「正在掉」的这一层的结束 wall ms；叠层时整段刷新 */
+    let stgRageEndMs = 0;
+    let stgRageKillAcc = 0;
+    /** 道具C：伴身炮台上次发射时刻 */
+    let stgSideTurretLastFireMs = 0;
 
     /** 玩家受击：粒子 + 全屏闪（仅 STG 画布内） */
     let stgPlayerFxParticles = [];
@@ -451,6 +1091,134 @@
     let bonusPickupRadius = 1;
     let bonusBulletSpeed = 1;
     let bonusExpMult = 1;
+    /** 大招：编辑器额外冷却 = 配置值 / 本乘区；充能阈值 = 基准 / 本乘区。仅「基础道具9」叠乘 */
+    let bonusUltChargeMult = 1;
+    /** 局内回复额外乘区；仅「基础道具2」叠乘（与局外 health_regen_bonus 叠乘） */
+    let stgRunRegenMult = 1;
+    /** 擦弹小白球灌入大招条时的额外乘区；仅「基础道具10」叠乘（与 bonusUltChargeMult 叠乘） */
+    let bonusGrazeChargeMult = 1;
+
+    /** 左侧 HUD：生命 / 经验 条格数（与大招五格区分） */
+    const STG_PRIORITY_SEGMENTS = 10;
+
+    /** 大招充能：最多 5 格方形；仅拾取充能点（及旧逻辑已移除）蓄满阈值 +1 格，按 X 消耗 1 格发动 */
+    const STG_ULT_CHARGE_MAX = 5;
+    /** 与升级经验同源数值；阈值 = 本常量 / bonusUltChargeMult（基础道具9 加快蓄满） */
+    const STG_ULT_CHARGE_METER_BASE = 100;
+    let stgUltCharges = 0;
+    /** 当前格内已累积量（0～阈值） */
+    let stgUltChargeMeter = 0;
+
+    /**
+     * 仅「基础属性强化」中、与《新玩法--STG模式》基础道具对应的项会累加并写入右侧栏（7 条）。
+     * 基础道具7（P点）、9（充能）仍叠乘局内数值，但不计入本对象（不显示）。
+     */
+    let stgStatBonusDisplay = {
+        /** 基础道具1：累计通过三选一增加的整格数（与《新玩法--STG模式》「+1 格生命与上限」一致） */
+        hpCellsStat: 0,
+        pct_regen: 0,
+        pct_atk_all: 0,
+        /** 基础道具10：擦弹球吸附时灌大招条的收益（展示为累计 +10%/ 次，与 bonusGrazeChargeMult 同步） */
+        pct_graze: 0,
+        pct_fire: 0,
+        pct_bullet_spd: 0,
+        pct_move_base: 0
+    };
+
+    function resetStgStatBonusDisplay() {
+        stgStatBonusDisplay.hpCellsStat = 0;
+        stgStatBonusDisplay.pct_regen = 0;
+        stgStatBonusDisplay.pct_atk_all = 0;
+        stgStatBonusDisplay.pct_graze = 0;
+        stgStatBonusDisplay.pct_fire = 0;
+        stgStatBonusDisplay.pct_bullet_spd = 0;
+        stgStatBonusDisplay.pct_move_base = 0;
+        bonusUltChargeMult = 1;
+        stgRunRegenMult = 1;
+        bonusGrazeChargeMult = 1;
+    }
+
+    /**
+     * 基础属性强化：叠局内数值 + 右侧属性加成条；非 stat 卡勿调用。
+     */
+    function applyStgStatPickup(statId) {
+        if (!player) return;
+        const D = stgStatBonusDisplay;
+        switch (statId) {
+            case 'stat_hp': {
+                /** 《新玩法--STG模式》基础道具1：+1 整格上限，并回复 1 整格（2 半格），不超过引擎格数上限 */
+                const capCells = 30;
+                D.hpCellsStat = (D.hpCellsStat | 0) + 1;
+                const oldC = Math.max(1, player.stgLifeCellsMax | 0);
+                const newC = Math.min(capCells, oldC + 1);
+                player.stgLifeCellsMax = newC;
+                const newMaxHalf = newC * 2;
+                const oldRem = player.stgLifeHalfUnitsRemain != null ? (player.stgLifeHalfUnitsRemain | 0) : oldC * 2;
+                player.stgLifeHalfUnitsRemain = Math.min(newMaxHalf, Math.max(0, oldRem + 2));
+                syncStgPlayerLifeHpMirror();
+                break;
+            }
+            case 'stat_regen':
+                D.pct_regen += 10;
+                stgRunRegenMult *= 1.1;
+                break;
+            case 'stat_atk_all':
+                D.pct_atk_all += 8;
+                bonusDamage *= 1.08;
+                break;
+            case 'stat_graze':
+                /** 基础道具10：与 stat_regen 同档展示 +10%，擦弹灌条 ×1.1 */
+                D.pct_graze += 10;
+                bonusGrazeChargeMult *= 1.1;
+                break;
+            case 'stat_fire':
+                D.pct_fire += 8;
+                bonusFireIntervalMult *= 0.92;
+                break;
+            case 'stat_bullet_spd':
+                D.pct_bullet_spd += 8;
+                bonusBulletSpeed *= 1.08;
+                break;
+            case 'stat_move_spread':
+                D.pct_move_base += 6;
+                bonusMoveMult *= 1.06;
+                break;
+            case 'stat_exp':
+                /** 基础道具7：无列表项，仅局内 P 点经验叠乘 */
+                bonusExpMult *= 1.06;
+                break;
+            case 'stat_ult_charge':
+                /** 基础道具9：无列表项；加快大招充能蓄满（降低阈值）并与编辑器冷却叠乘 */
+                bonusUltChargeMult *= 1.08;
+                break;
+            default:
+                return;
+        }
+        refreshStgReimuBonusAside();
+    }
+
+    /** 将 stgStatBonusDisplay 写入右侧栏（切换语言重建 DOM 后需再调） */
+    function refreshStgReimuBonusAside() {
+        const root = document.getElementById('stgPlayerStatsList');
+        if (!root) return;
+        const fmtPct = (v) => (v <= 0 ? '0%' : '+' + Math.round(v) + '%');
+        const keys = ['hp_cells_stat', 'pct_regen', 'pct_atk_all', 'pct_graze', 'pct_fire', 'pct_bullet_spd', 'pct_move_base'];
+        for (let i = 0; i < keys.length; i++) {
+            const k = keys[i];
+            const row = root.querySelector('[data-stg-stat="' + k + '"]');
+            if (!row) continue;
+            const el = row.querySelector('.stg-reimu-stat-value');
+            if (!el) continue;
+            if (k === 'hp_cells_stat') {
+                const n = stgStatBonusDisplay.hpCellsStat | 0;
+                const useEn =
+                    window.StgUiI18n && typeof window.StgUiI18n.isEn === 'function' && window.StgUiI18n.isEn();
+                el.textContent = n <= 0 ? '—' : useEn ? '+' + n + ' cells' : '+' + n + ' 格';
+            } else {
+                el.textContent = fmtPct(stgStatBonusDisplay[k] || 0);
+            }
+        }
+    }
 
     /**
      * 博丽灵梦构筑：集中 / 大招各两条分支互斥；且每条分支须先抽到「基础卡」，同分支的后续强化才会进入池子（requires）。
@@ -472,46 +1240,134 @@
     let upgradeChoices = [];
 
     /**
+     * 【局内升级三选一】唯一随机源：prepareLevelUpChoices() 对本数组洗牌后取 3 条（见 isStgUpgradeEligible）。
+     * 文案与《STG所有道具/新玩法--STG模式》一致：道具A–V + 基础道具1–7、9、10；仅 group=stat 影响右侧「属性加成」。
+     * 试做型封魔阵为默认大招（按 X），不在本池；大招池仅含 Q–S / T–V 分支强化。
+     * 与 obj_list/enhance_items.json（局外 meta）无关。
+     *
      * group: spread | focus_crystal | focus_rage | ult_seal | ult_dream | stat
      * requires: 须本局已选过该 id 后，本条才进入随机池（分支内先解锁基础再出强化）
      */
     const STG_UPGRADE_POOL = [
-        // —— 扩散攻击（普通模式）—— icon 供左侧构筑栏；悬浮见 name/desc ——
-        { id: 'spread_fan', icon: '📐', group: 'spread', name: '「扩散」扇形弹幕', desc: '攻击方式改为扇形，散射子弹 +2', apply: () => {} },
-        { id: 'spread_extra', icon: '➕', group: 'spread', name: '「扩散」额外弹', desc: '攻击概率发射额外的子弹', apply: () => {} },
-        { id: 'spread_turret', icon: '🔰', group: 'spread', name: '「扩散」伴身炮台', desc: '自机旁增加炮台，造成玩家攻击力 150% 伤害，随自机移动', apply: () => {} },
-        { id: 'spread_homing', icon: '🎯', group: 'spread', name: '「扩散」追踪弹', desc: '子弹可追踪，伤害降低 40%', apply: () => {} },
-        { id: 'spread_yinyang', icon: '☯️', group: 'spread', name: '「扩散」阴阳玉', desc: '每次攻击概率产生一枚阴阳玉，造成范围伤害', apply: () => {} },
-        { id: 'spread_big_p', icon: '💠', group: 'spread', name: '「扩散」大 P 点', desc: '该攻击击杀敌人概率生成大 P 点', apply: () => {} },
-        { id: 'spread_crit', icon: '💥', group: 'spread', name: '「扩散」暴击', desc: '该攻击的暴击概率上升', apply: () => {} },
-        { id: 'spread_big_energy', icon: '⚡', group: 'spread', name: '「扩散」大能量点', desc: '该攻击击杀敌人概率生成大能量点', apply: () => {} },
-        // —— 集中攻击 · 水晶 ——
-        { id: 'focus_crystal_base', icon: '💎', group: 'focus_crystal', name: '「水晶」水晶箭', desc: '能向前方发射 6 枚水晶', apply: () => {} },
-        { id: 'focus_crystal_atk', icon: '⚔️', group: 'focus_crystal', name: '「水晶」攻击力', desc: '水晶攻击力上升', requires: 'focus_crystal_base', apply: () => {} },
-        { id: 'focus_crystal_count', icon: '🔢', group: 'focus_crystal', name: '「水晶」数量', desc: '水晶数量增多', requires: 'focus_crystal_base', apply: () => {} },
-        { id: 'focus_crystal_pierce', icon: '➡️', group: 'focus_crystal', name: '「水晶」穿透', desc: '水晶能够穿透', requires: 'focus_crystal_base', apply: () => {} },
-        // —— 集中攻击 · 狂怒 ——
-        { id: 'focus_rage_core', icon: '😤', group: 'focus_rage', name: '「狂怒」狂怒层数', desc: '慢速模式下每击杀 5 名敌人叠 1 层【狂怒】；射速与弹速提升，持续 5 秒，最多 3 层', apply: () => {} },
-        { id: 'focus_rage_cap', icon: '📊', group: 'focus_rage', name: '「狂怒」层数上限', desc: '【狂怒】叠加上限 +3 层', requires: 'focus_rage_core', apply: () => {} },
-        { id: 'focus_rage_dur', icon: '⏱️', group: 'focus_rage', name: '「狂怒」持续时间', desc: '【狂怒】持续时间 +5 秒', requires: 'focus_rage_core', apply: () => {} },
-        { id: 'focus_rage_weak', icon: '🧪', group: 'focus_rage', name: '「狂怒」虚弱', desc: '叠满 5 层时敌人获得虚弱，受到伤害 +20%', requires: 'focus_rage_core', apply: () => {} },
-        // —— 大招 · 封魔阵 ——
-        { id: 'ult_seal_base', icon: '🔯', group: 'ult_seal', name: '「封魔阵」结界', desc: '自机周围圆形结界：消除弹幕并对敌人造成伤害', apply: () => {} },
-        { id: 'ult_seal_size', icon: '⭕', group: 'ult_seal', name: '「封魔阵」范围与持续', desc: '结界范围增大，持续时间增加', requires: 'ult_seal_base', apply: () => {} },
-        { id: 'ult_seal_heal', icon: '💚', group: 'ult_seal', name: '「封魔阵」疗愈', desc: '结界可恢复生命，并短暂强化攻击', requires: 'ult_seal_base', apply: () => {} },
-        // —— 大招 · 梦想妙珠 ——
-        { id: 'ult_dream_base', icon: '🔮', group: 'ult_dream', name: '「妙珠」梦想妙珠', desc: '向前发射 3 个妙珠：消除弹幕并造成范围伤害', apply: () => {} },
-        { id: 'ult_dream_count', icon: '✨', group: 'ult_dream', name: '「妙珠」数量', desc: '妙珠数量增加', requires: 'ult_dream_base', apply: () => {} },
-        { id: 'ult_dream_stun', icon: '💫', group: 'ult_dream', name: '「妙珠」眩晕', desc: '妙珠可短暂眩晕敌人', requires: 'ult_dream_base', apply: () => {} },
-        // —— 属性 ——
-        { id: 'stat_hp', icon: '❤️', group: 'stat', name: '属性 · 生命', desc: '生命值增加', apply: () => {} },
-        { id: 'stat_regen', icon: '💗', group: 'stat', name: '属性 · 回复', desc: '生命恢复增加', apply: () => {} },
-        { id: 'stat_atk_all', icon: '🗡️', group: 'stat', name: '属性 · 全攻击', desc: '全攻击力增加', apply: () => {} },
-        { id: 'stat_fire', icon: '🏹', group: 'stat', name: '属性 · 射速', desc: '射速增加', apply: () => {} },
-        { id: 'stat_bullet_spd', icon: '💨', group: 'stat', name: '属性 · 弹速', desc: '弹速增加', apply: () => {} },
-        { id: 'stat_move_spread', icon: '👟', group: 'stat', name: '属性 · 普通移速', desc: '普通模式移速增加', apply: () => {} },
-        { id: 'stat_exp', icon: '📈', group: 'stat', name: '属性 · 经验', desc: '经验值增长', apply: () => {} },
-        { id: 'stat_ult_charge', icon: '🌟', group: 'stat', name: '属性 · 大招充能', desc: '大招充能效率', apply: () => {} }
+        // —— 扩散攻击（普通模式）道具A–H ——
+        { id: 'spread_fan', icon: '📐', group: 'spread', name: '道具A', desc: '攻击方式改为扇形，散射子弹+2', apply: () => {} },
+        {
+            id: 'spread_extra',
+            icon: '➕',
+            group: 'spread',
+            name: '道具B',
+            desc: '攻击概率发射额外的追踪子弹。追踪子弹可以穿透2次。',
+            apply: () => {}
+        },
+        { id: 'spread_turret', icon: '🔰', group: 'spread', name: '道具C', desc: '自机旁边增加一个造成玩家伤害150%的炮台，随自机移动', apply: () => {} },
+        { id: 'spread_homing', icon: '🎯', group: 'spread', name: '道具D', desc: '子弹可以追踪，但是伤害降低40%', apply: () => {} },
+        {
+            id: 'spread_yinyang',
+            icon: '☯️',
+            group: 'spread',
+            name: '道具E',
+            desc: '每 10 秒产生一枚阴阳玉，存在 3 秒；绕自机圆形公转，可阻挡敌弹，对接触的敌人造成 50% 攻击力持续伤害。',
+            apply: () => {}
+        },
+        { id: 'spread_big_p', icon: '💠', group: 'spread', name: '道具F', desc: '该攻击杀死敌人概率生成大P点', apply: () => {} },
+        { id: 'spread_crit', icon: '💥', group: 'spread', name: '道具G', desc: '该攻击的暴击概率上升', apply: () => {} },
+        { id: 'spread_big_energy', icon: '⚡', group: 'spread', name: '道具H', desc: '该攻击杀死敌人概率生成大能量点', apply: () => {} },
+        // —— 集中攻击 · 水晶 道具I–L ——
+        {
+            id: 'focus_crystal_base',
+            icon: '💎',
+            group: 'focus_crystal',
+            name: '道具I',
+            desc: '攻击每命中30次，就能向前方发射6枚水晶',
+            apply: () => {}
+        },
+        { id: 'focus_crystal_atk', icon: '⚔️', group: 'focus_crystal', name: '道具J', desc: '水晶攻击力上升', requires: 'focus_crystal_base', apply: () => {} },
+        { id: 'focus_crystal_count', icon: '🔢', group: 'focus_crystal', name: '道具K', desc: '水晶数量增多', requires: 'focus_crystal_base', apply: () => {} },
+        { id: 'focus_crystal_pierce', icon: '➡️', group: 'focus_crystal', name: '道具L', desc: '水晶能够穿透', requires: 'focus_crystal_base', apply: () => {} },
+        // —— 集中攻击 · 狂怒 道具M–P ——
+        { id: 'focus_rage_core', icon: '😤', group: 'focus_rage', name: '道具M', desc: '慢速模式下杀死5个敌人后，叠加一层【狂怒】状态，【狂怒】状态下射速和弹速增加，持续5秒，最多叠加3层', apply: () => {} },
+        { id: 'focus_rage_cap', icon: '📊', group: 'focus_rage', name: '道具N', desc: '【狂怒】叠加层数上限增加3层', requires: 'focus_rage_core', apply: () => {} },
+        { id: 'focus_rage_dur', icon: '⏱️', group: 'focus_rage', name: '道具O', desc: '【狂怒】效果持续时间增加5秒', requires: 'focus_rage_core', apply: () => {} },
+        { id: 'focus_rage_weak', icon: '🧪', group: 'focus_rage', name: '道具P', desc: '叠满5层的敌人，获得“虚弱”状态，受到的伤害增加20%', requires: 'focus_rage_core', apply: () => {} },
+        /** 大招：试做型封魔阵为局内默认自带（按 X），不在下列随机池；仅 Q–S / T–V 为升级三选一 */
+        // —— 大招 · 封魔阵分支强化 道具Q–S（与《新玩法--STG模式》一致）——
+        {
+            id: 'ult_seal_size',
+            icon: '⭕',
+            group: 'ult_seal',
+            name: '道具Q',
+            desc: '强化封魔阵：封魔阵范围增大、持续时间增加',
+            apply: () => {}
+        },
+        {
+            id: 'ult_seal_economy',
+            icon: '💠',
+            group: 'ult_seal',
+            name: '道具R',
+            desc: '封魔阵转化的 P 点价值增加；持续时间内增加自机移速',
+            requires: 'ult_seal_size',
+            apply: () => {}
+        },
+        {
+            id: 'ult_seal_heal',
+            icon: '💚',
+            group: 'ult_seal',
+            name: '道具S',
+            desc: '封魔阵可以恢复生命，并短暂强化攻击',
+            requires: 'ult_seal_size',
+            apply: () => {}
+        },
+        // —— 大招 · 梦想妙珠 道具T–V ——
+        {
+            id: 'ult_dream_base',
+            icon: '🔮',
+            group: 'ult_dream',
+            name: '道具T',
+            desc: '封魔阵改编为梦想妙珠：向前方发射 3 枚妙珠，造成大量范围伤害',
+            apply: () => {}
+        },
+        {
+            id: 'ult_dream_count',
+            icon: '✨',
+            group: 'ult_dream',
+            name: '道具U',
+            desc: '增加妙珠数量',
+            requires: 'ult_dream_base',
+            apply: () => {}
+        },
+        {
+            id: 'ult_dream_stun',
+            icon: '💫',
+            group: 'ult_dream',
+            name: '道具V',
+            desc: '妙珠可以短暂眩晕敌人',
+            requires: 'ult_dream_base',
+            apply: () => {}
+        },
+        // —— 基础属性强化（仅此类修改右侧「属性加成」列表）——
+        {
+            id: 'stat_hp',
+            icon: '❤️',
+            group: 'stat',
+            name: '基础道具1',
+            desc: '增加1格生命和生命上限',
+            apply: () => applyStgStatPickup('stat_hp')
+        },
+        { id: 'stat_regen', icon: '💗', group: 'stat', name: '基础道具2', desc: '生命恢复增加', apply: () => applyStgStatPickup('stat_regen') },
+        { id: 'stat_atk_all', icon: '🗡️', group: 'stat', name: '基础道具3', desc: '全攻击力增加', apply: () => applyStgStatPickup('stat_atk_all') },
+        {
+            id: 'stat_graze',
+            icon: '✨',
+            group: 'stat',
+            name: '基础道具10',
+            desc: '擦弹收益增加',
+            apply: () => applyStgStatPickup('stat_graze')
+        },
+        { id: 'stat_fire', icon: '🏹', group: 'stat', name: '基础道具4', desc: '射速增加', apply: () => applyStgStatPickup('stat_fire') },
+        { id: 'stat_bullet_spd', icon: '💨', group: 'stat', name: '基础道具5', desc: '弹速增加', apply: () => applyStgStatPickup('stat_bullet_spd') },
+        { id: 'stat_move_spread', icon: '👟', group: 'stat', name: '基础道具6', desc: '普通模式移速增加', apply: () => applyStgStatPickup('stat_move_spread') },
+        { id: 'stat_exp', icon: '📈', group: 'stat', name: '基础道具7', desc: 'P点价值增加', apply: () => applyStgStatPickup('stat_exp') },
+        { id: 'stat_ult_charge', icon: '🌟', group: 'stat', name: '基础道具9', desc: '充能点价值增加', apply: () => applyStgStatPickup('stat_ult_charge') }
     ];
 
     function isStgUpgradeEligible(u) {
@@ -527,11 +1383,97 @@
 
     function applyStgUpgradePick(u) {
         if (!u || u.id === 'pool_empty') return;
+        /** 仅统计构筑卡；基础属性卡不占用构筑分支，避免误标 spread/focus */
+        if (u.group === 'stat') {
+            stgTakenUpgradeIds.add(u.id);
+            return;
+        }
         stgTakenUpgradeIds.add(u.id);
         if (u.group === 'focus_crystal') stgFocusBranch = 'crystal';
         if (u.group === 'focus_rage') stgFocusBranch = 'rage';
         if (u.group === 'ult_seal') stgUltBranch = 'seal';
         if (u.group === 'ult_dream') stgUltBranch = 'dream';
+    }
+
+    function getStgUpgradeById(id) {
+        for (let i = 0; i < STG_UPGRADE_POOL.length; i++) {
+            if (STG_UPGRADE_POOL[i].id === id) return STG_UPGRADE_POOL[i];
+        }
+        return null;
+    }
+
+    /** 勾选 R 时自动隐含 Q 等前置 id，与三选一 requires 一致 */
+    function expandStgBuildGrantRequires(ids) {
+        const set = new Set(ids);
+        let added = true;
+        while (added) {
+            added = false;
+            for (let i = 0; i < STG_UPGRADE_POOL.length; i++) {
+                const u = STG_UPGRADE_POOL[i];
+                if (u && set.has(u.id) && u.requires && !set.has(u.requires)) {
+                    set.add(u.requires);
+                    added = true;
+                }
+            }
+        }
+        return set;
+    }
+
+    function sortStgBuildGrantIdsByPoolOrder(ids) {
+        const idx = new Map();
+        for (let i = 0; i < STG_UPGRADE_POOL.length; i++) {
+            idx.set(STG_UPGRADE_POOL[i].id, i);
+        }
+        return [...ids].sort((a, b) => (idx.get(a) ?? 99999) - (idx.get(b) ?? 99999));
+    }
+
+    /** 水晶/狂怒、封魔阵/妙珠 不可同时持有（与局内互斥一致） */
+    function validateStgBuildGrantMutEx(set) {
+        const crystalIds = ['focus_crystal_base', 'focus_crystal_atk', 'focus_crystal_count', 'focus_crystal_pierce'];
+        const rageIds = ['focus_rage_core', 'focus_rage_cap', 'focus_rage_dur', 'focus_rage_weak'];
+        const sealIds = ['ult_seal_size', 'ult_seal_economy', 'ult_seal_heal'];
+        const dreamIds = ['ult_dream_base', 'ult_dream_count', 'ult_dream_stun'];
+        const hasCrystal = crystalIds.some((id) => set.has(id));
+        const hasRage = rageIds.some((id) => set.has(id));
+        if (hasCrystal && hasRage) return false;
+        const hasSeal = sealIds.some((id) => set.has(id));
+        const hasDream = dreamIds.some((id) => set.has(id));
+        if (hasSeal && hasDream) return false;
+        return true;
+    }
+
+    /**
+     * 读取局内道具面板存档，在开局自机创建后按池顺序应用（含 stat 的 apply）
+     */
+    function applyStgSavedBuildGrants() {
+        let raw = null;
+        try {
+            raw = localStorage.getItem(STG_BUILD_INV_KEY);
+        } catch (e) {
+            return;
+        }
+        if (!raw) return;
+        let arr = [];
+        try {
+            arr = JSON.parse(raw);
+        } catch (e) {
+            return;
+        }
+        if (!Array.isArray(arr)) return;
+        const filtered = arr.filter((id) => typeof id === 'string');
+        let set = expandStgBuildGrantRequires(filtered);
+        if (!validateStgBuildGrantMutEx(set)) {
+            console.warn('[STG] 局内道具预设互斥（水晶/狂怒或封魔/妙珠），已跳过本局应用');
+            return;
+        }
+        const ordered = sortStgBuildGrantIdsByPoolOrder(set);
+        for (let i = 0; i < ordered.length; i++) {
+            const u = getStgUpgradeById(ordered[i]);
+            if (!u || u.id === 'pool_empty') continue;
+            if (stgTakenUpgradeIds.has(u.id)) continue;
+            applyStgUpgradePick(u);
+            if (typeof u.apply === 'function') u.apply(player);
+        }
     }
 
     class StgEnemy {
@@ -541,8 +1483,9 @@
          * @param {object} typeDef 含怪物编辑器中的 STG 弹幕字段
          * @param {string} pattern 'aim' | 'straight' | 'none'
          * @param {string} typeId 波次中的种类 id，用于读档合并
+         * @param {number} [formationMainCol] 阵型格列索引 0..GRID_COLS-1；弧线模式起点=主棋盘第0行+此列
          */
-        constructor(x, y, typeDef, pattern, typeId) {
+        constructor(x, y, typeDef, pattern, typeId, formationMainCol) {
             this.x = x;
             this.y = y;
             this.vx = 0;
@@ -573,6 +1516,13 @@
             /** 曾与画布区域有重叠：未成立前不因「在生成侧外」而剔除，避免上/左/右出生点首帧被误判离场 */
             this.stgHasEnteredPlayfield = false;
             this.typeId = typeId || 'normal';
+            this.stgInstanceId = ++stgEnemyInstanceSeq;
+            /** 击杀额外掉落充能点（仅大招蓄能）；怪物编辑器勾选 */
+            this.stgDropChargePickup = !!(typeDef && typeDef.stgDropChargePickup);
+            this.stgChargeDropMult =
+                typeDef && typeDef.stgChargeDropMult != null && Number.isFinite(Number(typeDef.stgChargeDropMult))
+                    ? Math.max(0.25, Math.min(4, Number(typeDef.stgChargeDropMult)))
+                    : 1;
             /** 发射样式与参数（与怪物编辑器一致） */
             const es = typeDef.stgEmitStyle != null ? String(typeDef.stgEmitStyle) : 'single';
             this.stgEmitStyle = es === 'fan' || es === 'ring' || es === 'laser' ? es : 'single';
@@ -592,6 +1542,11 @@
             this.stgSplitStyle = typeDef.stgSplitStyle === 'cross' ? 'cross' : 'cross';
             /** cooldown=战斗中按冷却；on_death=仅阵亡时释放一次（样式与子弹属性同下方面板） */
             this.stgEmitWhen = typeDef.stgEmitWhen === 'on_death' ? 'on_death' : 'cooldown';
+            /** 连射：战斗中按间隔续发；死后弹幕仅一发不连射 */
+            this.stgBurstCount = Math.max(1, Math.min(16, typeDef.stgBurstCount != null ? typeDef.stgBurstCount : 1));
+            this.stgBurstIntervalMs = Math.max(40, Math.min(500, typeDef.stgBurstIntervalMs != null ? typeDef.stgBurstIntervalMs : 100));
+            this.stgBurstSpeedMode = typeDef.stgBurstSpeedMode === 'spread_wave' ? 'spread_wave' : 'average';
+            this._stgBurstRemain = 0;
 
             const cw = canvas ? canvas.width : GRID_COLS * cellSize;
             const ch = canvas ? canvas.height : GRID_ROWS * cellSize;
@@ -606,10 +1561,24 @@
                 typeDef.stgAnchorYNorm != null ? Number(typeDef.stgAnchorYNorm) : 0.45;
             this.anchorTx = cw * Math.max(0.04, Math.min(0.96, axN));
             this.anchorTy = ch * Math.max(0.04, Math.min(0.96, ayN));
+            /** 锁 Y / 锁 X：到达后停火位移（与编辑器 stgLockTarget*Norm 一致） */
+            const lockNy =
+                typeDef.stgLockTargetYNorm != null ? Number(typeDef.stgLockTargetYNorm) : 0.45;
+            const lockNx =
+                typeDef.stgLockTargetXNorm != null ? Number(typeDef.stgLockTargetXNorm) : 0.5;
+            this.lockTargetY = ch * Math.max(0.04, Math.min(0.96, lockNy));
+            this.lockTargetX = cw * Math.max(0.04, Math.min(0.96, lockNx));
             this.moveIdle = false;
+            /** 阵型摆放列（主棋盘列号），与 flatten 的 col 一致；弧线入场用 */
+            this.stgFormationMainCol =
+                formationMainCol != null && Number.isFinite(Number(formationMainCol))
+                    ? Math.max(0, Math.min(GRID_COLS - 1, formationMainCol | 0))
+                    : null;
             if (this.stgMoveMode === 'arc_edges') {
-                initStgEnemyArcEdges(this, x, y, typeDef, cw, ch);
+                initStgEnemyArcEdgesApproach(this, x, y, typeDef, cw, ch);
             }
+            /** 机体与自机重叠时是否按攻击力规则扣血；false=仅弹幕/激光可伤玩家（旧档缺省视为 true） */
+            this.stgContactDamagePlayer = typeDef.stgContactDamagePlayer !== false;
         }
     }
 
@@ -674,43 +1643,136 @@
             m === 'arc_edges' ||
             m === 'homing_legacy' ||
             m === 'horizontal_left' ||
-            m === 'horizontal_right'
+            m === 'horizontal_right' ||
+            m === 'lock_y' ||
+            m === 'lock_x'
         ) {
             return m;
         }
         return 'homing_legacy';
     }
 
-    /** 双边缘弧线：出场点 → 边缘1 → 边缘2 → 沿斜向离场 */
-    function initStgEnemyArcEdges(e, sx, sy, def, cw, ch) {
-        const clampN = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-        const n1x = clampN(def.stgArcEdge1XNorm != null ? Number(def.stgArcEdge1XNorm) : 0.12, 0.02, 0.98);
-        const n1y = clampN(def.stgArcEdge1YNorm != null ? Number(def.stgArcEdge1YNorm) : 0.42, 0.05, 0.98);
-        const n2x = clampN(def.stgArcEdge2XNorm != null ? Number(def.stgArcEdge2XNorm) : 0.88, 0.02, 0.98);
-        const n2y = clampN(def.stgArcEdge2YNorm != null ? Number(def.stgArcEdge2YNorm) : 0.58, 0.05, 0.98);
-        const P1x = cw * n1x;
-        const P1y = ch * n1y;
-        const P2x = cw * n2x;
-        const P2y = ch * n2y;
-        const bulge1 = Math.max(15, Math.min(220, def.stgArcBulge1 != null ? Number(def.stgArcBulge1) : 80));
-        const bulge2 = Math.max(15, Math.min(220, def.stgArcBulge2 != null ? Number(def.stgArcBulge2) : 80));
+    function clampStgMainCol(v) {
+        const n = parseInt(v, 10);
+        if (!Number.isFinite(n)) return null;
+        return Math.max(0, Math.min(GRID_COLS - 1, n));
+    }
+    function clampStgMainRow(v) {
+        const n = parseInt(v, 10);
+        if (!Number.isFinite(n)) return null;
+        return Math.max(0, Math.min(GRID_ROWS - 1, n));
+    }
+
+    /**
+     * 弧线：起点=主棋盘第 0 行 + 阵型摆放列（stgFormationMainCol）；先竖直再水平对齐格心；
+     * 终点列=到达起点后据 x 自动选第 0 列或最后一列（近者）；终点行=编辑器 stgArcExitRow。
+     */
+    function initStgEnemyArcEdgesApproach(e, sx, sy, def, cw, ch) {
+        let mainCol = e.stgFormationMainCol != null ? clampStgMainCol(e.stgFormationMainCol) : null;
+        if (mainCol == null) {
+            mainCol = worldToMainGridCell(sx, sy).col;
+        }
+        const startRow = 0;
+        let exitRow = clampStgMainRow(def.stgArcExitRow);
+        if (exitRow == null) {
+            exitRow = clampStgMainRow(def.stgArcMainEndRow);
+        }
+        if (exitRow == null) {
+            exitRow = 10;
+        }
+        const pStart = getMainGridCellCenter(mainCol, startRow);
+        e.arcMainStartCol = mainCol;
+        e.arcMainStartRow = startRow;
+        e.arcExitEdgeRow = exitRow;
+        e.arcApproachStartX = pStart.x;
+        e.arcApproachStartY = pStart.y;
+        e.arcBulgeMain = Math.max(
+            15,
+            Math.min(
+                280,
+                def.stgArcBulge != null && Number.isFinite(Number(def.stgArcBulge))
+                    ? Number(def.stgArcBulge)
+                    : ((Number(def.stgArcBulge1) || 80) + (Number(def.stgArcBulge2) || 80)) * 0.5
+            )
+        );
+        e.arcMovePhase = 'approach_v';
+        e.arcPhase = 0;
+        e.arcT = 0;
+    }
+
+    /**
+     * 弧终点落在左/右靠边列时，纯贝塞尔切线易接近竖直，机体沿屏幕竖缘滑动，中心 x 穿不出边界。
+     * 在切线单位向量上强制「最小水平外偏」后再归一化，保证离场段持续穿出画布。
+     */
+    function blendArcBezierTangentWithOutward(tx, ty, endCol, e) {
+        const minHx = 0.48;
+        let vx = tx;
+        let vy = ty;
+        if (endCol === 0) {
+            vx = Math.min(vx, -minHx);
+        } else if (endCol === GRID_COLS - 1) {
+            vx = Math.max(vx, minHx);
+        }
+        const nlen = Math.hypot(vx, vy) || 1;
+        e.arcExitVx = vx / nlen;
+        e.arcExitVy = vy / nlen;
+    }
+
+    /**
+     * 到达主棋盘第0行起点后：据 sx 与左右边缘列格心距离自动选第 0 列或最后一列，行=arcExitEdgeRow；再建二次贝塞尔与切线离场。
+     */
+    function buildStgEnemyArcBezierMain(e) {
+        const sx = e.arcApproachStartX;
+        const sy = e.arcApproachStartY;
+        const exitRow = e.arcExitEdgeRow != null ? Math.max(0, Math.min(GRID_ROWS - 1, e.arcExitEdgeRow | 0)) : 10;
+        const leftCx = getMainGridCellCenter(0, exitRow).x;
+        const rightCx = getMainGridCellCenter(GRID_COLS - 1, exitRow).x;
+        const endCol = Math.abs(sx - leftCx) <= Math.abs(sx - rightCx) ? 0 : GRID_COLS - 1;
+        e.arcMainEndCol = endCol;
+        e.arcMainEndRow = exitRow;
+        const pEnd = getMainGridCellCenter(endCol, exitRow);
+        const exitPx = pEnd.x;
+        const exitPy = pEnd.y;
+        const bulge = e.arcBulgeMain != null ? e.arcBulgeMain : 80;
+        const dx = exitPx - sx;
+        const dy = exitPy - sy;
+        const dlen = Math.hypot(dx, dy);
+        if (dlen < 4) {
+            e.x = sx;
+            e.y = sy;
+            e.arcPhase = 2;
+            /** 退化弧：沿左/右边缘法向水平穿出，避免默认向上贴缘无法离开画布 */
+            e.arcExitVx = endCol === 0 ? -1 : 1;
+            e.arcExitVy = 0;
+            return;
+        }
+        const mx = (sx + exitPx) * 0.5;
+        const my = (sy + exitPy) * 0.5;
+        const px = -dy / dlen;
+        const py = dx / dlen;
         e.arcPhase = 1;
         e.arcT = 0;
         e.arc1Sx = sx;
         e.arc1Sy = sy;
-        e.arc1Cx = (sx + P1x) * 0.5;
-        e.arc1Cy = (sy + P1y) * 0.5 - bulge1;
-        e.arc1Px = P1x;
-        e.arc1Py = P1y;
-        e.arcLen1 = approxQuadBezierLength(sx, sy, e.arc1Cx, e.arc1Cy, P1x, P1y, 24);
-        e.arc2Cx = (P1x + P2x) * 0.5;
-        e.arc2Cy = (P1y + P2y) * 0.5 - bulge2;
-        e.arc2Px = P2x;
-        e.arc2Py = P2y;
-        e.arcLen2 = approxQuadBezierLength(P1x, P1y, e.arc2Cx, e.arc2Cy, P2x, P2y, 24);
-        const towardLeft = P2x < cw * 0.5;
-        e.arcExitVx = towardLeft ? -0.92 : 0.92;
-        e.arcExitVy = 1.05;
+        e.arc1Cx = mx + px * bulge;
+        e.arc1Cy = my + py * bulge;
+        e.arc1Px = exitPx;
+        e.arc1Py = exitPy;
+        e.arcLen1 = approxQuadBezierLength(sx, sy, e.arc1Cx, e.arc1Cy, exitPx, exitPy, 32);
+        const tx = 2 * (exitPx - e.arc1Cx);
+        const ty = 2 * (exitPy - e.arc1Cy);
+        const tlen = Math.hypot(tx, ty) || 1;
+        /** 纯切线在靠边格心处常近似「沿上下缘滑动」，水平穿出分量不足会永远贴边；叠加强制外法向分量后再归一化 */
+        blendArcBezierTangentWithOutward(tx / tlen, ty / tlen, endCol, e);
+        console.log(
+            '[STG] arc_edges 弧线段',
+            '起点列',
+            e.arcMainStartCol,
+            '行0 → 边缘列',
+            e.arcMainEndCol,
+            '离场行',
+            exitRow
+        );
     }
 
     /**
@@ -756,6 +1818,34 @@
             e.x += sp;
             return;
         }
+        /** 锁 Y：仅沿竖直方向移动到目标 Y，X 不变；到位后静止 */
+        if (mode === 'lock_y') {
+            if (e.moveIdle) return;
+            const ty = e.lockTargetY != null ? e.lockTargetY : e.anchorTy;
+            const dy = ty - e.y;
+            if (Math.abs(dy) <= 6) {
+                e.y = ty;
+                e.moveIdle = true;
+            } else {
+                const step = Math.min(sp, Math.abs(dy));
+                e.y += dy > 0 ? step : -step;
+            }
+            return;
+        }
+        /** 锁 X：仅沿水平方向移动到目标 X，Y 不变；到位后静止 */
+        if (mode === 'lock_x') {
+            if (e.moveIdle) return;
+            const tx = e.lockTargetX != null ? e.lockTargetX : e.anchorTx;
+            const dx = tx - e.x;
+            if (Math.abs(dx) <= 6) {
+                e.x = tx;
+                e.moveIdle = true;
+            } else {
+                const step = Math.min(sp, Math.abs(dx));
+                e.x += dx > 0 ? step : -step;
+            }
+            return;
+        }
         if (mode === 'anchor') {
             if (e.moveIdle) return;
             const dx = e.anchorTx - e.x;
@@ -772,11 +1862,37 @@
             return;
         }
         if (mode === 'arc_edges') {
+            const eps = 2;
+            const ap = e.arcMovePhase || 'approach_v';
+            if (ap === 'approach_v') {
+                const ty = e.arcApproachStartY != null ? e.arcApproachStartY : e.y;
+                const dy = ty - e.y;
+                if (Math.abs(dy) <= eps) {
+                    e.y = ty;
+                    e.arcMovePhase = 'approach_h';
+                } else {
+                    const step = Math.min(sp, Math.abs(dy));
+                    e.y += dy > 0 ? step : -step;
+                }
+                return;
+            }
+            if (ap === 'approach_h') {
+                const tx = e.arcApproachStartX != null ? e.arcApproachStartX : e.x;
+                const dx = tx - e.x;
+                if (Math.abs(dx) <= eps) {
+                    e.x = tx;
+                    e.arcMovePhase = 'arc';
+                    buildStgEnemyArcBezierMain(e);
+                } else {
+                    const step = Math.min(sp, Math.abs(dx));
+                    e.x += dx > 0 ? step : -step;
+                }
+                return;
+            }
             if (e.arcPhase === 1) {
                 const len = Math.max(e.arcLen1, 60);
                 e.arcT += sp / len;
                 if (e.arcT >= 1) {
-                    e.arcT = 0;
                     e.arcPhase = 2;
                     const p = quadBezierPos(e.arc1Sx, e.arc1Sy, e.arc1Cx, e.arc1Cy, e.arc1Px, e.arc1Py, 1);
                     e.x = p.x;
@@ -796,23 +1912,6 @@
                 }
                 return;
             }
-            if (e.arcPhase === 2) {
-                const sx = e.arc1Px;
-                const sy = e.arc1Py;
-                const len = Math.max(e.arcLen2, 60);
-                e.arcT += sp / len;
-                if (e.arcT >= 1) {
-                    e.arcPhase = 3;
-                    const p = quadBezierPos(sx, sy, e.arc2Cx, e.arc2Cy, e.arc2Px, e.arc2Py, 1);
-                    e.x = p.x;
-                    e.y = p.y;
-                } else {
-                    const p = quadBezierPos(sx, sy, e.arc2Cx, e.arc2Cy, e.arc2Px, e.arc2Py, Math.min(1, e.arcT));
-                    e.x = p.x;
-                    e.y = p.y;
-                }
-                return;
-            }
             const ex = Math.hypot(e.arcExitVx, e.arcExitVy) || 1;
             e.x += (e.arcExitVx / ex) * sp;
             e.y += (e.arcExitVy / ex) * sp;
@@ -825,12 +1924,15 @@
     function pushStgEnemyBullet(o) {
         const br = o.radius != null ? Math.max(2, Math.min(28, o.radius)) : 5;
         const shp = o.shape === 'triangle' ? 'triangle' : 'circle';
+        const ldh = o.lifeDmgHalves != null ? (o.lifeDmgHalves >= 2 ? 2 : 1) : 1;
         enemyBullets.push({
             x: o.x,
             y: o.y,
             vx: o.vx,
             vy: o.vy,
             dmg: o.dmg,
+            /** 对自机生命格：1=半格，2=整格 */
+            lifeDmgHalves: ldh,
             alive: true,
             pattern: o.pattern || 'aim',
             radius: br,
@@ -842,7 +1944,9 @@
             splitCount: o.splitCount != null ? Math.max(2, Math.min(16, o.splitCount)) : 4,
             splitStyle: o.splitStyle === 'cross' ? 'cross' : 'cross',
             /** 0~100，每帧向玩家方向扭转速度（见 update 内跟踪逻辑） */
-            homingStr: o.homingStr != null ? o.homingStr : 0
+            homingStr: o.homingStr != null ? o.homingStr : 0,
+            /** 每颗敌弹仅可触发一次擦弹 */
+            _stgGrazed: false
         });
     }
 
@@ -860,12 +1964,29 @@
     }
 
     /**
-     * 按种类配置发射：扇形 / 环形 / 直线激光 / 单发
+     * 连射速率乘区：「扩散波」时越靠后的波次越快，相邻波次的速度差递减（ease-out）
+     * @param {StgEnemy} e
+     * @param {number} volleyIdx 当前第几发（0 起）
+     * @param {number} totalVolleys 本周期连射总数
+     */
+    function getEnemyBurstSpeedMult(e, volleyIdx, totalVolleys) {
+        if (totalVolleys <= 1) return 1;
+        if (e.stgBurstSpeedMode !== 'spread_wave') return 1;
+        const t = volleyIdx / Math.max(1, totalVolleys - 1);
+        return 0.75 + 0.5 * (1 - Math.pow(1 - t, 2));
+    }
+
+    /**
+     * 发射一整轮弹幕（单发/扇/环/激光中的一轮）；连射时由 volleyIdx/totalVolleys 控制弹速乘区
      * @param {StgEnemy} e
      * @param {{x:number,y:number}} player
+     * @param {number} volleyIdx
+     * @param {number} totalVolleys
      */
-    function emitStgEnemyAttack(e, player) {
-        const bsp = e.enemyBulletSpeed;
+    function emitStgEnemyAttackVolley(e, player, volleyIdx, totalVolleys) {
+        const style = e.stgEmitStyle || 'single';
+        const spdMult = getEnemyBurstSpeedMult(e, volleyIdx, totalVolleys);
+        const bsp = e.enemyBulletSpeed * spdMult;
         const px = player.x;
         const py = player.y;
         const ex = e.x;
@@ -881,18 +2002,22 @@
         const splitMs = spInfo.splitMs;
         const splitCount = spInfo.splitCount;
         const splitStyle = spInfo.splitStyle;
-        const childSp = e.stgSplitChildSpeed;
+        const childSp = e.stgSplitChildSpeed * spdMult;
         const hom = e.stgHomingStrength != null ? Math.max(0, Math.min(100, e.stgHomingStrength)) : 0;
         const bulletR = e.stgEnemyBulletRadius != null ? e.stgEnemyBulletRadius : 5;
         const bulletShape = e.stgEnemyBulletShape === 'triangle' ? 'triangle' : 'circle';
         const bulletExtra = { radius: bulletR, shape: bulletShape };
-
-        const style = e.stgEmitStyle || 'single';
+        const lifeHalves = resolveStgBulletLifeDamageHalvesFromEnemy(e);
 
         if (style === 'laser') {
             const len = e.stgLaserLength;
             const width = e.stgLaserWidth;
-            const dur = e.stgLaserDurationMs;
+            /** 扩散波：波次越快，激光持续略短，形成「一浪快过一浪」 */
+            const baseDur = e.stgLaserDurationMs;
+            const dur = Math.max(
+                80,
+                Math.min(3500, Math.round(baseDur / Math.max(0.5, spdMult)))
+            );
             const x2 = ex + Math.cos(baseAngle) * len;
             const y2 = ey + Math.sin(baseAngle) * len;
             enemyLasers.push({
@@ -920,6 +2045,7 @@
                     vx: Math.cos(a) * bsp,
                     vy: Math.sin(a) * bsp,
                     dmg: e.attack,
+                    lifeDmgHalves: lifeHalves,
                     pattern: e.pattern,
                     splitAfterMs: splitMs,
                     splitChildSpeed: childSp,
@@ -942,6 +2068,7 @@
                     vx: Math.cos(a) * bsp,
                     vy: Math.sin(a) * bsp,
                     dmg: e.attack,
+                    lifeDmgHalves: lifeHalves,
                     pattern: e.pattern,
                     splitAfterMs: splitMs,
                     splitChildSpeed: childSp,
@@ -963,6 +2090,7 @@
                 vx: Math.cos(a) * bsp,
                 vy: Math.sin(a) * bsp,
                 dmg: e.attack,
+                lifeDmgHalves: lifeHalves,
                 pattern: 'aim',
                 splitAfterMs: splitMs,
                 splitChildSpeed: childSp,
@@ -978,6 +2106,7 @@
                 vx: 0,
                 vy: bsp,
                 dmg: e.attack,
+                lifeDmgHalves: lifeHalves,
                 pattern: 'straight',
                 splitAfterMs: splitMs,
                 splitChildSpeed: childSp,
@@ -989,15 +2118,162 @@
         }
     }
 
+    /**
+     * 按种类配置发射：扇形 / 环形 / 直线激光 / 单发；可连射（战斗中按间隔续发）
+     * @param {StgEnemy} e
+     * @param {{x:number,y:number}} player
+     */
+    function emitStgEnemyAttack(e, player) {
+        /** 死后弹幕：仅一轮，不调度连射（敌实例即将移除） */
+        const deathOnce = e.stgEmitWhen === 'on_death';
+        const burstTotal = deathOnce
+            ? 1
+            : Math.max(1, Math.min(16, e.stgBurstCount != null ? e.stgBurstCount : 1));
+        emitStgEnemyAttackVolley(e, player, 0, burstTotal);
+        if (!deathOnce && burstTotal > 1) {
+            const iv = Math.max(40, Math.min(500, e.stgBurstIntervalMs != null ? e.stgBurstIntervalMs : 100));
+            e._stgBurstRemain = burstTotal - 1;
+            e._stgBurstNextMs = performance.now() + iv;
+            e._stgBurstIndex = 1;
+            e._stgBurstTotal = burstTotal;
+        } else {
+            e._stgBurstRemain = 0;
+        }
+    }
+
+    function getUltChargeMeterThreshold() {
+        return STG_ULT_CHARGE_METER_BASE / Math.max(0.25, bonusUltChargeMult);
+    }
+
+    /**
+     * 左上角生命：每「整格」一个小格，从左到右对应从满血侧扣减；格内可显示半格（与 stgLifeHalfUnitsRemain 一致）。
+     * 不再使用 10 段连续比例条，避免与离散半格/整格伤害不同步。
+     */
+    function refreshStgLifeCellsHud() {
+        const wrap = document.getElementById('stgPriorityHpCells');
+        const detailEl = document.getElementById('stgPriorityHpDetail');
+        if (!wrap) return;
+        if (!player) {
+            wrap.innerHTML = '';
+            wrap.setAttribute('aria-label', stgUiT('hud.hpAriaIdle'));
+            if (detailEl) detailEl.textContent = '—';
+            return;
+        }
+        let cellsMax = player.stgLifeCellsMax != null ? player.stgLifeCellsMax | 0 : 0;
+        if (!cellsMax || cellsMax < 1) {
+            const mh = player.maxHp != null ? player.maxHp | 0 : 12;
+            cellsMax = Math.max(1, Math.min(30, Math.round(mh / 2)));
+        } else {
+            cellsMax = Math.max(1, Math.min(30, cellsMax));
+        }
+        const maxHalf = cellsMax * 2;
+        let H = player.stgLifeHalfUnitsRemain != null ? player.stgLifeHalfUnitsRemain | 0 : player.hp | 0;
+        H = Math.max(0, Math.min(maxHalf, H));
+        const curDisp = H % 2 === 1 ? Math.floor(H / 2) + '.5' : String(H / 2);
+        wrap.setAttribute('aria-label', stgUiT('hud.hpAria', { cur: curDisp, max: String(cellsMax) }));
+        if (detailEl) {
+            detailEl.textContent = stgUiT('hud.hpDetail', { cur: curDisp, max: String(cellsMax) });
+        }
+        let cells = wrap.querySelectorAll('.stg-priority-cell');
+        if (cells.length !== cellsMax) {
+            wrap.innerHTML = '';
+            for (let i = 0; i < cellsMax; i++) {
+                const cell = document.createElement('span');
+                cell.className = 'stg-priority-cell';
+                cell.setAttribute('role', 'presentation');
+                const inner = document.createElement('span');
+                inner.className = 'stg-priority-cell-inner';
+                cell.appendChild(inner);
+                wrap.appendChild(cell);
+            }
+            cells = wrap.querySelectorAll('.stg-priority-cell');
+        }
+        for (let j = 0; j < cellsMax; j++) {
+            const cell = cells[j];
+            const inner = cell.querySelector('.stg-priority-cell-inner');
+            if (H >= 2 * j + 2) {
+                cell.classList.add('stg-priority-cell--on');
+                cell.classList.remove('stg-priority-cell--half');
+                if (inner) inner.style.width = '100%';
+            } else if (H === 2 * j + 1) {
+                cell.classList.remove('stg-priority-cell--on');
+                cell.classList.add('stg-priority-cell--half');
+                if (inner) inner.style.width = '50%';
+            } else {
+                cell.classList.remove('stg-priority-cell--on', 'stg-priority-cell--half');
+                if (inner) inner.style.width = '0%';
+            }
+        }
+    }
+
+    /** 左侧优先条：经验 10 格（比例 0~1）；生命条请用 refreshStgLifeCellsHud */
+    function refreshStgPrioritySegmentRow(wrapId, ratio) {
+        const wrap = document.getElementById(wrapId);
+        if (!wrap) return;
+        const n = STG_PRIORITY_SEGMENTS;
+        const scaled = Math.max(0, Math.min(1, ratio)) * n;
+        const full = Math.floor(scaled);
+        const frac = scaled - full;
+        const cells = wrap.querySelectorAll('.stg-priority-cell');
+        for (let i = 0; i < n; i++) {
+            const cell = cells[i];
+            if (!cell) continue;
+            const inner = cell.querySelector('.stg-priority-cell-inner');
+            if (i < full) {
+                cell.classList.add('stg-priority-cell--on');
+                cell.classList.remove('stg-priority-cell--next');
+                if (inner) inner.style.width = '100%';
+            } else if (i === full) {
+                const isFull = frac >= 0.999;
+                cell.classList.toggle('stg-priority-cell--on', isFull);
+                cell.classList.toggle('stg-priority-cell--next', !isFull);
+                if (inner) inner.style.width = Math.round(frac * 100) + '%';
+            } else {
+                cell.classList.remove('stg-priority-cell--on', 'stg-priority-cell--next');
+                if (inner) inner.style.width = '0%';
+            }
+        }
+    }
+
+    /** 更新 HUD 五格方形与当前格内蓄能比例 */
+    function refreshStgUltChargeHud() {
+        const labelEl = document.getElementById('stgUltChargeLabel');
+        const wrap = document.getElementById('stgUltChargeCells');
+        if (labelEl) labelEl.textContent = stgUiT('hud.ultLabel');
+        if (wrap) {
+            wrap.setAttribute('aria-label', stgUiT('hud.ultAria'));
+            const th = getUltChargeMeterThreshold();
+            const pctNext = th > 0 ? Math.min(1, stgUltChargeMeter / th) : 0;
+            const cells = wrap.querySelectorAll('.stg-hud-ult-cell');
+            for (let i = 0; i < STG_ULT_CHARGE_MAX; i++) {
+                const cell = cells[i];
+                if (!cell) continue;
+                const inner = cell.querySelector('.stg-hud-ult-cell-inner');
+                const filled = i < stgUltCharges;
+                const isNext = !filled && i === stgUltCharges;
+                cell.classList.toggle('stg-hud-ult-cell--on', filled);
+                cell.classList.toggle('stg-hud-ult-cell--next', isNext);
+                if (inner) {
+                    if (filled) inner.style.width = '100%';
+                    else if (isNext) inner.style.width = Math.round(pctNext * 100) + '%';
+                    else inner.style.width = '0%';
+                }
+            }
+        }
+    }
+
     function getHudElements() {
         return {
-            hp: document.getElementById('stgHpText'),
-            exp: document.getElementById('stgExpText'),
+            priorityHpLabel: document.getElementById('stgPriorityHpLabel'),
+            priorityExpLabel: document.getElementById('stgPriorityExpLabel'),
+            priorityExpDetail: document.getElementById('stgPriorityExpDetail'),
             wave: document.getElementById('stgWaveText'),
             nextWave: document.getElementById('stgNextWaveText'),
             time: document.getElementById('stgTimeText'),
-            upgrade: document.getElementById('stgUpgradeOverlay'),
+            upgrade: document.getElementById('stgUpgradeModalRoot'),
             upgradeCards: document.getElementById('stgUpgradeCards'),
+            upgradeTitle: document.getElementById('stgUpgradeTitle'),
+            upgradeSubHint: document.getElementById('stgUpgradeSubHint'),
             result: document.getElementById('stgResultOverlay'),
             resultTitle: document.getElementById('stgResultTitle'),
             resultMsg: document.getElementById('stgResultMsg'),
@@ -1029,7 +2305,11 @@
                 stgArcBulge1: 80,
                 stgArcBulge2: 80,
                 stgEnemyBulletRadius: 5,
-                stgEnemyBulletShape: 'circle'
+                stgEnemyBulletShape: 'circle',
+                stgBurstCount: 1,
+                stgBurstIntervalMs: 100,
+                stgBurstSpeedMode: 'average',
+                stgContactDamagePlayer: true
             },
             fast: {
                 name: '快速', icon: '💨', color: '#f39c12', radius: 12,
@@ -1050,7 +2330,11 @@
                 stgArcBulge1: 80,
                 stgArcBulge2: 80,
                 stgEnemyBulletRadius: 5,
-                stgEnemyBulletShape: 'circle'
+                stgEnemyBulletShape: 'circle',
+                stgBurstCount: 1,
+                stgBurstIntervalMs: 100,
+                stgBurstSpeedMode: 'average',
+                stgContactDamagePlayer: true
             },
             tank: {
                 name: '坦克', icon: '🛡️', color: '#34495e', radius: 20,
@@ -1071,7 +2355,11 @@
                 stgArcBulge1: 80,
                 stgArcBulge2: 80,
                 stgEnemyBulletRadius: 5,
-                stgEnemyBulletShape: 'circle'
+                stgEnemyBulletShape: 'circle',
+                stgBurstCount: 1,
+                stgBurstIntervalMs: 100,
+                stgBurstSpeedMode: 'average',
+                stgContactDamagePlayer: true
             }
         };
         let saved = null;
@@ -1105,7 +2393,11 @@
                 stgArcBulge1: 80,
                 stgArcBulge2: 80,
                 stgEnemyBulletRadius: 5,
-                stgEnemyBulletShape: 'circle'
+                stgEnemyBulletShape: 'circle',
+                stgBurstCount: 1,
+                stgBurstIntervalMs: 100,
+                stgBurstSpeedMode: 'average',
+                stgContactDamagePlayer: true
             };
             let pat = b.stgBulletPattern;
             if (s.stgBulletPattern === 'aim' || s.stgBulletPattern === 'straight' || s.stgBulletPattern === 'random' || s.stgBulletPattern === 'none') {
@@ -1137,6 +2429,18 @@
                 stgSplitChildSpeed: s.stgSplitChildSpeed != null ? Math.max(40, Math.min(520, s.stgSplitChildSpeed)) : b.stgSplitChildSpeed,
                 stgHomingStrength: s.stgHomingStrength != null ? Math.max(0, Math.min(100, s.stgHomingStrength)) : b.stgHomingStrength,
                 stgEmitWhen: s.stgEmitWhen === 'on_death' ? 'on_death' : 'cooldown',
+                stgBurstCount:
+                    s.stgBurstCount != null ? Math.max(1, Math.min(16, s.stgBurstCount)) : b.stgBurstCount != null ? b.stgBurstCount : 1,
+                stgBurstIntervalMs:
+                    s.stgBurstIntervalMs != null
+                        ? Math.max(40, Math.min(500, s.stgBurstIntervalMs))
+                        : b.stgBurstIntervalMs != null
+                          ? b.stgBurstIntervalMs
+                          : 100,
+                stgBurstSpeedMode:
+                    (s.stgBurstSpeedMode === 'spread_wave' || (s.stgBurstSpeedMode == null && b.stgBurstSpeedMode === 'spread_wave'))
+                        ? 'spread_wave'
+                        : 'average',
                 stgBulletKind:
                     s.stgBulletKind === 'split'
                         ? 'split'
@@ -1154,7 +2458,9 @@
                     s.stgMoveMode === 'arc_edges' ||
                     s.stgMoveMode === 'homing_legacy' ||
                     s.stgMoveMode === 'horizontal_left' ||
-                    s.stgMoveMode === 'horizontal_right'
+                    s.stgMoveMode === 'horizontal_right' ||
+                    s.stgMoveMode === 'lock_y' ||
+                    s.stgMoveMode === 'lock_x'
                         ? s.stgMoveMode
                         : b.stgMoveMode,
                 stgMoveStraightAngleDeg:
@@ -1165,6 +2471,10 @@
                     s.stgAnchorXNorm != null ? Math.max(0.02, Math.min(0.98, s.stgAnchorXNorm)) : b.stgAnchorXNorm,
                 stgAnchorYNorm:
                     s.stgAnchorYNorm != null ? Math.max(0.02, Math.min(0.98, s.stgAnchorYNorm)) : b.stgAnchorYNorm,
+                stgLockTargetYNorm:
+                    s.stgLockTargetYNorm != null ? Math.max(0.02, Math.min(0.98, s.stgLockTargetYNorm)) : b.stgLockTargetYNorm,
+                stgLockTargetXNorm:
+                    s.stgLockTargetXNorm != null ? Math.max(0.02, Math.min(0.98, s.stgLockTargetXNorm)) : b.stgLockTargetXNorm,
                 stgArcEdge1XNorm:
                     s.stgArcEdge1XNorm != null ? Math.max(0.02, Math.min(0.98, s.stgArcEdge1XNorm)) : b.stgArcEdge1XNorm,
                 stgArcEdge1YNorm:
@@ -1184,10 +2494,100 @@
                             : 'circle'
                         : b.stgEnemyBulletShape === 'triangle'
                           ? 'triangle'
-                          : 'circle'
+                          : 'circle',
+                /** 击杀额外掉落充能点（怪物编辑器）；此前合并遗漏会导致勾选永远不生效 */
+                stgDropChargePickup: !!s.stgDropChargePickup,
+                stgChargeDropMult:
+                    s.stgChargeDropMult != null && Number.isFinite(Number(s.stgChargeDropMult))
+                        ? Math.max(0.25, Math.min(4, Number(s.stgChargeDropMult)))
+                        : 1,
+                stgContactDamagePlayer: s.stgContactDamagePlayer === false ? false : true
             };
         });
         return out;
+    }
+
+    /** 与波次阵型编辑器一致：旧版全局公式 base + k*lin + k²*acc（已改为每波 enemyHpMult；此结构仍存盘作兼容） */
+    const DEFAULT_ENEMY_HP_SCALE = { baseMult: 1, linearPerWave: 0, accelPerWaveSq: 0 };
+
+    /**
+     * 旧档 wave 未写 enemyHpMult 时，用存档里的全局系数按波次索引算一条倍率写入内存，避免无字段时难度突变。
+     */
+    function attachLegacyEnemyHpMultIfMissing(waves, enemyHpScale) {
+        if (!waves || !Array.isArray(waves)) return waves;
+        const s = normalizeWaveDataEnemyHpScale(enemyHpScale);
+        return waves.map((w, i) => {
+            if (!w || typeof w !== 'object') return w;
+            if (w.enemyHpMult != null && Number.isFinite(Number(w.enemyHpMult))) return w;
+            const kk = Math.max(0, i | 0);
+            let m = s.baseMult + s.linearPerWave * kk + s.accelPerWaveSq * kk * kk;
+            m = Math.max(0.05, Math.min(500, m));
+            return { ...w, enemyHpMult: m };
+        });
+    }
+
+    function normalizeWaveDataEnemyHpScale(raw) {
+        const o = raw && typeof raw === 'object' ? raw : {};
+        const baseMult = o.baseMult != null && Number.isFinite(Number(o.baseMult)) ? Number(o.baseMult) : 1;
+        const linearPerWave =
+            o.linearPerWave != null && Number.isFinite(Number(o.linearPerWave)) ? Number(o.linearPerWave) : 0;
+        const accelPerWaveSq =
+            o.accelPerWaveSq != null && Number.isFinite(Number(o.accelPerWaveSq)) ? Number(o.accelPerWaveSq) : 0;
+        return {
+            baseMult: Math.max(0.05, Math.min(100, baseMult)),
+            linearPerWave: Math.max(-5, Math.min(5, linearPerWave)),
+            accelPerWaveSq: Math.max(-2, Math.min(2, accelPerWaveSq))
+        };
+    }
+
+    /**
+     * 阵型编辑器「停火行」：主棋盘从上往下第几行（1=最上行），敌人中心 Y≥该行下沿时不再发射战斗弹幕；null=不启用
+     */
+    function normalizeWaveDataEnemyFireStopRow(raw) {
+        if (raw === '' || raw == null) return null;
+        const n = parseInt(Number(raw), 10);
+        if (!Number.isFinite(n) || n < 1 || n > GRID_ROWS) return null;
+        return n;
+    }
+
+    /** 旧存档：仅像素线、无行号时，按当前格高换算成行 */
+    function migrateLegacyEnemyFireStopLineYToRowIfNeeded() {
+        if (normalizeWaveDataEnemyFireStopRow(waveData && waveData.enemyFireStopRow) != null) return;
+        const ly = waveData && waveData.enemyFireStopLineY;
+        if (ly == null || !Number.isFinite(Number(ly))) return;
+        const cs = cellSize > 0 ? cellSize : 45;
+        const row = Math.max(1, Math.min(GRID_ROWS, Math.round(Number(ly) / cs)));
+        waveData.enemyFireStopRow = row;
+    }
+
+    /**
+     * 停火几何线 Y（px）：第 N 行下沿 = N×格高（与棋盘横线对齐）；随 cellSize 变化自动跟手
+     * @returns {number|null}
+     */
+    function getStgEnemyFireStopLineYClamped(ch) {
+        migrateLegacyEnemyFireStopLineYToRowIfNeeded();
+        const rn = normalizeWaveDataEnemyFireStopRow(waveData && waveData.enemyFireStopRow);
+        if (rn == null) return null;
+        const cs = cellSize > 0 ? cellSize : Math.max(1, ch / GRID_ROWS);
+        const yLine = rn * cs;
+        return Math.min(Math.max(0, ch), yLine);
+    }
+
+    /**
+     * 单波血量倍率：来自波次阵型编辑器「本波敌人血量倍率」（相对怪物编辑器基础血）。
+     * 全局 enemyHpScale 公式已暂时禁用，仅保留读档字段以兼容旧存档。
+     * @param {number} k 当前波次索引（第 1 波为 0）
+     */
+    function getStgEnemyHpMultiplierForWaveIndex(k) {
+        const waves = waveData && waveData.waves;
+        const kk = Math.max(0, k | 0);
+        if (!waves || !Array.isArray(waves) || kk >= waves.length) {
+            return 1;
+        }
+        const w = waves[kk];
+        const raw = w && w.enemyHpMult != null ? Number(w.enemyHpMult) : 1;
+        const m = Number.isFinite(raw) ? raw : 1;
+        return Math.max(0.05, Math.min(500, m));
     }
 
     /**
@@ -1195,13 +2595,36 @@
      */
     function loadWaves() {
         return new Promise((resolve) => {
+            const fallbackWaves = [
+                {
+                    waveNumber: 1,
+                    spawnInterval: 450,
+                    nextWaveDelaySec: 8,
+                    spiritReward: 10,
+                    enemies: [{ type: 'normal', count: 6 }],
+                    stgFormation: null
+                }
+            ];
+            const pack = (waves, enemyHpScale, enemyFireStopRow, enemyFireStopLineYLegacy) => {
+                const hpNorm = normalizeWaveDataEnemyHpScale(enemyHpScale);
+                const o = {
+                    waves: attachLegacyEnemyHpMultIfMissing(waves, hpNorm),
+                    enemyHpScale: hpNorm,
+                    enemyFireStopRow: normalizeWaveDataEnemyFireStopRow(enemyFireStopRow)
+                };
+                if (enemyFireStopLineYLegacy != null && Number.isFinite(Number(enemyFireStopLineYLegacy))) {
+                    /** 仅旧档兼容，运行时优先用 enemyFireStopRow */
+                    o.enemyFireStopLineY = Number(enemyFireStopLineYLegacy);
+                }
+                return o;
+            };
             try {
                 const raw = localStorage.getItem(WAVE_STORAGE_KEY);
                 if (raw) {
                     const d = JSON.parse(raw);
                     if (d && Array.isArray(d.waves) && d.waves.length > 0) {
                         console.log('[STG] 已自本地加载波次，共', d.waves.length, '波');
-                        resolve({ waves: d.waves });
+                        resolve(pack(d.waves, d.enemyHpScale, d.enemyFireStopRow, d.enemyFireStopLineY));
                         return;
                     }
                 }
@@ -1218,35 +2641,13 @@
                                 ? data.waves.map((w) => window.StgWaveFormationPanel.migrateWaveForRuntime(w))
                                 : data.waves;
                         console.log('[STG] 已加载 waveConfig.json，共', waves.length, '波');
-                        resolve({ waves });
+                        resolve(pack(waves, data.enemyHpScale, data.enemyFireStopRow, data.enemyFireStopLineY));
                     } else {
-                        resolve({
-                            waves: [
-                                {
-                                    waveNumber: 1,
-                                    spawnInterval: 450,
-                                    nextWaveDelaySec: 8,
-                                    spiritReward: 10,
-                                    enemies: [{ type: 'normal', count: 6 }],
-                                    stgFormation: null
-                                }
-                            ]
-                        });
+                        resolve(pack(fallbackWaves, DEFAULT_ENEMY_HP_SCALE, null, null));
                     }
                 })
                 .catch(() => {
-                    resolve({
-                        waves: [
-                            {
-                                waveNumber: 1,
-                                spawnInterval: 450,
-                                nextWaveDelaySec: 8,
-                                spiritReward: 10,
-                                enemies: [{ type: 'normal', count: 6 }],
-                                stgFormation: null
-                            }
-                        ]
-                    });
+                    resolve(pack(fallbackWaves, DEFAULT_ENEMY_HP_SCALE, null, null));
                 });
         });
     }
@@ -1347,6 +2748,24 @@
             return { x, y };
         }
         return { x: (c + 0.5) * cs, y: (r + 0.5) * cs };
+    }
+
+    /**
+     * 主战场（中间棋盘）格心，与阵型主格索引一致：col 0..GRID_COLS-1，row 0..GRID_ROWS-1。
+     */
+    function getMainGridCellCenter(col, row) {
+        const cs = cellSize;
+        const c = Math.max(0, Math.min(GRID_COLS - 1, col | 0));
+        const r = Math.max(0, Math.min(GRID_ROWS - 1, row | 0));
+        return { x: (c + 0.5) * cs, y: (r + 0.5) * cs };
+    }
+
+    /** 世界坐标映射到主棋盘格索引（用于旧档离场格/归一化终点迁移） */
+    function worldToMainGridCell(px, py) {
+        const cs = cellSize > 0 ? cellSize : 1;
+        const c = Math.max(0, Math.min(GRID_COLS - 1, Math.floor(px / cs)));
+        const r = Math.max(0, Math.min(GRID_ROWS - 1, Math.floor(py / cs)));
+        return { col: c, row: r };
     }
 
     /**
@@ -1553,6 +2972,190 @@
         return weaponBaseAtk * (1 + totalPercent) * (1 + atkB) * (1 + elemStack);
     }
 
+    function loadStgBuildUpgradeOverridesFromStorage() {
+        try {
+            const raw = localStorage.getItem(STG_BUILD_OVERRIDES_KEY);
+            const o = raw ? JSON.parse(raw) : {};
+            stgBuildUpgradeOverrides = o && typeof o === 'object' ? o : {};
+        } catch (e) {
+            stgBuildUpgradeOverrides = {};
+        }
+    }
+
+    function getStgBuildOverride(id) {
+        const o = stgBuildUpgradeOverrides[id];
+        return o && typeof o === 'object' ? o : {};
+    }
+
+    function clampOverrideNum(v, min, max, def) {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return def;
+        return Math.max(min, Math.min(max, n));
+    }
+
+    /** 道具I：局内构筑面板可改水晶弹体形状、颜色、半径倍率 */
+    function getStgCrystalVisualOverride() {
+        const o = getStgBuildOverride('focus_crystal_base');
+        let sh = o.crystalShape;
+        if (sh !== 'circle' && sh !== 'diamond' && sh !== 'square') sh = 'diamond';
+        let fill = o.crystalFill;
+        if (typeof fill !== 'string' || !String(fill).trim()) fill = '#f1c40f';
+        const rs = clampOverrideNum(o.crystalRadiusScale, 0.35, 3, 1);
+        return { shape: sh, fill: String(fill).trim(), radiusScale: rs };
+    }
+
+    /** 道具I：伤害/弹速/枚数（与 J/K 叠乘或相加关系见 emitCrystalVolley） */
+    function getStgCrystalGameplayOverride() {
+        const o = getStgBuildOverride('focus_crystal_base');
+        return {
+            damageMult: clampOverrideNum(o.crystalDamageMult, 0.1, 5, 1),
+            bulletSpeedMult: clampOverrideNum(o.crystalBulletSpeedMult, 0.25, 3, 1),
+            countBase: Math.round(clampOverrideNum(o.crystalCountBase, 2, 28, 6)),
+            countExtraWithK: Math.round(clampOverrideNum(o.crystalCountExtraWithK, 0, 20, 3))
+        };
+    }
+
+    /** 用于文案：本局是否已选道具 K（局内用 stgTakenUpgradeIds；局外/标题用构筑勾选展开） */
+    function getStgHasFocusCrystalCountForDesc() {
+        if (phase === 'playing' && stgTakenUpgradeIds && stgTakenUpgradeIds.size > 0) {
+            return stgTakenUpgradeIds.has('focus_crystal_count');
+        }
+        try {
+            const raw = localStorage.getItem(STG_BUILD_INV_KEY);
+            const arr = raw ? JSON.parse(raw) : [];
+            const list = Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [];
+            return expandStgBuildGrantRequires(list).has('focus_crystal_count');
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function getStgCrystalVolleyCountForDesc() {
+        const cg = getStgCrystalGameplayOverride();
+        const nExtra = getStgHasFocusCrystalCountForDesc() ? cg.countExtraWithK : 0;
+        return Math.max(2, Math.min(28, cg.countBase + nExtra));
+    }
+
+    function buildFocusCrystalBaseDescZh() {
+        const hits = STG_CRYSTAL_FOCUS_HITS_NEEDED;
+        const n = getStgCrystalVolleyCountForDesc();
+        return '攻击每命中' + hits + '次，就能向前方发射' + n + '枚水晶';
+    }
+
+    function buildFocusCrystalBaseDescEn() {
+        const hits = STG_CRYSTAL_FOCUS_HITS_NEEDED;
+        const n = getStgCrystalVolleyCountForDesc();
+        return 'Every ' + hits + ' hits in focus: fire ' + n + ' crystals forward.';
+    }
+
+    /** 道具M：局内构筑面板可改狂怒层数对射速/弹速/持续的影响 */
+    function getStgRageEffectOverride() {
+        const o = getStgBuildOverride('focus_rage_core');
+        return {
+            bulletSpdPerStack: clampOverrideNum(o.rageBulletSpdPerStack, 0, 0.25, 0.065),
+            fireIvMultPerStack: clampOverrideNum(o.rageFireIvMultPerStack, 0.5, 0.999, 0.9),
+            durationBaseMs: Math.round(clampOverrideNum(o.rageDurationBaseMs, 500, 120000, 5000)),
+            durationExtraMs: Math.round(clampOverrideNum(o.rageDurationExtraMs, 0, 120000, 5000))
+        };
+    }
+
+    /** 道具A：扇面条数加成、扇面角覆盖、本分支齐射伤害倍率 */
+    function getStgSpreadFanOverride() {
+        const o = getStgBuildOverride('spread_fan');
+        const degRaw = o.fanSpreadDeg;
+        let spreadDegOverride = null;
+        if (degRaw != null && Number.isFinite(Number(degRaw))) {
+            spreadDegOverride = Math.max(15, Math.min(150, Number(degRaw)));
+        }
+        return {
+            addCount: Math.round(clampOverrideNum(o.fanAddCount, 0, 20, 2)),
+            spreadDeg: spreadDegOverride,
+            damageMult: clampOverrideNum(o.fanDamageMult, 0.2, 5, 1)
+        };
+    }
+
+    /**
+     * 道具B：额外追踪弹（与道具 D 独立叠乘）；触发概率、偏移、伤害；
+     * 穿透：pierceHits 为可命中的敌机段数，默认 3 = 穿透 2 次（第三名敌人后消失）
+     */
+    function getStgSpreadExtraOverride() {
+        const o = getStgBuildOverride('spread_extra');
+        return {
+            chance: clampOverrideNum(o.extraChance, 0, 1, 0.28),
+            xRange: clampOverrideNum(o.extraXRange, 0, 120, 18),
+            vxRange: clampOverrideNum(o.extraVxRange, 0, 400, 50),
+            damageMult: clampOverrideNum(o.extraDamageMult, 0.1, 5, 1),
+            homingStr: Math.round(clampOverrideNum(o.extraHomingStr, 10, 200, 72)),
+            pierceHits: Math.round(clampOverrideNum(o.extraPierceHits, 2, 8, 3))
+        };
+    }
+
+    /** 道具D：追踪分支伤害乘区、转向强度（与 homingStr 挂钩） */
+    function getStgSpreadHomingOverride() {
+        const o = getStgBuildOverride('spread_homing');
+        return {
+            damageMult: clampOverrideNum(o.homingDamageMult, 0.05, 1, 0.6),
+            homingStr: Math.round(clampOverrideNum(o.homingStr, 10, 200, 72))
+        };
+    }
+
+    /** 道具G：扩散暴击额外概率 */
+    function getStgSpreadCritOverride() {
+        const o = getStgBuildOverride('spread_crit');
+        return {
+            critBonus: clampOverrideNum(o.critBonus, 0, 0.5, 0.12)
+        };
+    }
+
+    /** 道具C：伴身炮台相对主武器单发倍率、开火间隔（毫秒） */
+    function getStgSpreadTurretOverride() {
+        const o = getStgBuildOverride('spread_turret');
+        return {
+            dmgMult: clampOverrideNum(o.turretDmgMult, 0.5, 5, 1.5),
+            fireIntervalMs: Math.round(clampOverrideNum(o.turretFireIntervalMs, 100, 2000, 420))
+        };
+    }
+
+    /** 道具E：产球节奏、球体寿命与上限、碰撞/视觉半径、持续伤占主武器单发比例 */
+    function getStgSpreadYinyangOverride() {
+        const o = getStgBuildOverride('spread_yinyang');
+        return {
+            spawnIntervalMs: Math.round(clampOverrideNum(o.yinyangSpawnIntervalMs, 500, 120000, STG_YINYANG_SPAWN_INTERVAL_MS)),
+            orbDurationMs: Math.round(clampOverrideNum(o.yinyangOrbDurationMs, 500, 120000, STG_YINYANG_ORB_DURATION_MS)),
+            maxOrbs: Math.round(clampOverrideNum(o.yinyangMaxOrbs, 1, 30, STG_YINYANG_MAX_ORBS)),
+            orbRadius: Math.round(clampOverrideNum(o.yinyangOrbRadius, 16, 120, 48)),
+            visR: Math.round(clampOverrideNum(o.yinyangVisR, 6, 72, 17)),
+            dpsFrac: clampOverrideNum(o.yinyangDpsFrac, 0.05, 1.5, 0.5)
+        };
+    }
+
+    /** 道具F：击杀大 P 点概率与经验倍率 */
+    function getStgSpreadBigPOverride() {
+        const o = getStgBuildOverride('spread_big_p');
+        return {
+            chance: clampOverrideNum(o.bigPChance, 0, 1, 0.22),
+            expMult: clampOverrideNum(o.bigPExpMult, 1, 10, 2.5)
+        };
+    }
+
+    /** 道具H：击杀大能量点概率与经验倍率 */
+    function getStgSpreadBigEnergyOverride() {
+        const o = getStgBuildOverride('spread_big_energy');
+        return {
+            chance: clampOverrideNum(o.bigEnergyChance, 0, 1, 0.18),
+            expMult: clampOverrideNum(o.bigEnergyExpMult, 1, 10, 1.85)
+        };
+    }
+
+    /**
+     * 道具E：阴阳玉「50% 攻击力」按扩散主武器等效单发伤害计（非子弹，不吃道具 D 追踪的 −40%）
+     */
+    function getStgSpreadMainVolleyDmgForYinYang() {
+        if (!player) return 0;
+        const baseAtk = player.mainWeaponAttack != null ? player.mainWeaponAttack : 10;
+        return applyStgWeaponBaseAttackBonuses(baseAtk) * bonusDamage * getStgUltAtkDamageMult();
+    }
+
     /**
      * 从物品池取第一格可用英雄属性；无则默认战士模板
      */
@@ -1568,27 +3171,37 @@
             if (picked) heroItem = picked;
         }
         const attr = (heroItem && heroItem.attributes) || {};
-        let maxHp = attr.health != null ? attr.health : 80;
         const aps = attr.attackSpeed != null ? attr.attackSpeed : 5;
         let fireIntervalMs = Math.max(60, Math.min(350, 1000 / Math.max(aps * 0.15, 0.5)));
         let moveSpeed = 200;
 
-        const scaled = applyStgHeroNonWeaponScalars(maxHp, fireIntervalMs);
-        maxHp = scaled.maxHp;
+        /** 仅用火英雄攻速→射击间隔；生命改为「格数」制，不再用英雄 health 数值 */
+        const scaled = applyStgHeroNonWeaponScalars(100, fireIntervalMs);
         fireIntervalMs = scaled.fireIntervalMs;
+
+        let baseCells = 6;
+        const cfgHp = loadStgPlayerConfig();
+        if (cfgHp && cfgHp.lifeCellsMax != null) {
+            const c = Number(cfgHp.lifeCellsMax);
+            if (Number.isFinite(c)) baseCells = Math.max(1, Math.min(30, Math.round(c)));
+        }
+        let lifeCells = baseCells;
+        if (playerStatsRef && playerStatsRef.getStat) {
+            lifeCells = Math.max(1, Math.round(baseCells * (1 + (playerStatsRef.getStat('max_health_bonus') || 0))));
+        }
 
         const cw = canvas ? canvas.width : GRID_COLS * cellSize;
         const ch = canvas ? canvas.height : GRID_ROWS * cellSize;
         const px = cw / 2;
         const py = ch - cellSize * 1.8;
 
-        /** STG 伤害以武器编辑器为准，不再使用英雄 baseAttack */
+        /** STG 伤害以武器编辑器为准；生命为整格×半格单位 */
         const p = {
             x: px,
             y: py,
             radius: 14,
-            hp: maxHp,
-            maxHp,
+            stgLifeCellsMax: lifeCells,
+            stgLifeHalfUnitsRemain: lifeCells * 2,
             moveSpeed,
             fireIntervalMs,
             bulletSpeed: 420,
@@ -1597,10 +3210,15 @@
             skillWeaponAttack: 10,
             /** 封魔阵「疗愈」结束后短时攻击加成（仅 Z 弹伤害） */
             _ultAtkBuffUntil: 0,
-            _ultAtkBuffMult: 1.18
+            _ultAtkBuffMult: 1.18,
+            /** 与开局坐标一致，受伤拉回用；resize 时同步 */
+            _stgSpawnX: px,
+            _stgSpawnY: py,
+            _stgHitHoldUntil: null
         };
         const cfg = loadStgPlayerConfig();
         if (cfg) mergeStgPlayerEditorIntoPlayer(p, cfg);
+        syncStgPlayerLifeHpMirror();
         return p;
     }
 
@@ -1615,10 +3233,30 @@
         return 'circle';
     }
 
+    function getStgRageMaxStacks() {
+        return stgTakenUpgradeIds.has('focus_rage_cap') ? 6 : 3;
+    }
+
+    function getStgRageDurationMs() {
+        const ex = getStgRageEffectOverride();
+        let d = ex.durationBaseMs;
+        if (stgTakenUpgradeIds.has('focus_rage_dur')) d += ex.durationExtraMs;
+        return d;
+    }
+
+    /** 道具P：狂怒层数≥5 时对敌伤害 +20% */
+    function getStgWeakDamageMult() {
+        if (!stgTakenUpgradeIds.has('focus_rage_weak')) return 1;
+        if (stgFocusBranch !== 'rage') return 1;
+        if (stgRageStacks < 5) return 1;
+        return 1.2;
+    }
+
     function emitPlayerVolley(isSkill, mainUseFocus) {
         if (!player) return;
         const p = player;
         const useFocusMain = !isSkill && !!mainUseFocus;
+        const spreadMode = !isSkill && !useFocusMain;
 
         let spdBase;
         let style;
@@ -1675,23 +3313,123 @@
             visShape = normalizePlayerBulletVisualShape(p.bulletVisualShape);
         }
 
-        /** 局内三选一 bonusDamage × 强化攻击力乘区 × 各武器基础攻击力 × 封魔阵疗愈后短暂攻击加成 */
-        const dmg = applyStgWeaponBaseAttackBonuses(baseAtk) * bonusDamage * getStgUltAtkDamageMult();
-        const spd = spdBase * bonusBulletSpeed;
+        /** 道具A：扩散固定扇形，散射条数 +addCount（默认 +2，可局内构筑覆盖） */
+        const fanOv = spreadMode && stgTakenUpgradeIds.has('spread_fan') ? getStgSpreadFanOverride() : null;
+        if (fanOv) {
+            style = 'fan';
+            nFan = Math.max(2, Math.min(24, (nFan != null ? nFan : 5) + fanOv.addCount));
+            if (fanOv.spreadDeg != null) {
+                spreadDeg = fanOv.spreadDeg;
+            } else if (spreadDeg == null || spreadDeg < 25) {
+                spreadDeg = 60;
+            }
+        }
+
+        let volleyDmg = applyStgWeaponBaseAttackBonuses(baseAtk) * bonusDamage * getStgUltAtkDamageMult();
+        if (spreadMode && stgTakenUpgradeIds.has('spread_homing')) {
+            volleyDmg *= getStgSpreadHomingOverride().damageMult;
+        }
+        if (fanOv) {
+            volleyDmg *= fanOv.damageMult;
+        }
+
+        /** 道具M：狂怒下弹速随层数增加（主武器扩散 / 慢速均生效；大招弹幕不走本段；可局内构筑覆盖每层加成） */
+        let rageBulletSpdMult = 1;
+        if (!isSkill && stgFocusBranch === 'rage' && stgRageStacks > 0) {
+            const tn = performance.now();
+            if (tn < stgRageEndMs) {
+                const rex = getStgRageEffectOverride();
+                rageBulletSpdMult = 1 + rex.bulletSpdPerStack * stgRageStacks;
+            }
+        }
+        const spd = spdBase * bonusBulletSpeed * rageBulletSpdMult;
         const px = p.x;
         const py = p.y - p.radius;
 
-        function pushBullet(x, y, vx, vy) {
+        /** 当前发射模式下的最大敌段命中数：未开穿透为 1，否则为 2–20 */
+        function getPierceHitsMaxForVolley() {
+            let enabled;
+            let hitsRaw;
+            if (isSkill) {
+                enabled = p.skillBulletPierceEnabled;
+                hitsRaw = p.skillBulletPierceHits;
+            } else if (useFocusMain) {
+                enabled = p.focusBulletPierceEnabled;
+                hitsRaw = p.focusBulletPierceHits;
+            } else {
+                enabled = p.bulletPierceEnabled;
+                hitsRaw = p.bulletPierceHits;
+            }
+            if (!enabled) return 1;
+            const n = hitsRaw != null ? parseInt(hitsRaw, 10) : 3;
+            if (!Number.isFinite(n)) return 1;
+            return Math.max(2, Math.min(20, n));
+        }
+        const pierceHitsMax = getPierceHitsMaxForVolley();
+
+        /** 道具D：同一次齐射内追踪强度一致，避免每颗弹重复读覆盖 */
+        const spreadHomingStr =
+            spreadMode && stgTakenUpgradeIds.has('spread_homing') ? getStgSpreadHomingOverride().homingStr : 72;
+        /** 道具B：额外弹专用追踪强度与穿透段数（与 D 无关；无 B 时下方仅作占位不用于主弹） */
+        const spreadExtraOv = spreadMode && stgTakenUpgradeIds.has('spread_extra') ? getStgSpreadExtraOverride() : null;
+        const spreadExtraHomingStr = spreadExtraOv ? spreadExtraOv.homingStr : 72;
+        const spreadExtraPierceHits = spreadExtraOv ? spreadExtraOv.pierceHits : 3;
+
+        function pushBullet(x, y, vx, vy, extra) {
+            const ex = extra || {};
+            const d = volleyDmg * (ex.dmgMult != null ? ex.dmgMult : 1);
+            const fromSpreadExtra = !!ex.fromSpreadExtra;
+            const useHoming = !!(
+                spreadMode &&
+                (stgTakenUpgradeIds.has('spread_homing') || (fromSpreadExtra && stgTakenUpgradeIds.has('spread_extra')))
+            );
+            let homingStrUse = 0;
+            if (useHoming) {
+                if (fromSpreadExtra && stgTakenUpgradeIds.has('spread_extra')) {
+                    homingStrUse = spreadExtraHomingStr;
+                } else if (spreadMode && stgTakenUpgradeIds.has('spread_homing')) {
+                    homingStrUse = spreadHomingStr;
+                }
+            }
+            const critB = spreadMode && stgTakenUpgradeIds.has('spread_crit') ? getStgSpreadCritOverride().critBonus : 0;
+            const pl = ex.pierceOverride != null ? ex.pierceOverride : pierceHitsMax;
+            const needSet = pl > 1;
             playerBullets.push({
                 x,
                 y,
                 vx,
                 vy,
-                dmg,
+                dmg: d,
                 alive: true,
-                radius: br,
-                shape: visShape
+                radius: ex.radius != null ? ex.radius : br,
+                shape: ex.shape != null ? ex.shape : visShape,
+                pierceHitsLeft: pl,
+                pierceHitEnemyIds: needSet ? new Set() : null,
+                homing: useHoming,
+                homingStr: homingStrUse,
+                spreadCritBonus: critB,
+                fromSpread: spreadMode,
+                fromFocusMain: !!(useFocusMain && !isSkill),
+                isCrystal: !!ex.isCrystal,
+                allowCrystalAcc: !!(useFocusMain && !isSkill && stgFocusBranch === 'crystal' && !ex.isCrystal)
             });
+        }
+
+        function trySpreadExtraAndYinyang() {
+            if (spreadMode && spreadExtraOv && Math.random() < spreadExtraOv.chance) {
+                pushBullet(
+                    px + (Math.random() - 0.5) * spreadExtraOv.xRange,
+                    py,
+                    (Math.random() - 0.5) * spreadExtraOv.vxRange,
+                    -spd,
+                    {
+                        dmgMult: spreadExtraOv.damageMult,
+                        fromSpreadExtra: true,
+                        pierceOverride: spreadExtraPierceHits
+                    }
+                );
+            }
+            /** 道具E：改由 update 内定时生成，此处不再随机产球 */
         }
 
         if (style === 'single') {
@@ -1699,8 +3437,9 @@
             const gap = 10;
             for (let i = 0; i < n; i++) {
                 const ox = (i - (n - 1) * 0.5) * gap;
-                pushBullet(px + ox, py, 0, -spd);
+                pushBullet(px + ox, py, 0, -spd, {});
             }
+            trySpreadExtraAndYinyang();
             return;
         }
         if (style === 'fan') {
@@ -1710,14 +3449,78 @@
             const start = base - spread * 0.5;
             for (let i = 0; i < n; i++) {
                 const a = n <= 1 ? base : start + (spread * i) / Math.max(1, n - 1);
-                pushBullet(px, py, Math.cos(a) * spd, Math.sin(a) * spd);
+                pushBullet(px, py, Math.cos(a) * spd, Math.sin(a) * spd, {});
             }
+            trySpreadExtraAndYinyang();
             return;
         }
         const n = Math.max(3, Math.min(36, nRing));
         for (let i = 0; i < n; i++) {
             const a = (Math.PI * 2 * i) / n;
-            pushBullet(px, py, Math.cos(a) * spd, Math.sin(a) * spd);
+            pushBullet(px, py, Math.cos(a) * spd, Math.sin(a) * spd, {});
+        }
+        trySpreadExtraAndYinyang();
+    }
+
+    /**
+     * 道具I+J/K/L：水晶齐射（集中主武器命中 30 次触发）
+     */
+    function emitCrystalVolley() {
+        if (!player || stgFocusBranch !== 'crystal') return;
+        const p = player;
+        const cgPlay = getStgCrystalGameplayOverride();
+        const nExtra = stgTakenUpgradeIds.has('focus_crystal_count') ? cgPlay.countExtraWithK : 0;
+        const n = Math.max(2, Math.min(28, cgPlay.countBase + nExtra));
+        const baseAtk =
+            p.focusWeaponAttack != null
+                ? p.focusWeaponAttack
+                : p.mainWeaponAttack != null
+                  ? p.mainWeaponAttack
+                  : 10;
+        let cdmg = applyStgWeaponBaseAttackBonuses(baseAtk) * bonusDamage * getStgUltAtkDamageMult();
+        if (stgTakenUpgradeIds.has('focus_crystal_atk')) cdmg *= 1.28;
+        cdmg *= cgPlay.damageMult;
+        const spd =
+            (p.focusBulletSpeed != null ? p.focusBulletSpeed : p.bulletSpeed) *
+            bonusBulletSpeed *
+            cgPlay.bulletSpeedMult;
+        const cv = getStgCrystalVisualOverride();
+        const brc = Math.max(
+            2,
+            Math.round(
+                (p.focusBulletRadius != null ? p.focusBulletRadius : p.bulletRadius != null ? p.bulletRadius : 4) *
+                    0.88 *
+                    cv.radiusScale
+            )
+        );
+        const spread = (42 * Math.PI) / 180;
+        const baseA = -Math.PI / 2;
+        const start = baseA - spread * 0.5;
+        const px = p.x;
+        const py = p.y - p.radius;
+        const pierceL = stgTakenUpgradeIds.has('focus_crystal_pierce') ? 5 : 1;
+        for (let i = 0; i < n; i++) {
+            const a = n <= 1 ? baseA : start + (spread * i) / Math.max(1, n - 1);
+            playerBullets.push({
+                x: px,
+                y: py,
+                vx: Math.cos(a) * spd,
+                vy: Math.sin(a) * spd,
+                dmg: cdmg,
+                alive: true,
+                radius: brc,
+                shape: cv.shape,
+                crystalFill: cv.fill,
+                pierceHitsLeft: pierceL,
+                pierceHitEnemyIds: pierceL > 1 ? new Set() : null,
+                homing: false,
+                homingStr: 0,
+                spreadCritBonus: 0,
+                fromSpread: false,
+                fromFocusMain: false,
+                isCrystal: true,
+                allowCrystalAcc: false
+            });
         }
     }
 
@@ -1739,7 +3542,7 @@
      */
     function stgApplyDamageToEnemyNoBullet(e, rawDmg, useCrit) {
         if (!e || !e.alive) return;
-        let hitDmg = rawDmg;
+        let hitDmg = rawDmg * getStgWeakDamageMult();
         if (useCrit && playerStatsRef && playerStatsRef.getStat) {
             const critP = Math.min(
                 0.95,
@@ -1757,6 +3560,7 @@
             e.alive = false;
             const pExp = Math.max(5, Math.floor(12 * bonusExpMult));
             pickups.push(createPickupAtKill(e.x, e.y, pExp));
+            pushStgChargePickupOnEnemyKillIfConfigured(e);
             console.log('[STG] 大招击杀，掉落 P点 经验', pExp);
         }
     }
@@ -1782,9 +3586,12 @@
             radius,
             dps,
             healPerSec,
-            hasHealCard: stgTakenUpgradeIds.has('ult_seal_heal')
+            hasHealCard: stgTakenUpgradeIds.has('ult_seal_heal'),
+            /** 道具R：消弹转化的 P 点经验倍率、阵内移速倍率 */
+            pFromBulletMult: stgTakenUpgradeIds.has('ult_seal_economy') ? 1.55 : 1,
+            moveBonusDuringSeal: stgTakenUpgradeIds.has('ult_seal_economy') ? 1.14 : 1
         };
-        console.log('[STG] 封魔阵', 'R=', radius.toFixed(0), 'ms=', durationMs);
+        console.log('[STG] 试做型封魔阵', 'R=', radius.toFixed(0), 'ms=', durationMs);
     }
 
     /** 大招 · 梦想妙珠：水平排布、向上飞行的消弹体 */
@@ -1835,15 +3642,32 @@
                 const px = player.x;
                 const py = player.y;
                 const R = stgSealField.radius;
-                if (stgSealField.healPerSec > 0 && player.hp < player.maxHp) {
-                    player.hp += player.maxHp * stgSealField.healPerSec * dtSec;
-                    if (player.hp > player.maxHp) player.hp = player.maxHp;
+                if (stgSealField.healPerSec > 0 && player.stgLifeHalfUnitsRemain < getStgPlayerMaxLifeHalfUnits()) {
+                    const maxH = getStgPlayerMaxLifeHalfUnits();
+                    player._stgSealHealHalfAcc =
+                        (player._stgSealHealHalfAcc || 0) + maxH * stgSealField.healPerSec * dtSec;
+                    while (player._stgSealHealHalfAcc >= 1 && player.stgLifeHalfUnitsRemain < maxH) {
+                        player._stgSealHealHalfAcc -= 1;
+                        player.stgLifeHalfUnitsRemain++;
+                    }
+                    syncStgPlayerLifeHpMirror();
                 }
+                /** 本帧由封魔阵消弹转化的 P 点数量上限，避免弹幕极密时单帧生成过多实体 */
+                let sealPBudget = 14;
                 for (let i = enemyBullets.length - 1; i >= 0; i--) {
                     const b = enemyBullets[i];
                     if (!b.alive) continue;
                     const br = b.radius != null ? b.radius : 5;
-                    if (Math.hypot(b.x - px, b.y - py) < R + br) b.alive = false;
+                    if (Math.hypot(b.x - px, b.y - py) < R + br) {
+                        b.alive = false;
+                        /** 试做型封魔阵：范围内消弹转化为 P 点（经验）；道具 R 提高转化价值 */
+                        if (sealPBudget > 0) {
+                            sealPBudget--;
+                            const mult = (stgSealField.pFromBulletMult != null ? stgSealField.pFromBulletMult : 1) * bonusExpMult;
+                            const pExp = Math.max(2, Math.floor(5 * mult));
+                            pickups.push(createPickupAtKill(b.x, b.y, pExp));
+                        }
+                    }
                 }
                 for (let ei = 0; ei < enemies.length; ei++) {
                     const e = enemies[ei];
@@ -1893,7 +3717,10 @@
     function drawStgPlayerBullet(ctx, b) {
         const rad = b.radius != null ? b.radius : 4;
         const sh = b.shape || 'circle';
-        ctx.fillStyle = '#f1c40f';
+        ctx.fillStyle =
+            b.isCrystal && b.crystalFill != null && String(b.crystalFill).trim() !== ''
+                ? String(b.crystalFill).trim()
+                : '#f1c40f';
         if (sh === 'circle') {
             ctx.beginPath();
             ctx.arc(b.x, b.y, rad, 0, Math.PI * 2);
@@ -1925,6 +3752,7 @@
         bonusPickupRadius = 1;
         bonusBulletSpeed = 1;
         bonusExpMult = 1;
+        resetStgStatBonusDisplay();
         /** 强化道具「英雄经验获取加成」：与局内三选一 bonusExpMult 叠乘 */
         if (playerStatsRef && playerStatsRef.getStat) {
             const xpb = playerStatsRef.getStat('hero_xp_gain_bonus') || 0;
@@ -1936,7 +3764,7 @@
         phase = 'playing';
         level = 1;
         exp = 0;
-        expToNext = 100;
+        expToNext = computeExpToNextForLevel(1);
         waveIndex = 0;
         spawnQueueLegacy = [];
         spawnAccMs = 0;
@@ -1946,6 +3774,15 @@
         enemyBullets = [];
         enemyLasers = [];
         pickups = [];
+        stgGrazeOrbs = [];
+        stgGrazeRangeFlashes = [];
+        stgYinYangOrbs = [];
+        stgYinYangNextSpawnWallMs = null;
+        stgCrystalFocusHitAcc = 0;
+        stgRageStacks = 0;
+        stgRageEndMs = 0;
+        stgRageKillAcc = 0;
+        stgSideTurretLastFireMs = 0;
         stgPlayerFxParticles = [];
         stgPlayerHitFlashMs = 0;
         stgLaserFxAccMs = 0;
@@ -1954,9 +3791,29 @@
         stgTakenUpgradeIds.clear();
         stgFocusBranch = null;
         stgUltBranch = null;
+        stgUpgradePickOpen = false;
+        stgUpgradePending = false;
+        upgradeChoices = [];
+        {
+            const root = document.getElementById('stgUpgradeModalRoot');
+            if (root) {
+                root.classList.add('hidden');
+                root.setAttribute('aria-hidden', 'true');
+            }
+            const sub = document.getElementById('stgUpgradeSubHint');
+            if (sub) sub.innerHTML = '';
+            const hintBtn = document.getElementById('stgLevelUpHint');
+            if (hintBtn) hintBtn.classList.add('hidden');
+        }
         invalidateScenePropsCache();
         resetBonuses();
         player = buildPlayerFromHero();
+        applyStgSavedBuildGrants();
+        stgUltChargeMeter = 0;
+        stgUltCharges = 0;
+        if (player && player.ultInitialCharges != null) {
+            stgUltCharges = Math.max(0, Math.min(STG_ULT_CHARGE_MAX, Math.floor(player.ultInitialCharges)));
+        }
         runStartMs = performance.now();
 
         const w = waveData.waves[0];
@@ -1971,10 +3828,13 @@
         /** 仅 legacy 队列需要：首拍即出第一只；阵型已在 apply 内一次刷完 */
         spawnAccMs = spawnIntervalMs;
         scheduleStgNextWaveTimerAfterCurrentWaveStarted();
+        refreshStgReimuBonusAside();
         console.log(
-            '[STG] 开局：HP=',
-            player.maxHp,
-            '武器攻',
+            '[STG] 开局：生命',
+            (player.stgLifeHalfUnitsRemain != null ? player.stgLifeHalfUnitsRemain * 0.5 : player.hp * 0.5).toFixed(1),
+            '/',
+            player.stgLifeCellsMax != null ? player.stgLifeCellsMax : '?',
+            '格；武器攻',
             (player.mainWeaponAttack != null ? player.mainWeaponAttack : 10).toFixed(1),
             '/',
             (player.focusWeaponAttack != null ? player.focusWeaponAttack : player.mainWeaponAttack != null ? player.mainWeaponAttack : 10).toFixed(1),
@@ -1993,6 +3853,8 @@
             if (!waveData.waves || waveData.waves.length === 0) {
                 waveData = { waves: [{ waveNumber: 1, spawnInterval: 450, enemies: [{ type: 'normal', count: 5 }] }] };
             }
+            waveData.enemyHpScale = normalizeWaveDataEnemyHpScale(waveData.enemyHpScale);
+            waveData.enemyFireStopRow = normalizeWaveDataEnemyFireStopRow(waveData.enemyFireStopRow);
             resetRun();
             isRunning = true;
             isPaused = false;
@@ -2070,8 +3932,12 @@
         }
         x += ox;
         y += oy;
-        const en = new StgEnemy(x, y, def, pattern, typeId);
+        const en = new StgEnemy(x, y, def, pattern, typeId, col);
         en.stgSpawnEdge = edge === 'left' || edge === 'right' || edge === 'top' ? edge : 'top';
+        /** 波次阵型：按当前波配置的 enemyHpMult 抬血（waveIndex 从 0 起，第 1 波为 0） */
+        const hpMult = getStgEnemyHpMultiplierForWaveIndex(waveIndex);
+        en.maxHp = Math.max(1, Math.round(en.maxHp * hpMult));
+        en.hp = en.maxHp;
         enemies.push(en);
     }
 
@@ -2081,6 +3947,9 @@
         const typesMap = getEnemyTypeMap();
         const cw = canvas.width;
         const ch = canvas.height;
+        const nowT = performance.now();
+        /** 受伤后拉回出生点期间：不能移动、不能开火（与 hitSpawnHoldMs 一致） */
+        const inHitHold = player._stgHitHoldUntil != null && nowT < player._stgHitHoldUntil;
 
         /** --- 玩家移动 --- */
         let mvx = 0;
@@ -2091,52 +3960,184 @@
         if (keys.ArrowDown) mvy += 1;
         /** Shift：慢速移动 + 可选独立「集中」主武器参数（与武器编辑器一致） */
         const shiftHeld = keys.ShiftLeft || keys.ShiftRight;
-        if (mvx !== 0 || mvy !== 0) {
-            const len = Math.hypot(mvx, mvy) || 1;
-            const fm = player.focusMoveMult != null ? player.focusMoveMult : STG_FOCUS_MOVE_MULT;
-            const sp = player.moveSpeed * bonusMoveMult * (shiftHeld ? fm : 1);
-            player.x += (mvx / len) * sp * dtSec;
-            player.y += (mvy / len) * sp * dtSec;
+        const nowWall = performance.now();
+        /** 道具M：非狂怒分支清空；狂怒到期先减一层（最高层先掉），若仍有层则新开一段同长度 CD；叠层时整段 CD 在击杀逻辑里刷新 */
+        if (stgFocusBranch !== 'rage') {
+            stgRageStacks = 0;
+            stgRageEndMs = 0;
+        } else if (stgRageStacks > 0 && nowWall >= stgRageEndMs) {
+            stgRageStacks--;
+            if (stgRageStacks > 0) {
+                stgRageEndMs = nowWall + getStgRageDurationMs();
+            } else {
+                stgRageEndMs = 0;
+            }
         }
-        player.x = Math.max(player.radius, Math.min(cw - player.radius, player.x));
-        player.y = Math.max(player.radius, Math.min(ch - player.radius, player.y));
+        if (!inHitHold) {
+            if (mvx !== 0 || mvy !== 0) {
+                const len = Math.hypot(mvx, mvy) || 1;
+                const fm = player.focusMoveMult != null ? player.focusMoveMult : STG_FOCUS_MOVE_MULT;
+                /** 道具R：试做型封魔阵持续期间额外移速（与文档「持续时间内能够增加自机移速」一致） */
+                const nowMv = performance.now();
+                const sealMv =
+                    stgSealField && nowMv < stgSealField.endMs && stgSealField.moveBonusDuringSeal != null
+                        ? stgSealField.moveBonusDuringSeal
+                        : 1;
+                const sp = player.moveSpeed * bonusMoveMult * (shiftHeld ? fm : 1) * sealMv;
+                player.x += (mvx / len) * sp * dtSec;
+                player.y += (mvy / len) * sp * dtSec;
+            }
+            player.x = Math.max(player.radius, Math.min(cw - player.radius, player.x));
+            player.y = Math.max(player.radius, Math.min(ch - player.radius, player.y));
+        } else {
+            snapStgPlayerToSpawn();
+        }
 
-        /** 强化「生命恢复加成」：与塔防塔回复同量级思路，按最大生命×加成×系数/秒 */
-        if (playerStatsRef && playerStatsRef.getStat && player.hp > 0 && player.hp < player.maxHp) {
+        /** 生命恢复：局外 health_regen_bonus × 局内基础道具2；若局外为 0，基础道具2 仍给少量按生命百分比回复 */
+        if (
+            playerStatsRef &&
+            playerStatsRef.getStat &&
+            player.stgLifeHalfUnitsRemain != null &&
+            player.stgLifeHalfUnitsRemain < getStgPlayerMaxLifeHalfUnits()
+        ) {
             const reg = playerStatsRef.getStat('health_regen_bonus') || 0;
-            if (reg > 0) {
-                player.hp += player.maxHp * reg * 0.005 * dtSec;
-                if (player.hp > player.maxHp) player.hp = player.maxHp;
+            let rate = reg > 0 ? reg * 0.005 * stgRunRegenMult : stgRunRegenMult > 1 ? 0.004 * (stgRunRegenMult - 1) : 0;
+            if (rate > 0) {
+                const maxH = getStgPlayerMaxLifeHalfUnits();
+                player._stgRegenHalfAcc = (player._stgRegenHalfAcc || 0) + maxH * rate * dtSec;
+                while (player._stgRegenHalfAcc >= 1 && player.stgLifeHalfUnitsRemain < maxH) {
+                    player._stgRegenHalfAcc -= 1;
+                    player.stgLifeHalfUnitsRemain++;
+                }
+                syncStgPlayerLifeHpMirror();
             }
         }
 
         /** --- 玩家主武器（Z 按住）；大招（X）仅触发构筑招式，不发射 skill 弹幕 --- */
-        const nowT = performance.now();
-        if (!player._lastFireMs) player._lastFireMs = 0;
-        const mainIvBase = shiftHeld
-            ? player.focusFireIntervalMs != null
-                ? player.focusFireIntervalMs
-                : player.fireIntervalMs
-            : player.fireIntervalMs;
-        const fireIv = mainIvBase * bonusFireIntervalMult;
-        if (keys.KeyZ && nowT - player._lastFireMs >= fireIv) {
-            player._lastFireMs = nowT;
-            emitPlayerVolley(false, shiftHeld);
-        }
-        if (!player._lastSkillFireMs) player._lastSkillFireMs = 0;
-        const skillIv = (player.skillFireIntervalMs != null ? player.skillFireIntervalMs : 120) * bonusFireIntervalMult;
-        const skillCd = player.skillCooldownMs != null ? player.skillCooldownMs : 0;
-        if (keys.KeyX && nowT >= (player._skillCooldownUntil || 0) && nowT - player._lastSkillFireMs >= skillIv) {
-            if (stgUltBranch === 'seal') {
-                player._lastSkillFireMs = nowT;
-                activateStgUltSeal();
-                if (skillCd > 0) player._skillCooldownUntil = nowT + skillCd;
-            } else if (stgUltBranch === 'dream') {
-                player._lastSkillFireMs = nowT;
-                activateStgUltDream();
-                if (skillCd > 0) player._skillCooldownUntil = nowT + skillCd;
+        /** 道具E：扩散（非 Shift）下按间隔产球；拉回停滞时不产球、不开火 */
+        if (!inHitHold) {
+            if (stgTakenUpgradeIds.has('spread_yinyang')) {
+                const yyCfg = getStgSpreadYinyangOverride();
+                if (!shiftHeld) {
+                    if (stgYinYangNextSpawnWallMs == null) {
+                        stgYinYangNextSpawnWallMs = nowT + yyCfg.spawnIntervalMs;
+                    }
+                    if (nowT >= stgYinYangNextSpawnWallMs) {
+                        stgYinYangNextSpawnWallMs = nowT + yyCfg.spawnIntervalMs;
+                        if (stgYinYangOrbs.length < yyCfg.maxOrbs) {
+                            stgYinYangOrbs.push({
+                                x: player.x,
+                                y: player.y,
+                                r: yyCfg.orbRadius,
+                                visR: yyCfg.visR,
+                                alive: true,
+                                lifeMs: yyCfg.orbDurationMs,
+                                maxLifeMs: yyCfg.orbDurationMs,
+                                phaseRad: Math.random() * Math.PI * 2,
+                                orbitR: 34 + Math.random() * 6,
+                                orbitOmega: 1.75 + Math.random() * 0.55
+                            });
+                        }
+                    }
+                }
+            } else {
+                stgYinYangNextSpawnWallMs = null;
             }
-            /** 未选封魔阵/妙珠构筑时，X 不触发任何发射（大招不是武器弹幕） */
+            if (!player._lastFireMs) player._lastFireMs = 0;
+            const mainIvBase = shiftHeld
+                ? player.focusFireIntervalMs != null
+                    ? player.focusFireIntervalMs
+                    : player.fireIntervalMs
+                : player.fireIntervalMs;
+            let fireIv = mainIvBase * bonusFireIntervalMult;
+            /** 道具M：狂怒叠层缩短主武器射击间隔（扩散与慢速均生效；可局内构筑覆盖每层乘数） */
+            if (stgFocusBranch === 'rage' && stgRageStacks > 0 && nowT < stgRageEndMs) {
+                const rex = getStgRageEffectOverride();
+                fireIv *= Math.pow(rex.fireIvMultPerStack, stgRageStacks);
+            }
+            if (keys.KeyZ && nowT - player._lastFireMs >= fireIv) {
+                player._lastFireMs = nowT;
+                emitPlayerVolley(false, shiftHeld);
+            }
+            /** 道具C：扩散模式下伴身炮台额外朝最近敌射击 */
+            const turOv = stgTakenUpgradeIds.has('spread_turret') ? getStgSpreadTurretOverride() : null;
+            if (
+                keys.KeyZ &&
+                stgTakenUpgradeIds.has('spread_turret') &&
+                !shiftHeld &&
+                turOv &&
+                nowT - stgSideTurretLastFireMs >= turOv.fireIntervalMs
+            ) {
+                stgSideTurretLastFireMs = nowT;
+                const mainAtk = player.mainWeaponAttack != null ? player.mainWeaponAttack : 10;
+                let tdmg =
+                    applyStgWeaponBaseAttackBonuses(mainAtk) * bonusDamage * getStgUltAtkDamageMult() * turOv.dmgMult;
+                const prT = player.radius != null ? player.radius : 16;
+                const tx = player.x + prT * 2.15 + 8;
+                const ty = player.y;
+                let vx = 0;
+                let vy = -1;
+                let best = null;
+                let bd = 1e9;
+                for (let ei = 0; ei < enemies.length; ei++) {
+                    const en = enemies[ei];
+                    if (!en.alive) continue;
+                    const d = Math.hypot(en.x - tx, en.y - ty);
+                    if (d < bd) {
+                        bd = d;
+                        best = en;
+                    }
+                }
+                if (best) {
+                    const ang = Math.atan2(best.y - ty, best.x - tx);
+                    vx = Math.cos(ang);
+                    vy = Math.sin(ang);
+                }
+                const tspd = (player.bulletSpeed != null ? player.bulletSpeed : 420) * bonusBulletSpeed;
+                playerBullets.push({
+                    x: tx,
+                    y: ty,
+                    vx: vx * tspd,
+                    vy: vy * tspd,
+                    dmg: tdmg * getStgWeakDamageMult(),
+                    alive: true,
+                    radius: Math.max(3, (player.bulletRadius != null ? player.bulletRadius : 4) * 0.9),
+                    shape: normalizePlayerBulletVisualShape(player.bulletVisualShape),
+                    pierceHitsLeft: 1,
+                    pierceHitEnemyIds: null,
+                    homing: false,
+                    homingStr: 0,
+                    spreadCritBonus: 0,
+                    fromSpread: true,
+                    fromFocusMain: false,
+                    isCrystal: false,
+                    allowCrystalAcc: false,
+                    isTurret: true
+                });
+            }
+            if (!player._lastSkillFireMs) player._lastSkillFireMs = 0;
+            const skillIv = (player.skillFireIntervalMs != null ? player.skillFireIntervalMs : 120) * bonusFireIntervalMult;
+            const skillCdRaw = player.skillCooldownMs != null ? player.skillCooldownMs : 0;
+            /** 基础道具9：充能点价值 → 冷却按 bonusUltChargeMult 缩短 */
+            const skillCd = skillCdRaw > 0 ? skillCdRaw / bonusUltChargeMult : 0;
+            /** X：消耗 1 格大招充能；未选梦想妙珠分支时试做型封魔阵，选 T 后妙珠 */
+            if (
+                keys.KeyX &&
+                stgUltCharges > 0 &&
+                nowT >= (player._skillCooldownUntil || 0) &&
+                nowT - player._lastSkillFireMs >= skillIv
+            ) {
+                stgUltCharges--;
+                if (stgUltBranch === 'dream') {
+                    player._lastSkillFireMs = nowT;
+                    activateStgUltDream();
+                    if (skillCd > 0) player._skillCooldownUntil = nowT + skillCd;
+                } else {
+                    player._lastSkillFireMs = nowT;
+                    activateStgUltSeal();
+                    if (skillCd > 0) player._skillCooldownUntil = nowT + skillCd;
+                }
+            }
         }
 
         /** --- 出兵与自动下一波（与 towerDefense：本波开始起算 nextWaveDelaySec，不等待清怪） --- */
@@ -2163,6 +4164,9 @@
             interWaveCountEnd = null;
             console.log('[STG] 通关：最后一波已清空');
         }
+
+        /** 全局停火几何线 Y（由阵型「停火行号」× 当前格高 得到；null=仅要求先入场） */
+        const fireStopY = getStgEnemyFireStopLineYClamped(ch);
 
         /** --- 敌人 --- */
         for (let i = enemies.length - 1; i >= 0; i--) {
@@ -2195,10 +4199,38 @@
                 continue;
             }
 
+            /** 战斗弹幕：须先进入棋盘；可选停火线（中心 Y≥线则停，含连射余弹）；死后弹幕不走此分支 */
+            const canFireByLine = fireStopY == null || e.y < fireStopY;
+            const canFireNormal = e.stgHasEnteredPlayfield && canFireByLine;
+
             /** none=无弹幕；死后弹幕仅在阵亡时发射，不在此循环；眩晕中不发弹 */
             const stunNow = performance.now();
             const stunned = e.stgStunUntil != null && stunNow < e.stgStunUntil;
+            if (stunned) {
+                e._stgBurstRemain = 0;
+            } else if (!canFireNormal) {
+                e._stgBurstRemain = 0;
+            } else if (
+                e.pattern !== 'none' &&
+                e.stgEmitWhen !== 'on_death' &&
+                e._stgBurstRemain > 0 &&
+                performance.now() >= (e._stgBurstNextMs || 0)
+            ) {
+                /** 连射续发：与冷却独立，按间隔再发一轮同样式弹幕 */
+                const iv = Math.max(40, Math.min(500, e.stgBurstIntervalMs != null ? e.stgBurstIntervalMs : 100));
+                const total = e._stgBurstTotal != null ? e._stgBurstTotal : 1;
+                const idx = e._stgBurstIndex != null ? e._stgBurstIndex : 0;
+                emitStgEnemyAttackVolley(e, player, idx, total);
+                e._stgBurstRemain = (e._stgBurstRemain || 0) - 1;
+                e._stgBurstIndex = idx + 1;
+                if (e._stgBurstRemain > 0) {
+                    e._stgBurstNextMs = performance.now() + iv;
+                } else {
+                    e._stgBurstRemain = 0;
+                }
+            }
             if (
+                canFireNormal &&
                 !stunned &&
                 e.pattern !== 'none' &&
                 e.stgEmitWhen !== 'on_death' &&
@@ -2209,6 +4241,39 @@
             }
         }
 
+        /** 敌机身体 vs 自机判定点：可每种类在怪物编辑器关闭；伤害规则与敌弹一致（半格/整格） */
+        if (phase === 'playing' && player) {
+            const nowCt = performance.now();
+            const pr = getStgPlayerHitRadius();
+            if (!isStgPlayerInvulnerable(nowCt)) {
+                for (let ei = 0; ei < enemies.length; ei++) {
+                    const e = enemies[ei];
+                    if (!e.alive || e.stgContactDamagePlayer === false) continue;
+                    const er = e.radius != null ? e.radius : 14;
+                    if (Math.hypot(e.x - player.x, e.y - player.y) < er + pr) {
+                        const halves = resolveStgBulletLifeDamageHalvesFromEnemy(e);
+                        player.stgLifeHalfUnitsRemain = Math.max(0, (player.stgLifeHalfUnitsRemain | 0) - halves);
+                        syncStgPlayerLifeHpMirror();
+                        applyStgPlayerHitResponse(nowCt);
+                        triggerStgPlayerHitFx(player.x, player.y, 12, 155);
+                        console.log('[STG] 机体接触伤害', e.typeId, '半格×', halves);
+                        if (player.stgLifeHalfUnitsRemain <= 0) {
+                            phase = 'dead';
+                            showResult(false);
+                            isRunning = false;
+                            return;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        /** 受伤后的持续消弹：敌机在上循环中已发射的弹幕在此清空 */
+        if (player && player._bulletClearUntil != null && performance.now() < player._bulletClearUntil) {
+            enemyBullets.length = 0;
+        }
+
         /** --- 子弹 --- */
         for (let i = playerBullets.length - 1; i >= 0; i--) {
             const b = playerBullets[i];
@@ -2216,10 +4281,85 @@
                 playerBullets.splice(i, 1);
                 continue;
             }
+            /** 道具D：扩散追踪弹转向最近敌人 */
+            const hstr = b.homingStr != null ? b.homingStr : 0;
+            if (b.homing && hstr > 0 && enemies.length) {
+                let bx = b.x;
+                let by = b.y;
+                let near = null;
+                let nd = 1e9;
+                for (let ei = 0; ei < enemies.length; ei++) {
+                    const en = enemies[ei];
+                    if (!en.alive) continue;
+                    const d = Math.hypot(en.x - bx, en.y - by);
+                    if (d < nd) {
+                        nd = d;
+                        near = en;
+                    }
+                }
+                if (near) {
+                    const spd = Math.hypot(b.vx, b.vy);
+                    if (spd > 8) {
+                        const ta = Math.atan2(near.y - by, near.x - bx);
+                        let ca = Math.atan2(b.vy, b.vx);
+                        let da = ta - ca;
+                        while (da > Math.PI) da -= Math.PI * 2;
+                        while (da < -Math.PI) da += Math.PI * 2;
+                        const turnRate = (hstr / 100) * 3.2;
+                        const step = Math.max(-turnRate * dtSec, Math.min(turnRate * dtSec, da));
+                        ca += step;
+                        b.vx = Math.cos(ca) * spd;
+                        b.vy = Math.sin(ca) * spd;
+                    }
+                }
+            }
             b.x += b.vx * dtSec;
             b.y += b.vy * dtSec;
             if (b.y < -20 || b.x < -20 || b.x > cw + 20) {
                 b.alive = false;
+            }
+        }
+
+        /** 道具E：阴阳玉绕自机圆形轨道公转；重叠范围内持续伤害 = dpsFrac×扩散主武器等效单发/秒 */
+        if (player) {
+            const yyDps =
+                getStgSpreadMainVolleyDmgForYinYang() *
+                (stgTakenUpgradeIds.has('spread_yinyang') ? getStgSpreadYinyangOverride().dpsFrac : 0.5);
+            for (let yi = stgYinYangOrbs.length - 1; yi >= 0; yi--) {
+                const o = stgYinYangOrbs[yi];
+                if (!o || !o.alive) {
+                    stgYinYangOrbs.splice(yi, 1);
+                    continue;
+                }
+                const om = o.orbitOmega != null ? o.orbitOmega : 1.9;
+                o.phaseRad = (o.phaseRad != null ? o.phaseRad : 0) + om * dtSec;
+                const orad = o.orbitR != null ? o.orbitR : 34;
+                o.x = player.x + Math.cos(o.phaseRad) * orad;
+                o.y = player.y + Math.sin(o.phaseRad) * orad;
+                o.lifeMs -= dt;
+                if (o.lifeMs <= 0) {
+                    o.alive = false;
+                    stgYinYangOrbs.splice(yi, 1);
+                    continue;
+                }
+                const wm = getStgWeakDamageMult();
+                for (let ei = 0; ei < enemies.length; ei++) {
+                    const en = enemies[ei];
+                    if (!en.alive) continue;
+                    if (Math.hypot(en.x - o.x, en.y - o.y) < o.r + en.radius) {
+                        en.hp -= yyDps * wm * dtSec;
+                        if (en.hp <= 0) {
+                            if (en.pattern !== 'none' && en.stgEmitWhen === 'on_death') {
+                                emitStgEnemyAttack(en, player);
+                            }
+                            markStgWaveEnemyResolved(en);
+                            en.alive = false;
+                            const pExp = Math.max(5, Math.floor(12 * bonusExpMult));
+                            pickups.push(createPickupAtKill(en.x, en.y, pExp));
+                            pushStgChargePickupOnEnemyKillIfConfigured(en);
+                        }
+                    }
+                }
             }
         }
 
@@ -2229,6 +4369,9 @@
                 enemyBullets.splice(i, 1);
                 continue;
             }
+            /** 本帧位移前坐标，用于擦弹「移动一点点」判定 */
+            const bx0 = b.x;
+            const by0 = b.y;
             b.ageMs = (b.ageMs || 0) + dt;
             /** 延迟分裂：十字样式=整圈均匀放射若干发（子弹不再分裂） */
             if (b.splitAfterMs > 0 && !b.splitDone && b.ageMs >= b.splitAfterMs) {
@@ -2246,6 +4389,7 @@
                         vx: Math.cos(a) * sp,
                         vy: Math.sin(a) * sp,
                         dmg: b.dmg,
+                        lifeDmgHalves: b.lifeDmgHalves != null ? b.lifeDmgHalves : 1,
                         pattern: b.pattern,
                         splitAfterMs: 0,
                         splitChildSpeed: sp,
@@ -2275,10 +4419,36 @@
             }
             b.x += b.vx * dtSec;
             b.y += b.vy * dtSec;
+            /** 道具E：阴阳玉圆形范围与敌弹重叠则消弹（阻挡弹幕） */
+            if (
+                phase === 'playing' &&
+                stgTakenUpgradeIds.has('spread_yinyang') &&
+                stgYinYangOrbs.length &&
+                b.alive
+            ) {
+                const br = b.radius != null ? b.radius : 5;
+                for (let oi = 0; oi < stgYinYangOrbs.length; oi++) {
+                    const yo = stgYinYangOrbs[oi];
+                    if (!yo || !yo.alive) continue;
+                    const yr = yo.r != null ? yo.r : 48;
+                    if (Math.hypot(b.x - yo.x, b.y - yo.y) < yr + br) {
+                        b.alive = false;
+                        break;
+                    }
+                }
+            }
+            const movedPx = Math.hypot(b.x - bx0, b.y - by0);
+            if (phase === 'playing' && player && movedPx > 0) {
+                tryStgGrazeEnemyBullet(b, movedPx);
+            }
             if (b.y > ch + 30 || b.x < -30 || b.x > cw + 30) {
                 b.alive = false;
             }
         }
+
+        /** 擦弹小白球飞向判定点（在敌弹与自机碰撞前更新，便于同帧吸附） */
+        updateStgGrazeOrbs(dtSec);
+        updateStgGrazeRangeFlashes(performance.now());
 
         /** 大招：封魔阵 / 梦想妙珠（消弹 + 区域伤害，需在敌弹打自机前执行） */
         updateStgUltSkills(dtSec, performance.now(), cw, ch);
@@ -2293,17 +4463,42 @@
                 enemyLasers.splice(li, 1);
                 continue;
             }
+            /** 道具E：阴阳玉与激光段相交则整段移除（视为挡弹） */
+            if (stgTakenUpgradeIds.has('spread_yinyang') && stgYinYangOrbs.length) {
+                let laserBlocked = false;
+                const halfW = (L.width != null ? L.width : 14) * 0.5;
+                for (let oi = 0; oi < stgYinYangOrbs.length; oi++) {
+                    const yo = stgYinYangOrbs[oi];
+                    if (!yo || !yo.alive) continue;
+                    const yr = yo.r != null ? yo.r : 48;
+                    if (distPointToSegment(yo.x, yo.y, L.x1, L.y1, L.x2, L.y2) < yr + halfW) {
+                        laserBlocked = true;
+                        break;
+                    }
+                }
+                if (laserBlocked) {
+                    enemyLasers.splice(li, 1);
+                    continue;
+                }
+            }
             const dSeg = distPointToSegment(player.x, player.y, L.x1, L.y1, L.x2, L.y2);
-            if (dSeg < L.width * 0.5 + prHit) {
+            if (dSeg < L.width * 0.5 + prHit && !isStgPlayerInvulnerable(nowMs)) {
                 playerInLaser = true;
-                player.hp -= L.dmg * dtSec * 2.5;
+                /** 激光按 DPS 折算为「半格」流失，不触发受伤消弹/无敌（仅弹幕命中触发） */
+                const dmgN = L.dmg != null ? Number(L.dmg) : 1;
+                const halvesPerSec = Math.max(0.35, Math.min(8, (Number.isFinite(dmgN) ? dmgN : 1) * 0.55));
+                player._stgLaserHalfAcc = (player._stgLaserHalfAcc || 0) + halvesPerSec * dtSec * 2.5;
+                while (player._stgLaserHalfAcc >= 1 && player.stgLifeHalfUnitsRemain > 0) {
+                    player._stgLaserHalfAcc -= 1;
+                    player.stgLifeHalfUnitsRemain--;
+                }
+                syncStgPlayerLifeHpMirror();
                 stgLaserFxAccMs += dt;
                 if (stgLaserFxAccMs >= 95) {
                     stgLaserFxAccMs = 0;
                     triggerStgPlayerHitFx(player.x, player.y, 6, 72);
                 }
-                if (player.hp <= 0) {
-                    player.hp = 0;
+                if (player.stgLifeHalfUnitsRemain <= 0) {
                     phase = 'dead';
                     showResult(false);
                     isRunning = false;
@@ -2322,16 +4517,36 @@
                 if (!e.alive) continue;
                 const rr = b.radius != null ? b.radius : 4;
                 if (Math.hypot(b.x - e.x, b.y - e.y) < rr + e.radius) {
-                    let hitDmg = b.dmg;
+                    if (b.pierceHitEnemyIds && e.stgInstanceId != null && b.pierceHitEnemyIds.has(e.stgInstanceId)) {
+                        continue;
+                    }
+                    let hitDmg = b.dmg * getStgWeakDamageMult();
                     if (playerStatsRef && playerStatsRef.getStat) {
-                        const critP = Math.min(
+                        let critP = Math.min(
                             0.95,
                             (playerStatsRef.getStat('crit_chance_bonus') || 0) + (playerStatsRef.getStat('crit_rate') || 0)
                         );
+                        if (b.spreadCritBonus) critP = Math.min(0.95, critP + b.spreadCritBonus);
                         if (critP > 0 && Math.random() < critP) hitDmg *= 2;
                     }
                     e.hp -= hitDmg;
-                    b.alive = false;
+                    if (b.allowCrystalAcc && stgTakenUpgradeIds.has('focus_crystal_base')) {
+                        stgCrystalFocusHitAcc++;
+                        if (stgCrystalFocusHitAcc >= STG_CRYSTAL_FOCUS_HITS_NEEDED) {
+                            stgCrystalFocusHitAcc = 0;
+                            emitCrystalVolley();
+                        }
+                    }
+                    if (b.pierceHitEnemyIds && e.stgInstanceId != null) {
+                        b.pierceHitEnemyIds.add(e.stgInstanceId);
+                    }
+                    const pierceLeft = b.pierceHitsLeft != null ? b.pierceHitsLeft : 1;
+                    const nextPierce = pierceLeft - 1;
+                    if (nextPierce <= 0) {
+                        b.alive = false;
+                    } else {
+                        b.pierceHitsLeft = nextPierce;
+                    }
                     if (e.hp <= 0) {
                         /** 死后弹幕：与战斗中同一套 emit（扇/环/激光/单发）与子弹属性（分裂、跟踪等） */
                         if (e.pattern !== 'none' && e.stgEmitWhen === 'on_death') {
@@ -2340,8 +4555,35 @@
                         }
                         markStgWaveEnemyResolved(e);
                         e.alive = false;
-                        const pExp = Math.max(5, Math.floor(12 * bonusExpMult));
-                        pickups.push(createPickupAtKill(e.x, e.y, pExp));
+                        /** 道具M：慢速+狂怒分支，每击杀 5 敌叠狂怒层 */
+                        if (shiftHeld && stgFocusBranch === 'rage' && stgTakenUpgradeIds.has('focus_rage_core')) {
+                            stgRageKillAcc++;
+                            if (stgRageKillAcc >= STG_RAGE_KILLS_PER_STACK) {
+                                stgRageKillAcc = 0;
+                                const maxS = getStgRageMaxStacks();
+                                if (stgRageStacks < maxS) {
+                                    stgRageStacks++;
+                                    stgRageEndMs = performance.now() + getStgRageDurationMs();
+                                }
+                            }
+                        }
+                        let pExp = Math.max(5, Math.floor(12 * bonusExpMult));
+                        const pk = createPickupAtKill(e.x, e.y, pExp);
+                        const bigP = stgTakenUpgradeIds.has('spread_big_p') ? getStgSpreadBigPOverride() : null;
+                        const bigE = stgTakenUpgradeIds.has('spread_big_energy') ? getStgSpreadBigEnergyOverride() : null;
+                        if (bigP && b.fromSpread && Math.random() < bigP.chance) {
+                            pk.exp = Math.floor(pExp * bigP.expMult);
+                            pk.pickupKind = 'bigP';
+                            pk.pickupRadius = (pk.pickupRadius != null ? pk.pickupRadius : 10) * 1.35;
+                            pk.sizePx = (pk.sizePx != null ? pk.sizePx : 20) * 1.35;
+                        } else if (bigE && b.fromSpread && Math.random() < bigE.chance) {
+                            pk.exp = Math.floor(pExp * bigE.expMult);
+                            pk.pickupKind = 'bigEnergy';
+                            pk.pickupRadius = (pk.pickupRadius != null ? pk.pickupRadius : 10) * 1.35;
+                            pk.sizePx = (pk.sizePx != null ? pk.sizePx : 20) * 1.35;
+                        }
+                        pickups.push(pk);
+                        pushStgChargePickupOnEnemyKillIfConfigured(e);
                         console.log('[STG] 击杀敌人，掉落 P点 经验', pExp);
                     }
                     break;
@@ -2350,16 +4592,29 @@
         }
 
         /** --- 敌弹 vs 玩家（含子弹自身半径） --- */
+        const nowPlHit = performance.now();
         for (let i = 0; i < enemyBullets.length; i++) {
             const b = enemyBullets[i];
             if (!b.alive) continue;
             const br = b.radius != null ? b.radius : 5;
             if (Math.hypot(b.x - player.x, b.y - player.y) < br + getStgPlayerHitRadius()) {
                 b.alive = false;
-                player.hp -= b.dmg;
+                if (isStgPlayerInvulnerable(nowPlHit)) {
+                    continue;
+                }
+                const halves = b.lifeDmgHalves != null ? (b.lifeDmgHalves >= 2 ? 2 : 1) : 1;
+                player.stgLifeHalfUnitsRemain = Math.max(0, (player.stgLifeHalfUnitsRemain | 0) - halves);
+                syncStgPlayerLifeHpMirror();
+                applyStgPlayerHitResponse(nowPlHit);
                 triggerStgPlayerHitFx(player.x, player.y, 12, 155);
-                console.log('[STG] 玩家受击，剩余 HP', player.hp.toFixed(0));
-                if (player.hp <= 0) {
+                console.log(
+                    '[STG] 玩家受击，剩余',
+                    (player.stgLifeHalfUnitsRemain * 0.5).toFixed(1),
+                    '/',
+                    player.stgLifeCellsMax,
+                    '格'
+                );
+                if (player.stgLifeHalfUnitsRemain <= 0) {
                     phase = 'dead';
                     showResult(false);
                     isRunning = false;
@@ -2368,35 +4623,111 @@
             }
         }
 
-        /** --- P点（直线 或 弧线上抛后下落） --- */
+        /** --- P点（直线 或 弧线上抛后下落；弧线可匀速 / 多种曲线速率） --- */
         for (let i = pickups.length - 1; i >= 0; i--) {
             const p = pickups[i];
             if (p.mode === 'arc' && p.peakY != null && p.fallVy != null) {
-                if (p.vy < 0) {
-                    const ny = p.y + p.vy * dtSec;
-                    if (ny <= p.peakY) {
-                        p.y = p.peakY;
-                        p.vy = p.fallVy;
+                /** 旧版 P 点无 arcUpMode：仍按 vy 正负分段（兼容已落地存档） */
+                if (p.arcUpMode == null && p.arcUpDone == null) {
+                    if (p.vy < 0) {
+                        const ny = p.y + p.vy * dtSec;
+                        if (ny <= p.peakY) {
+                            p.y = p.peakY;
+                            p.vy = p.fallVy;
+                        } else {
+                            p.y = ny;
+                        }
                     } else {
-                        p.y = ny;
+                        p.y += p.vy * dtSec;
                     }
                 } else {
-                    p.y += p.vy * dtSec;
+                    const upMode = normalizeArcUpSpeedMode(p.arcUpMode);
+                    const downMode = normalizeArcDownSpeedMode(p.arcDownMode);
+                    if (!p.arcUpDone) {
+                        if (upMode === 'uniform') {
+                            /** 匀速上抛：固定向上速度 */
+                            if (p.vy < 0) {
+                                const ny = p.y + p.vy * dtSec;
+                                if (ny <= p.peakY) {
+                                    stgPickupOnArcUpFinished(p);
+                                } else {
+                                    p.y = ny;
+                                }
+                            }
+                        } else {
+                            /** 曲线上抛：按时间 t∈[0,1] 插值位移比例 s */
+                            p.arcUpT = (p.arcUpT || 0) + dtSec;
+                            const dur = Math.max(0.04, p.arcUpDurSec != null ? p.arcUpDurSec : 0.5);
+                            const t = Math.min(1, p.arcUpT / dur);
+                            let s;
+                            if (upMode === 'ease_in') {
+                                /** 先慢后快：s=t²，靠近弧顶时竖直速度最大 */
+                                s = t * t;
+                            } else if (upMode === 'ease_out') {
+                                /** 先快后慢：s=1-(1-t)²，起跳快、近弧顶减速 */
+                                s = 1 - (1 - t) * (1 - t);
+                            } else {
+                                /** ease_in_out：smoothstep，两端慢、中段最快 */
+                                s = t * t * (3 - 2 * t);
+                            }
+                            const sy = p.arcStartY != null ? p.arcStartY : p.y;
+                            p.y = sy + (p.peakY - sy) * s;
+                            if (t >= 1) {
+                                stgPickupOnArcUpFinished(p);
+                            }
+                        }
+                    } else {
+                        /** 下落阶段 */
+                        if (downMode === 'uniform') {
+                            p.y += p.fallVy * dtSec;
+                        } else if (downMode === 'ease_in') {
+                            /** 先慢后快：竖直速度从 0 指数趋近 fallVy */
+                            let fc = p.fallVCurrent != null ? p.fallVCurrent : 0;
+                            const target = p.fallVy;
+                            fc += (target - fc) * Math.min(1, dtSec * 5.5);
+                            p.fallVCurrent = fc;
+                            p.y += fc * dtSec;
+                        } else {
+                            /** ease_out 先快后慢：初速高于 fallVy，再向 fallVy 回落 */
+                            let fc = p.fallVCurrent != null ? p.fallVCurrent : p.fallVy * 1.42;
+                            fc += (p.fallVy - fc) * Math.min(1, dtSec * 4.2);
+                            p.fallVCurrent = fc;
+                            p.y += fc * dtSec;
+                        }
+                    }
                 }
             } else {
                 p.y += p.vy * dtSec;
             }
-            const pr = 16 * bonusPickupRadius;
+            const baseR = p.pickupRadius != null && Number.isFinite(p.pickupRadius) ? p.pickupRadius : 10;
+            const pr = baseR * bonusPickupRadius;
             if (Math.hypot(p.x - player.x, p.y - player.y) < pr + player.radius) {
-                exp += p.exp;
-                pickups.splice(i, 1);
-                console.log('[STG] 拾取 P点，经验', exp, '/', expToNext);
-                while (exp >= expToNext) {
-                    exp -= expToNext;
-                    level++;
-                    expToNext = Math.floor(100 + (level - 1) * 40);
-                    openLevelUp();
-                    return;
+                if (p.pickupKind === 'charge') {
+                    const cv = Math.max(1, p.chargeValue != null ? p.chargeValue : 1);
+                    stgUltChargeMeter += cv * bonusUltChargeMult;
+                    const th = getUltChargeMeterThreshold();
+                    while (stgUltChargeMeter >= th && stgUltCharges < STG_ULT_CHARGE_MAX) {
+                        stgUltCharges++;
+                        stgUltChargeMeter -= th;
+                    }
+                    if (stgUltCharges >= STG_ULT_CHARGE_MAX) stgUltChargeMeter = 0;
+                    pickups.splice(i, 1);
+                    console.log('[STG] 拾取充能点，蓄能值', cv);
+                } else {
+                    const expGain = p.exp != null ? p.exp : 0;
+                    exp += expGain;
+                    pickups.splice(i, 1);
+                    console.log('[STG] 拾取 P点，经验', exp, '/', expToNext);
+                    while (exp >= expToNext) {
+                        if (stgUpgradePending && upgradeChoices.length > 0) {
+                            forceRandomStgUpgradePick();
+                        }
+                        exp -= expToNext;
+                        level++;
+                        expToNext = computeExpToNextForLevel(level);
+                        prepareLevelUpChoices();
+                        return;
+                    }
                 }
             } else if (p.y > ch + 30) {
                 pickups.splice(i, 1);
@@ -2408,8 +4739,87 @@
         updateHud();
     }
 
-    function openLevelUp() {
-        phase = 'levelup';
+    /**
+     * 确认三选一选择：与点击卡牌、快捷键 1/2/3、叠级强制随机共用。
+     */
+    function finalizeStgUpgradePick(u) {
+        if (!player || !u) return;
+        applyStgUpgradePick(u);
+        if (typeof u.apply === 'function') u.apply(player);
+        console.log('[STG] 选择强化:', u.id, u.name, 'focusBranch=', stgFocusBranch, 'ultBranch=', stgUltBranch);
+        const h = getHudElements();
+        if (h.upgrade) {
+            h.upgrade.classList.add('hidden');
+            h.upgrade.setAttribute('aria-hidden', 'true');
+        }
+        stgUpgradePickOpen = false;
+        stgUpgradePending = false;
+        phase = 'playing';
+        const hintBtn = document.getElementById('stgLevelUpHint');
+        if (hintBtn) hintBtn.classList.add('hidden');
+        const subEl = document.getElementById('stgUpgradeSubHint');
+        if (subEl) subEl.innerHTML = '';
+        lastFrameTime = performance.now();
+        refreshStgAttackBuildPanel();
+        refreshStgReimuBonusAside();
+    }
+
+    /** 叠级时上一张面板未选：随机一项并结算 */
+    function forceRandomStgUpgradePick() {
+        if (!upgradeChoices.length) return;
+        const u = upgradeChoices[(Math.random() * upgradeChoices.length) | 0];
+        console.warn('[STG] 升级叠层：上一组三选一未选，随机', u.id);
+        finalizeStgUpgradePick(u);
+    }
+
+    /**
+     * 升级三选一单卡：顶栏为所属武器体系（博丽御符 / 伏魔针 / 封魔阵分支 Q–S / 妙珠分支 T–V / 基础属性；试做型封魔阵默认自带不进池）
+     * @param {number} keyIndex 0..2，对应快捷键 1/2/3
+     */
+    function createStgUpgradeChoiceButton(u, keyIndex) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'stg-upgrade-card';
+        const disp =
+            window.StgUiI18n && typeof window.StgUiI18n.getUpgradeDisplay === 'function'
+                ? window.StgUiI18n.getUpgradeDisplay(u)
+                : { name: u.name, desc: u.desc };
+        const badge =
+            window.StgUiI18n && typeof window.StgUiI18n.getUpgradeWeaponBadge === 'function'
+                ? window.StgUiI18n.getUpgradeWeaponBadge(u)
+                : { text: '', cssClass: 'stat' };
+        if (badge.text) {
+            const sp = document.createElement('span');
+            const wc = badge.cssClass || 'stat';
+            sp.className = 'stg-up-weapon-badge stg-up-weapon--' + wc;
+            sp.textContent = badge.text;
+            btn.appendChild(sp);
+            btn.classList.add('stg-upgrade-card--' + wc);
+        }
+        const hk = document.createElement('span');
+        hk.className = 'stg-upgrade-hotkey';
+        hk.textContent = String((keyIndex != null ? keyIndex : 0) + 1);
+        btn.appendChild(hk);
+        const titleEl = document.createElement('span');
+        titleEl.className = 'stg-up-title';
+        titleEl.textContent = disp.name;
+        btn.appendChild(titleEl);
+        const descEl = document.createElement('span');
+        descEl.className = 'stg-up-desc';
+        descEl.textContent = disp.desc;
+        btn.appendChild(descEl);
+        btn.addEventListener('click', () => finalizeStgUpgradePick(u));
+        return btn;
+    }
+
+    /**
+     * 升级后仅准备三选一候选并显示棋盘右下提示；按 E 或点击再 openStgUpgradeModal（暂停）。
+     * 叠级时若上一组仍未处理，先随机消耗上一组。
+     */
+    function prepareLevelUpChoices() {
+        if (stgUpgradePending && upgradeChoices.length > 0) {
+            forceRandomStgUpgradePick();
+        }
         let pool = STG_UPGRADE_POOL.filter(isStgUpgradeEligible);
         if (pool.length === 0) {
             pool = [
@@ -2430,35 +4840,54 @@
             pool[j] = t;
         }
         upgradeChoices = pool.slice(0, 3);
+        stgUpgradePending = true;
+        stgUpgradePickOpen = false;
+        const hintBtn = document.getElementById('stgLevelUpHint');
+        if (hintBtn) {
+            hintBtn.classList.remove('hidden');
+            if (window.StgUiI18n && typeof window.StgUiI18n.applyStgLevelUpHintLabels === 'function') {
+                window.StgUiI18n.applyStgLevelUpHintLabels();
+            }
+        }
+    }
+
+    /** 按 E / 点击右下提示：全屏居中三选一，phase=levelup，局内 update 暂停 */
+    function openStgUpgradeModal() {
+        if (!stgUpgradePending || upgradeChoices.length === 0 || stgUpgradePickOpen) return;
         const h = getHudElements();
         if (!h.upgrade || !h.upgradeCards) return;
         h.upgradeCards.innerHTML = '';
-        upgradeChoices.forEach((u) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'stg-upgrade-card';
-            const disp =
-                window.StgUiI18n && typeof window.StgUiI18n.getUpgradeDisplay === 'function'
-                    ? window.StgUiI18n.getUpgradeDisplay(u)
-                    : { name: u.name, desc: u.desc };
-            btn.innerHTML = `<span class="stg-up-title">${disp.name}</span><span class="stg-up-desc">${disp.desc}</span>`;
-            btn.addEventListener('click', () => {
-                applyStgUpgradePick(u);
-                u.apply(player);
-                console.log('[STG] 选择强化:', u.id, u.name, 'focusBranch=', stgFocusBranch, 'ultBranch=', stgUltBranch);
-                h.upgrade.classList.add('hidden');
-                phase = 'playing';
-                lastFrameTime = performance.now();
-                refreshStgAttackBuildPanel();
-            });
-            h.upgradeCards.appendChild(btn);
+        upgradeChoices.forEach((u, idx) => {
+            h.upgradeCards.appendChild(createStgUpgradeChoiceButton(u, idx));
         });
+        const titleEl = document.getElementById('stgUpgradeTitle');
+        if (titleEl) titleEl.textContent = stgUiT('upgrade.title');
+        const subEl = document.getElementById('stgUpgradeSubHint');
+        if (subEl) subEl.innerHTML = stgUiT('upgrade.subhint');
         h.upgrade.classList.remove('hidden');
+        h.upgrade.setAttribute('aria-hidden', 'false');
+        const hintBtn = document.getElementById('stgLevelUpHint');
+        if (hintBtn) hintBtn.classList.add('hidden');
+        stgUpgradePending = false;
+        stgUpgradePickOpen = true;
+        phase = 'levelup';
+        lastFrameTime = performance.now();
     }
 
     function showResult(win) {
         lastShowResultWin = win;
         const h = getHudElements();
+        /** 死亡/通关时关闭升级弹层与右下提示，避免挡结算 */
+        if (h.upgrade) {
+            h.upgrade.classList.add('hidden');
+            h.upgrade.setAttribute('aria-hidden', 'true');
+        }
+        stgUpgradePickOpen = false;
+        stgUpgradePending = false;
+        const hintGo = document.getElementById('stgLevelUpHint');
+        if (hintGo) hintGo.classList.add('hidden');
+        const subGo = document.getElementById('stgUpgradeSubHint');
+        if (subGo) subGo.innerHTML = '';
         if (!h.result || !h.resultTitle) return;
         h.resultTitle.textContent = win ? stgUiT('result.titleWin') : stgUiT('result.titleLose');
         h.resultMsg.textContent = win ? stgUiT('result.msgWin') : stgUiT('result.msgLose');
@@ -2513,6 +4942,18 @@
             if (u && stgTakenUpgradeIds.has(u.id) && filterFn(u)) out.push(u);
         }
         return out;
+    }
+
+    /** 已选构筑图标：与三选一卡牌、左侧分区同色系（STG_UPGRADE_POOL.group） */
+    function stgAttackUpgradeIconModifierClass(group) {
+        const g = group || '';
+        if (g === 'spread') return 'stg-attack-up-icon--spread';
+        if (g === 'focus_crystal') return 'stg-attack-up-icon--focus-crystal';
+        if (g === 'focus_rage') return 'stg-attack-up-icon--focus-rage';
+        if (g === 'ult_seal') return 'stg-attack-up-icon--ult-seal';
+        if (g === 'ult_dream') return 'stg-attack-up-icon--ult-dream';
+        if (g === 'stat') return 'stg-attack-up-icon--stat';
+        return 'stg-attack-up-icon--spread';
     }
 
     /** 构筑图标悬浮层：原生 `title` 在带 overflow 的 .page / aside 内常不弹出，故用 fixed 层 */
@@ -2632,7 +5073,7 @@
     }
 
     /**
-     * 已选构筑：emoji 图标，鼠标悬浮用 fixed 层显示名称与效果（与界面语言一致）
+     * 已选构筑：图标 + 下方小字名称；悬浮 fixed 层仍显示完整名与描述（与界面语言一致）
      * @param {HTMLElement|null} el
      * @param {Array<{icon?:string,name?:string,desc?:string,id?:string}>} upgrades
      */
@@ -2648,57 +5089,123 @@
         }
         for (let i = 0; i < upgrades.length; i++) {
             const u = upgrades[i];
-            const ic = document.createElement('span');
-            ic.className = 'stg-attack-up-icon';
-            ic.setAttribute('role', 'listitem');
-            ic.setAttribute('tabindex', '0');
-            ic.textContent = u.icon != null ? u.icon : '◇';
             const disp =
                 window.StgUiI18n && typeof window.StgUiI18n.getUpgradeDisplay === 'function'
                     ? window.StgUiI18n.getUpgradeDisplay(u)
                     : { name: u.name, desc: u.desc };
-            const tip = disp.desc ? disp.name + '\n' + disp.desc : disp.name;
-            ic.setAttribute('title', tip);
-            ic.setAttribute('aria-label', disp.name || '');
-            ic.addEventListener('mouseenter', () => {
-                showStgAttackUpgradeTooltip(ic, disp);
+            /** 侧栏小字：优先 i18n 名，其次池内 name，避免空串导致「只有图标没有字」 */
+            const shortLabel =
+                disp.name != null && String(disp.name).trim() !== ''
+                    ? String(disp.name).trim()
+                    : u.name != null && String(u.name).trim() !== ''
+                      ? String(u.name).trim()
+                      : u.id != null
+                        ? String(u.id)
+                        : '—';
+            const tip = disp.desc ? shortLabel + '\n' + disp.desc : shortLabel;
+
+            const item = document.createElement('div');
+            item.className = 'stg-attack-up-item';
+            item.setAttribute('role', 'listitem');
+            item.setAttribute('tabindex', '0');
+            item.setAttribute('title', tip);
+            item.setAttribute('aria-label', shortLabel + (disp.desc ? '。' + disp.desc : ''));
+
+            const ic = document.createElement('span');
+            ic.className = 'stg-attack-up-icon ' + stgAttackUpgradeIconModifierClass(u.group);
+            ic.setAttribute('aria-hidden', 'true');
+            ic.textContent = u.icon != null ? u.icon : '◇';
+
+            const nameEl = document.createElement('div');
+            nameEl.className = 'stg-attack-up-name';
+            nameEl.textContent = shortLabel;
+
+            /** 悬浮层标题与侧栏小字一致（避免 disp.name 为空时浮层缺标题） */
+            const dispForTip = { name: shortLabel, desc: disp.desc };
+
+            item.appendChild(ic);
+            item.appendChild(nameEl);
+
+            item.addEventListener('mouseenter', () => {
+                showStgAttackUpgradeTooltip(item, dispForTip);
             });
-            ic.addEventListener('mouseleave', () => {
+            item.addEventListener('mouseleave', () => {
                 scheduleHideStgAttackUpgradeTooltip();
             });
-            ic.addEventListener('focus', () => {
-                showStgAttackUpgradeTooltip(ic, disp);
+            item.addEventListener('focus', () => {
+                showStgAttackUpgradeTooltip(item, dispForTip);
             });
-            ic.addEventListener('blur', () => {
+            item.addEventListener('blur', () => {
                 hideStgAttackUpgradeTooltip();
             });
-            el.appendChild(ic);
+            el.appendChild(item);
         }
     }
 
+    /** 构筑四项统计：图标键 → 与侧栏配色无关的通用符号 */
+    const STG_ATTACK_STAT_ICONS = { atk: '🗡️', aps: '⚡', spd: '💨', crit: '💥' };
+
     /**
-     * @param {HTMLUListElement|null} el
-     * @param {string[]} lines
-     * @param {boolean} isUpgradeList true=无条目时显示「暂无」，false=无 player 时显示「开始游戏后显示」
+     * 左侧构筑：横向四格，每格为 图标 → 短标签（攻击/攻速…）→ 数值；悬停格见完整 statTip
+     * @param {HTMLElement|null} el
+     * @param {{ key: string, value: string }[]} entries
+     * @param {boolean} emptyShowPlaceholder true=无自机时「开始游戏后显示」
      */
-    function fillStgAttackUl(el, lines, isUpgradeList) {
+    function fillStgAttackStatGrid(el, entries, emptyShowPlaceholder) {
         if (!el) return;
+        el.className = 'stg-attack-stat-grid';
         el.innerHTML = '';
-        if (!lines.length) {
-            const li = document.createElement('li');
-            li.textContent = isUpgradeList ? stgUiT('attackBuild.emptyList') : stgUiT('attackBuild.placeholder');
-            el.appendChild(li);
+        const aria = stgUiT('attackBuild.statGridAria');
+        if (aria) el.setAttribute('aria-label', aria);
+        if (!entries || entries.length === 0) {
+            const msg = document.createElement('div');
+            msg.className = 'stg-attack-stat-grid-msg';
+            msg.textContent = emptyShowPlaceholder ? stgUiT('attackBuild.placeholder') : '—';
+            el.appendChild(msg);
             return;
         }
-        for (let i = 0; i < lines.length; i++) {
-            const li = document.createElement('li');
-            li.textContent = lines[i];
-            el.appendChild(li);
+        for (let i = 0; i < entries.length; i++) {
+            const row = entries[i];
+            const cell = document.createElement('div');
+            cell.className = 'stg-attack-stat-cell';
+            cell.setAttribute('role', 'listitem');
+            const tipKey = 'attackBuild.statTip.' + row.key;
+            const labelKey = 'attackBuild.statLabel.' + row.key;
+            const tip = stgUiT(tipKey);
+            const shortLab = stgUiT(labelKey);
+            const labText = shortLab && shortLab !== labelKey ? shortLab : tip || row.key;
+            if (tip) {
+                cell.title = tip;
+                cell.setAttribute('aria-label', tip + ' ' + row.value);
+            }
+            const ic = document.createElement('span');
+            ic.className = 'stg-attack-stat-icon';
+            ic.setAttribute('aria-hidden', 'true');
+            ic.textContent = STG_ATTACK_STAT_ICONS[row.key] || '·';
+            const lab = document.createElement('span');
+            lab.className = 'stg-attack-stat-label';
+            lab.textContent = labText;
+            const val = document.createElement('span');
+            val.className = 'stg-attack-stat-val';
+            val.textContent = row.value;
+            cell.appendChild(ic);
+            cell.appendChild(lab);
+            cell.appendChild(val);
+            el.appendChild(cell);
         }
     }
 
+    /** 已选构筑：小标题显示「已选构筑」文案（与 i18n 一致），勿用 📦 占位以免遮挡真实标题 */
+    function applyStgAttackUpgLabel(el) {
+        if (!el) return;
+        const t = stgUiT('attackBuild.upgradesLabel');
+        el.textContent = t || '已选构筑';
+        el.title = t || '已选构筑';
+        el.setAttribute('aria-label', t || '已选构筑');
+    }
+
     /**
-     * 左侧「攻击构筑」：三种攻击各 4 项数值；已选构筑为图标，悬浮见效果。
+     * 左侧「攻击构筑」：三种攻击各 4 项数值；已选构筑为图标+小字名，悬浮见详情。
      */
     function refreshStgAttackBuildPanel() {
         const title = document.getElementById('stgAttackBuildTitle');
@@ -2713,10 +5220,26 @@
         title.textContent = stgUiT('attackBuild.title');
         if (hSpread) hSpread.textContent = stgUiT('attackBuild.spreadHeading');
         if (hFocus) hFocus.textContent = stgUiT('attackBuild.focusHeading');
-        if (hUlt) hUlt.textContent = stgUiT('attackBuild.ultHeading');
-        if (labSp) labSp.textContent = stgUiT('attackBuild.upgradesLabel');
-        if (labFo) labFo.textContent = stgUiT('attackBuild.upgradesLabel');
-        if (labUl) labUl.textContent = stgUiT('attackBuild.upgradesLabel');
+        /** 大招：未选分支 → 试做型；选 Q 线 → 强化封魔阵；选 T 线 → 梦想妙珠 */
+        if (hUlt) {
+            hUlt.classList.remove('stg-attack-ult--locked');
+            if (stgUltBranch === 'dream') {
+                hUlt.textContent = stgUiT('attackBuild.ultNameDream');
+            } else if (stgUltBranch === 'seal' && stgTakenUpgradeIds.has('ult_seal_size')) {
+                hUlt.textContent = stgUiT('attackBuild.ultNameSealUpgraded');
+            } else {
+                hUlt.textContent = stgUiT('attackBuild.ultHeadingNeutral');
+            }
+        }
+        const ultSection = document.querySelector('[data-stg-attack-section="ult"]');
+        if (ultSection) {
+            if (stgUltBranch === 'seal') ultSection.setAttribute('data-stg-ult-variant', 'seal');
+            else if (stgUltBranch === 'dream') ultSection.setAttribute('data-stg-ult-variant', 'dream');
+            else ultSection.setAttribute('data-stg-ult-variant', 'none');
+        }
+        applyStgAttackUpgLabel(labSp);
+        applyStgAttackUpgLabel(labFo);
+        applyStgAttackUpgLabel(labUl);
 
         const ulSpreadStats = document.getElementById('stgAttackSpreadStats');
         const divSpreadUp = document.getElementById('stgAttackSpreadUpgrades');
@@ -2726,11 +5249,11 @@
         const divUltUp = document.getElementById('stgAttackUltUpgrades');
 
         if (!player) {
-            fillStgAttackUl(ulSpreadStats, [], false);
+            fillStgAttackStatGrid(ulSpreadStats, [], true);
             fillStgAttackUpgradeIcons(divSpreadUp, []);
-            fillStgAttackUl(ulFocusStats, [], false);
+            fillStgAttackStatGrid(ulFocusStats, [], true);
             fillStgAttackUpgradeIcons(divFoUp, []);
-            fillStgAttackUl(ulUltStats, [], false);
+            fillStgAttackStatGrid(ulUltStats, [], true);
             fillStgAttackUpgradeIcons(divUltUp, []);
             return;
         }
@@ -2749,12 +5272,12 @@
         const bspMain = player.bulletSpeed * bonusBulletSpeed;
 
         const fourMain = [
-            stgUiT('attackBuild.simple.atk', { v: atkSpread.toFixed(1) }),
-            stgUiT('attackBuild.simple.aps', { v: apsMain }),
-            stgUiT('attackBuild.simple.bulletSpd', { v: String(Math.round(bspMain)) }),
-            stgUiT('attackBuild.simple.crit', { v: critPct })
+            { key: 'atk', value: atkSpread.toFixed(1) },
+            { key: 'aps', value: apsMain },
+            { key: 'spd', value: String(Math.round(bspMain)) },
+            { key: 'crit', value: critPct + '%' }
         ];
-        fillStgAttackUl(ulSpreadStats, fourMain, false);
+        fillStgAttackStatGrid(ulSpreadStats, fourMain, false);
 
         const ivFocus =
             (player.focusFireIntervalMs != null ? player.focusFireIntervalMs : player.fireIntervalMs) *
@@ -2763,28 +5286,26 @@
         const bspFocus =
             (player.focusBulletSpeed != null ? player.focusBulletSpeed : player.bulletSpeed) * bonusBulletSpeed;
         const fourFocus = [
-            stgUiT('attackBuild.simple.atk', { v: atkFocusNum.toFixed(1) }),
-            stgUiT('attackBuild.simple.aps', { v: apsFocus }),
-            stgUiT('attackBuild.simple.bulletSpd', { v: String(Math.round(bspFocus)) }),
-            stgUiT('attackBuild.simple.crit', { v: critPct })
+            { key: 'atk', value: atkFocusNum.toFixed(1) },
+            { key: 'aps', value: apsFocus },
+            { key: 'spd', value: String(Math.round(bspFocus)) },
+            { key: 'crit', value: critPct + '%' }
         ];
-        fillStgAttackUl(ulFocusStats, fourFocus, false);
+        fillStgAttackStatGrid(ulFocusStats, fourFocus, false);
 
         const siv = (player.skillFireIntervalMs != null ? player.skillFireIntervalMs : 120) * bonusFireIntervalMult;
         const apsSkill = siv > 0 ? (1000 / siv).toFixed(2) : '—';
         const ssb = (player.skillBulletSpeed != null ? player.skillBulletSpeed : player.bulletSpeed) * bonusBulletSpeed;
         const fourUlt = [
-            stgUiT('attackBuild.simple.atk', { v: atkUltNum.toFixed(1) }),
-            stgUiT('attackBuild.simple.aps', { v: apsSkill }),
-            stgUiT('attackBuild.simple.bulletSpd', { v: String(Math.round(ssb)) }),
-            stgUiT('attackBuild.simple.crit', { v: critPct })
+            { key: 'atk', value: atkUltNum.toFixed(1) },
+            { key: 'aps', value: apsSkill },
+            { key: 'spd', value: String(Math.round(ssb)) },
+            { key: 'crit', value: critPct + '%' }
         ];
-        fillStgAttackUl(ulUltStats, fourUlt, false);
+        fillStgAttackStatGrid(ulUltStats, fourUlt, false);
 
-        fillStgAttackUpgradeIcons(
-            divSpreadUp,
-            getTakenStgUpgrades((u) => u.group === 'spread' || u.group === 'stat')
-        );
+        /** 左侧「已选构筑」仅展示扩散/集中/大招，不含基础属性（属性只在右侧「属性加成」） */
+        fillStgAttackUpgradeIcons(divSpreadUp, getTakenStgUpgrades((u) => u.group === 'spread'));
         fillStgAttackUpgradeIcons(
             divFoUp,
             getTakenStgUpgrades((u) => {
@@ -2807,15 +5328,23 @@
 
     function updateHud() {
         const h = getHudElements();
-        if (h.hp && player) {
-            h.hp.textContent = 'HP ' + Math.max(0, Math.floor(player.hp)) + ' / ' + Math.floor(player.maxHp);
+        if (h.priorityHpLabel) h.priorityHpLabel.textContent = stgUiT('hud.hpLabel');
+        if (h.priorityExpLabel) h.priorityExpLabel.textContent = stgUiT('hud.expLabel');
+        if (player) {
+            refreshStgLifeCellsHud();
+            refreshStgPrioritySegmentRow('stgPriorityExpCells', expToNext > 0 ? exp / expToNext : 0);
+        } else {
+            refreshStgLifeCellsHud();
+            refreshStgPrioritySegmentRow('stgPriorityExpCells', 0);
         }
-        if (h.exp) {
-            h.exp.textContent = stgUiT('hud.exp', {
-                lv: level,
-                cur: Math.floor(exp),
-                next: expToNext
-            });
+        if (h.priorityExpDetail) {
+            h.priorityExpDetail.textContent = player
+                ? stgUiT('hud.exp', {
+                      lv: level,
+                      cur: Math.floor(exp),
+                      next: expToNext
+                  })
+                : '—';
         }
         const waves = waveData.waves || [];
         if (h.wave) {
@@ -2840,6 +5369,7 @@
             const sec = ((performance.now() - runStartMs) * 0.001) | 0;
             h.time.textContent = stgUiT('hud.time', { sec });
         }
+        refreshStgUltChargeHud();
         refreshStgAttackBuildPanel();
     }
 
@@ -2847,27 +5377,18 @@
     function refreshStgUiLanguageFromI18n() {
         updateHud();
         const h = getHudElements();
+        if (h.upgradeTitle) h.upgradeTitle.textContent = stgUiT('upgrade.title');
+        if (h.upgradeSubHint && h.upgrade && !h.upgrade.classList.contains('hidden')) {
+            h.upgradeSubHint.innerHTML = stgUiT('upgrade.subhint');
+        }
         if (h.upgrade && h.upgradeCards && !h.upgrade.classList.contains('hidden') && upgradeChoices.length) {
             h.upgradeCards.innerHTML = '';
-            upgradeChoices.forEach((u) => {
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'stg-upgrade-card';
-                const disp =
-                    window.StgUiI18n && typeof window.StgUiI18n.getUpgradeDisplay === 'function'
-                        ? window.StgUiI18n.getUpgradeDisplay(u)
-                        : { name: u.name, desc: u.desc };
-                btn.innerHTML = `<span class="stg-up-title">${disp.name}</span><span class="stg-up-desc">${disp.desc}</span>`;
-                btn.addEventListener('click', () => {
-                    applyStgUpgradePick(u);
-                    u.apply(player);
-                    h.upgrade.classList.add('hidden');
-                    phase = 'playing';
-                    lastFrameTime = performance.now();
-                    refreshStgAttackBuildPanel();
-                });
-                h.upgradeCards.appendChild(btn);
+            upgradeChoices.forEach((u, idx) => {
+                h.upgradeCards.appendChild(createStgUpgradeChoiceButton(u, idx));
             });
+        }
+        if (window.StgUiI18n && typeof window.StgUiI18n.applyStgLevelUpHintLabels === 'function') {
+            window.StgUiI18n.applyStgLevelUpHintLabels();
         }
         if (lastShowResultWin !== null && h.result && !h.result.classList.contains('hidden')) {
             showResult(lastShowResultWin);
@@ -2898,6 +5419,292 @@
         ctx.closePath();
         ctx.fill();
         ctx.restore();
+    }
+
+    /** 道具E：太极阴阳符号（矢量，不依赖 emoji 字体） */
+    function drawStgYinYangSymbol(ctx2, cx, cy, R) {
+        if (!ctx2 || !(R > 0)) return;
+        ctx2.save();
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx2.clip();
+        ctx2.fillStyle = '#f4f4f4';
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx2.fill();
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, R, Math.PI * 0.5, Math.PI * 1.5);
+        ctx2.lineTo(cx, cy);
+        ctx2.closePath();
+        ctx2.fillStyle = '#121212';
+        ctx2.fill();
+        ctx2.beginPath();
+        ctx2.arc(cx, cy - R * 0.5, R * 0.5, 0, Math.PI * 2);
+        ctx2.fillStyle = '#121212';
+        ctx2.fill();
+        ctx2.beginPath();
+        ctx2.arc(cx, cy + R * 0.5, R * 0.5, 0, Math.PI * 2);
+        ctx2.fillStyle = '#f4f4f4';
+        ctx2.fill();
+        ctx2.beginPath();
+        ctx2.arc(cx, cy - R * 0.5, R * 0.11, 0, Math.PI * 2);
+        ctx2.fillStyle = '#f4f4f4';
+        ctx2.fill();
+        ctx2.beginPath();
+        ctx2.arc(cx, cy + R * 0.5, R * 0.11, 0, Math.PI * 2);
+        ctx2.fillStyle = '#121212';
+        ctx2.fill();
+        ctx2.restore();
+        ctx2.save();
+        ctx2.shadowColor = 'rgba(241, 196, 15, 0.55)';
+        ctx2.shadowBlur = 10;
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, R, 0, Math.PI * 2);
+        ctx2.strokeStyle = 'rgba(212, 175, 55, 0.92)';
+        ctx2.lineWidth = 2;
+        ctx2.stroke();
+        ctx2.restore();
+    }
+
+    /**
+     * 敌人血环：半径略大于本体；底轨整圈 + 从 12 点起逆时针的剩余血量弧（受伤时弧长逆时针缩短）。
+     * @param {CanvasRenderingContext2D} ctx2
+     * @param {StgEnemy} e
+     */
+    function drawStgEnemyHpRing(ctx2, e) {
+        if (!ctx2 || !e) return;
+        const maxH = e.maxHp > 0 ? e.maxHp : 1;
+        const ratio = Math.max(0, Math.min(1, e.hp / maxH));
+        const cx = e.x;
+        const cy = e.y;
+        const ringR = e.radius + 2;
+        const lw = Math.max(2, Math.min(4, e.radius * 0.15));
+        ctx2.save();
+        ctx2.lineWidth = lw;
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, ringR, 0, Math.PI * 2);
+        ctx2.strokeStyle = 'rgba(0,0,0,0.32)';
+        ctx2.stroke();
+        if (ratio > 0.004) {
+            ctx2.beginPath();
+            const start = -Math.PI / 2;
+            const end = start - ratio * Math.PI * 2;
+            ctx2.arc(cx, cy, ringR, start, end, true);
+            ctx2.strokeStyle = 'rgba(46, 204, 113, 0.95)';
+            ctx2.lineCap = 'round';
+            ctx2.stroke();
+        }
+        ctx2.restore();
+    }
+
+    /**
+     * 道具C：伴身小炮台（与发射点同位），炮管指向最近敌；仅扩散模式显示
+     * @param {Array<{x:number,y:number,alive:boolean,radius?:number}>} enemyArr
+     */
+    function drawStgSideTurret(ctx2, px, py, pr, enemyArr) {
+        if (!ctx2) return;
+        const tx = px + pr * 2.15 + 8;
+        const ty = py;
+        let aim = -Math.PI / 2;
+        if (enemyArr && enemyArr.length) {
+            let bd = 1e9;
+            let best = null;
+            for (let i = 0; i < enemyArr.length; i++) {
+                const en = enemyArr[i];
+                if (!en || !en.alive) continue;
+                const d = Math.hypot(en.x - tx, en.y - ty);
+                if (d < bd) {
+                    bd = d;
+                    best = en;
+                }
+            }
+            if (best) aim = Math.atan2(best.y - ty, best.x - tx);
+        }
+        ctx2.save();
+        ctx2.translate(tx, ty);
+        ctx2.rotate(aim + Math.PI / 2);
+        ctx2.fillStyle = '#4a3f2e';
+        ctx2.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx2.lineWidth = 1;
+        ctx2.beginPath();
+        ctx2.moveTo(-9, 5);
+        ctx2.lineTo(9, 5);
+        ctx2.lineTo(7, 10);
+        ctx2.lineTo(-7, 10);
+        ctx2.closePath();
+        ctx2.fill();
+        ctx2.stroke();
+        ctx2.fillStyle = '#7f8c8d';
+        ctx2.beginPath();
+        ctx2.arc(0, -1, 7.5, 0, Math.PI * 2);
+        ctx2.fill();
+        ctx2.stroke();
+        ctx2.fillStyle = '#bdc3c7';
+        ctx2.fillRect(-2.5, -19, 5, 15);
+        ctx2.fillStyle = '#e67e22';
+        ctx2.fillRect(-2, -22, 4, 4);
+        ctx2.restore();
+    }
+
+    /**
+     * 左下角方形 buff 底图（圆角矩形；尺寸 S 较小时圆角随之缩小）
+     */
+    function drawStgCornerBuffSquare(ctx2, x, y, S, fillStyle, strokeStyle, lineW) {
+        ctx2.save();
+        ctx2.beginPath();
+        const rr = Math.max(4, Math.min(8, Math.floor(S * 0.2)));
+        if (typeof ctx2.roundRect === 'function') {
+            ctx2.roundRect(x, y, S, S, rr);
+        } else {
+            ctx2.moveTo(x + rr, y);
+            ctx2.lineTo(x + S - rr, y);
+            ctx2.quadraticCurveTo(x + S, y, x + S, y + rr);
+            ctx2.lineTo(x + S, y + S - rr);
+            ctx2.quadraticCurveTo(x + S, y + S, x + S - rr, y + S);
+            ctx2.lineTo(x + rr, y + S);
+            ctx2.quadraticCurveTo(x, y + S, x, y + S - rr);
+            ctx2.lineTo(x, y + rr);
+            ctx2.quadraticCurveTo(x, y, x + rr, y);
+            ctx2.closePath();
+        }
+        ctx2.fillStyle = fillStyle;
+        ctx2.fill();
+        ctx2.strokeStyle = strokeStyle;
+        ctx2.lineWidth = lineW;
+        ctx2.stroke();
+        ctx2.restore();
+    }
+
+    /** 水晶：方形内 💎 + 「还需命中次数」 */
+    function drawStgCornerCrystalBuff(ctx2, bx, by, S) {
+        const remHits = Math.max(0, STG_CRYSTAL_FOCUS_HITS_NEEDED - stgCrystalFocusHitAcc);
+        drawStgCornerBuffSquare(
+            ctx2,
+            bx,
+            by,
+            S,
+            'rgba(52, 152, 219, 0.45)',
+            'rgba(174, 214, 241, 0.95)',
+            1.5
+        );
+        const cx = bx + S * 0.5;
+        ctx2.save();
+        ctx2.textAlign = 'center';
+        ctx2.textBaseline = 'middle';
+        ctx2.font = `${Math.max(11, Math.floor(S * 0.34))}px "Segoe UI Emoji","Apple Color Emoji",sans-serif`;
+        ctx2.fillStyle = 'rgba(255,255,255,0.96)';
+        ctx2.fillText('💎', cx, by + S * 0.3);
+        ctx2.font = `bold ${Math.max(13, Math.floor(S * 0.38))}px "Microsoft YaHei","Segoe UI",sans-serif`;
+        ctx2.fillStyle = 'rgba(236, 240, 241, 0.98)';
+        ctx2.fillText(String(remHits), cx, by + S * 0.72);
+        ctx2.restore();
+    }
+
+    /**
+     * 狂怒：仅「击杀进度」——还需再杀几只叠层（独立方块，与层数/计时方块不叠）。
+     */
+    function drawStgCornerRageKillProgressBuff(ctx2, bx, by, S) {
+        const remKills = Math.max(0, STG_RAGE_KILLS_PER_STACK - stgRageKillAcc);
+        drawStgCornerBuffSquare(
+            ctx2,
+            bx,
+            by,
+            S,
+            'rgba(190, 90, 70, 0.4)',
+            'rgba(230, 170, 150, 0.92)',
+            1.5
+        );
+        const cx = bx + S * 0.5;
+        const cy = by + S * 0.5;
+        ctx2.save();
+        ctx2.textAlign = 'center';
+        ctx2.textBaseline = 'middle';
+        ctx2.font = `${Math.max(11, Math.floor(S * 0.34))}px "Segoe UI Emoji","Apple Color Emoji",sans-serif`;
+        ctx2.fillStyle = 'rgba(255,255,255,0.96)';
+        ctx2.fillText('😤', cx, by + S * 0.3);
+        ctx2.font = `bold ${Math.max(13, Math.floor(S * 0.38))}px "Microsoft YaHei","Segoe UI",sans-serif`;
+        ctx2.fillStyle = 'rgba(255, 245, 238, 0.98)';
+        ctx2.fillText(String(remKills), cx, cy + S * 0.08);
+        ctx2.font = `8px "Microsoft YaHei","Segoe UI",sans-serif`;
+        ctx2.fillStyle = 'rgba(255, 220, 205, 0.82)';
+        ctx2.fillText('还需击杀', cx, by + S - 6);
+        ctx2.restore();
+    }
+
+    /**
+     * 狂怒：仅「当前层数 + 本段剩余时间（逆时针弧）」；0 层不绘制（独立方块）。
+     */
+    function drawStgCornerRageStackTimerBuff(ctx2, bx, by, S) {
+        const stacks = stgRageStacks;
+        if (stacks <= 0) return;
+        const now = performance.now();
+        const dur = getStgRageDurationMs();
+        const active = now < stgRageEndMs;
+        let remRatio = 0;
+        if (active && dur > 0) {
+            remRatio = Math.max(0, Math.min(1, (stgRageEndMs - now) / dur));
+        }
+        drawStgCornerBuffSquare(
+            ctx2,
+            bx,
+            by,
+            S,
+            'rgba(160, 48, 42, 0.48)',
+            'rgba(241, 148, 138, 0.95)',
+            1.5
+        );
+        const cx = bx + S * 0.5;
+        const cy = by + S * 0.5;
+        const ringR = S * 0.32;
+        ctx2.save();
+        ctx2.beginPath();
+        ctx2.arc(cx, cy, ringR, 0, Math.PI * 2);
+        ctx2.strokeStyle = 'rgba(45, 22, 22, 0.5)';
+        ctx2.lineWidth = 1.6;
+        ctx2.stroke();
+        if (remRatio > 0.008) {
+            ctx2.beginPath();
+            ctx2.arc(cx, cy, ringR, -Math.PI / 2, -Math.PI / 2 - remRatio * Math.PI * 2, true);
+            ctx2.strokeStyle = 'rgba(255, 160, 140, 0.98)';
+            ctx2.lineWidth = 2;
+            ctx2.lineCap = 'round';
+            ctx2.stroke();
+        }
+        ctx2.textAlign = 'center';
+        ctx2.textBaseline = 'middle';
+        ctx2.font = `${Math.max(11, Math.floor(S * 0.34))}px "Segoe UI Emoji","Apple Color Emoji",sans-serif`;
+        ctx2.fillStyle = 'rgba(255,255,255,0.94)';
+        ctx2.fillText('😤', cx, by + S * 0.22);
+        const fs = stacks >= 6 ? Math.floor(S * 0.3) : Math.floor(S * 0.36);
+        ctx2.font = `bold ${fs}px "Microsoft YaHei","Segoe UI",sans-serif`;
+        ctx2.fillStyle = 'rgba(255, 245, 238, 0.98)';
+        ctx2.fillText(String(stacks), cx, cy + S * 0.06);
+        ctx2.restore();
+    }
+
+    /** 棋盘左下角：水晶命中、狂怒击杀进度、狂怒层数/计时（分开展示，不重叠） */
+    function drawStgCornerFocusBuffHud(ctx2, cw, ch) {
+        if (!ctx2 || phase !== 'playing') return;
+        const pad = 8;
+        const S = 36;
+        const gap = 6;
+        const y0 = ch - pad - S;
+        let col = 0;
+        const bx0 = pad;
+        function nextX() {
+            const x = bx0 + col * (S + gap);
+            col++;
+            return x;
+        }
+        if (stgFocusBranch === 'crystal' && stgTakenUpgradeIds.has('focus_crystal_base')) {
+            drawStgCornerCrystalBuff(ctx2, nextX(), y0, S);
+        }
+        if (stgFocusBranch === 'rage' && stgTakenUpgradeIds.has('focus_rage_core')) {
+            drawStgCornerRageKillProgressBuff(ctx2, nextX(), y0, S);
+            if (stgRageStacks > 0) {
+                drawStgCornerRageStackTimerBuff(ctx2, nextX(), y0, S);
+            }
+        }
     }
 
     function draw() {
@@ -2940,6 +5747,8 @@
             ctx.lineTo(e.x, e.y + e.radius * 0.65);
             ctx.closePath();
             ctx.fill();
+            /** 血环：叠在原色圆盘+三角之上、emoji 之下 */
+            drawStgEnemyHpRing(ctx, e);
             ctx.font = `${Math.max(11, Math.floor(e.radius * 0.9))}px "Segoe UI Emoji","Apple Color Emoji",sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -2953,18 +5762,40 @@
             drawStgPlayerBullet(ctx, b);
         });
 
+        /** 道具E：阴阳玉（太极符号 + 淡圈示意伤害范围） */
+        stgYinYangOrbs.forEach((o) => {
+            if (!o || !o.alive) return;
+            const vr = o.visR != null ? o.visR : 17;
+            const maxL = o.maxLifeMs != null ? o.maxLifeMs : STG_YINYANG_ORB_DURATION_MS;
+            const life = o.lifeMs != null ? o.lifeMs : maxL;
+            const tw = performance.now() * 0.0025 + (o.phaseRad || 0);
+            const lifePulse = maxL > 0 ? Math.max(0.35, Math.min(1, life / maxL)) : 1;
+            const pulse = (0.78 + 0.22 * Math.sin(tw)) * lifePulse;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(120, 200, 255, ${0.07 + 0.1 * pulse})`;
+            ctx.lineWidth = 1.2;
+            ctx.setLineDash([5, 7]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+            drawStgYinYangSymbol(ctx, o.x, o.y, vr);
+        });
+
         /** 大招 · 封魔阵：跟随自机的结界圆 */
         if (player && stgSealField && performance.now() < stgSealField.endMs) {
             const R = stgSealField.radius;
             ctx.save();
             ctx.setLineDash([12, 8]);
-            ctx.strokeStyle = 'rgba(186, 104, 200, 0.72)';
+            /** 与侧栏「试做型封魔阵」绿色系一致，避免与伏魔针淡粉 / 妙珠紫混淆 */
+            ctx.strokeStyle = 'rgba(30, 132, 73, 0.78)';
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.arc(player.x, player.y, R, 0, Math.PI * 2);
             ctx.stroke();
             ctx.setLineDash([]);
-            ctx.fillStyle = 'rgba(155, 89, 182, 0.13)';
+            ctx.fillStyle = 'rgba(39, 174, 96, 0.14)';
             ctx.beginPath();
             ctx.arc(player.x, player.y, R, 0, Math.PI * 2);
             ctx.fill();
@@ -3003,32 +5834,117 @@
             ctx.lineTo(L.x2, L.y2);
             ctx.stroke();
         });
-        ctx.fillStyle = '#e74c3c';
+        const spGrazeA = (() => {
+            const sc = getScenePropsConfig();
+            const a = sc && sc.grazedBulletAlpha != null ? Number(sc.grazedBulletAlpha) : 0.38;
+            return Number.isFinite(a) ? Math.max(0.05, Math.min(0.98, a)) : 0.38;
+        })();
         enemyBullets.forEach((b) => {
             if (!b.alive) return;
+            /** 已擦弹敌弹透明度由场景道具编辑器配置 */
+            ctx.fillStyle = b._stgGrazed ? `rgba(231, 76, 60, ${spGrazeA})` : '#e74c3c';
             drawStgEnemyBulletFill(b);
         });
 
-        /** P点 */
-        ctx.fillStyle = '#2ecc71';
-        pickups.forEach((p) => {
+        /** 擦弹：吸附向判定点的小白球 */
+        stgGrazeOrbs.forEach((o) => {
+            if (!o || !o.alive) return;
+            const rr = o.r != null ? o.r : 5;
+            const ga = o.glow != null ? o.glow : 0.65;
+            ctx.save();
+            ctx.shadowColor = `rgba(255,255,255,${ga})`;
+            ctx.shadowBlur = 10 + rr * 0.8;
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
             ctx.beginPath();
-            ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+            ctx.arc(o.x, o.y, rr, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = '#fff';
-            ctx.font = '11px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('P', p.x, p.y + 4);
-            ctx.fillStyle = '#2ecc71';
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = 'rgba(200,220,255,0.85)';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+            ctx.restore();
         });
 
-        /** 玩家机体：外圈 + 朝上的三角（不依赖 emoji 也能辨认） */
+        /** 擦弹成功：渐隐显示外椭圆擦弹带（紧随擦弹球，在掉落物与机体之下叠在敌弹之上） */
+        drawStgGrazeRangeFlashes(ctx);
+
+        /** P点 / 大掉落 / 充能点（形状与尺寸来自场景道具编辑器） */
+        function drawStgPickupShapeBody(ctx2, cx, cy, r, shape) {
+            const sh = shape === 'square' || shape === 'diamond' ? shape : 'circle';
+            ctx2.beginPath();
+            if (sh === 'circle') {
+                ctx2.arc(cx, cy, r, 0, Math.PI * 2);
+            } else if (sh === 'square') {
+                ctx2.rect(cx - r, cy - r, r * 2, r * 2);
+            } else {
+                /** 菱形：外接圆半径 r */
+                ctx2.moveTo(cx, cy - r);
+                ctx2.lineTo(cx + r, cy);
+                ctx2.lineTo(cx, cy + r);
+                ctx2.lineTo(cx - r, cy);
+                ctx2.closePath();
+            }
+        }
+
+        pickups.forEach((p) => {
+            const kind = p.pickupKind || '';
+            const r = p.pickupRadius != null && Number.isFinite(p.pickupRadius) ? p.pickupRadius : 10;
+            const shape = p.shape === 'square' || p.shape === 'diamond' ? p.shape : 'circle';
+            const fs = Math.max(9, Math.floor((p.sizePx != null ? p.sizePx : r * 2) * 0.52));
+
+            if (kind === 'charge') {
+                ctx.fillStyle = 'rgba(26, 188, 156, 0.35)';
+                ctx.strokeStyle = 'rgba(22, 160, 133, 0.95)';
+                ctx.lineWidth = Math.max(1.5, r * 0.18);
+                drawStgPickupShapeBody(ctx, p.x, p.y, r, shape);
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = '#1abc9c';
+                ctx.font = `${fs}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('充', p.x, p.y);
+                return;
+            }
+            const big = kind === 'bigP' || kind === 'bigEnergy';
+            ctx.fillStyle = kind === 'bigEnergy' ? '#f1c40f' : '#2ecc71';
+            drawStgPickupShapeBody(ctx, p.x, p.y, r, shape);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.font = `${fs}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(kind === 'bigEnergy' ? '⚡' : 'P', p.x, p.y);
+        });
+
+        /** 玩家机体：外圈 + 三角；慢速时整体半透明，判定点最后单独绘制以突出 */
         if (player) {
             const px = player.x;
             const py = player.y;
             const r = player.radius;
+            if (
+                phase === 'playing' &&
+                stgTakenUpgradeIds.has('spread_turret') &&
+                !(keys.ShiftLeft || keys.ShiftRight)
+            ) {
+                drawStgSideTurret(ctx, px, py, r, enemies);
+            }
+            /** 狂怒层数与段计时改由棋盘左下角方形 HUD 绘制，避免与自机重叠 */
+            const focus = keys.ShiftLeft || keys.ShiftRight;
+            const focusShipFade = phase === 'playing' && focus;
+            const invulnDraw = phase === 'playing' && isStgPlayerInvulnerable(performance.now());
+            let shipAlpha = focusShipFade ? getStgGrazeRuntimeParams().focusShipAlpha : 1;
+            /** 无敌时闪烁提示（与慢速半透明可叠乘） */
+            if (invulnDraw) {
+                shipAlpha *= 0.42 + 0.38 * (0.5 + 0.5 * Math.sin(performance.now() * 0.018));
+            }
+            if (focusShipFade || invulnDraw) {
+                ctx.save();
+                /** 机体略透明（玩家编辑器可调），判定点留在 save 外以全不透明绘制 */
+                ctx.globalAlpha = shipAlpha;
+            }
             ctx.shadowColor = 'rgba(52, 152, 219, 0.65)';
-            ctx.shadowBlur = 12;
+            ctx.shadowBlur = focusShipFade ? 6 : 12;
             ctx.fillStyle = '#2980b9';
             ctx.beginPath();
             ctx.arc(px, py, r + 2, 0, Math.PI * 2);
@@ -3053,19 +5969,21 @@
             ctx.textBaseline = 'middle';
             ctx.fillStyle = '#1a5276';
             ctx.fillText('🚀', px, py + r * 0.08);
+            if (focusShipFade || invulnDraw) {
+                ctx.restore();
+            }
 
-            /** 慢速模式：画出与敌弹判定一致的受击圆（比机体略大），便于玩家对齐判定点 */
-            const focus = keys.ShiftLeft || keys.ShiftRight;
+            /** 慢速模式：受击圆 + 判定点（不绘制擦弹外椭圆范围，避免画面干扰；擦弹判定仍按椭圆逻辑） */
             if (phase === 'playing' && focus) {
                 const hitR = getStgPlayerHitRadius();
                 ctx.beginPath();
                 ctx.arc(px, py, hitR, 0, Math.PI * 2);
-                ctx.strokeStyle = 'rgba(255, 65, 85, 0.92)';
-                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'rgba(255, 65, 85, 0.96)';
+                ctx.lineWidth = 2.2;
                 ctx.setLineDash([5, 5]);
                 ctx.stroke();
                 ctx.setLineDash([]);
-                ctx.fillStyle = 'rgba(255, 40, 60, 0.95)';
+                ctx.fillStyle = 'rgba(255, 40, 60, 1)';
                 ctx.beginPath();
                 ctx.arc(px, py, 3, 0, Math.PI * 2);
                 ctx.fill();
@@ -3093,6 +6011,8 @@
             ctx.fillRect(0, 0, cw, ch);
         }
 
+        drawStgCornerFocusBuffHud(ctx, cw, ch);
+
         if (phase === 'title') {
             ctx.fillStyle = 'rgba(0,0,0,0.45)';
             ctx.fillRect(0, 0, cw, ch);
@@ -3106,6 +6026,29 @@
     }
 
     function onKeyDown(e) {
+        if (phase === 'levelup' && stgUpgradePickOpen && upgradeChoices.length > 0) {
+            let idx = -1;
+            if (e.code === 'Digit1' || e.code === 'Numpad1') idx = 0;
+            else if (e.code === 'Digit2' || e.code === 'Numpad2') idx = 1;
+            else if (e.code === 'Digit3' || e.code === 'Numpad3') idx = 2;
+            if (idx >= 0 && idx < upgradeChoices.length) {
+                e.preventDefault();
+                finalizeStgUpgradePick(upgradeChoices[idx]);
+                return;
+            }
+        }
+        if (
+            phase === 'playing' &&
+            stgUpgradePending &&
+            upgradeChoices.length > 0 &&
+            !stgUpgradePickOpen &&
+            e.code === 'KeyE' &&
+            !e.repeat
+        ) {
+            e.preventDefault();
+            openStgUpgradeModal();
+            return;
+        }
         if (keys.hasOwnProperty(e.code)) {
             keys[e.code] = true;
             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
@@ -3142,15 +6085,32 @@
 
     function resizeCanvas() {
         if (!canvas) return;
-        /** 顶栏改紧凑后预留高度略减，把像素让给棋盘；仍留足 HUD/边距 */
-        const maxH = Math.min(window.innerHeight - 168, 720);
+        /**
+         * 棋盘高度：须为下方「波次/时间」白条 + 操作说明留出视口空间，否则画布过高、像被裁切且需猛滚才见底部。
+         * 优先用 .stg-canvas-wrap 距视口顶的距离 + 下方 HUD 实测高度；兜底为旧公式加大预留。
+         */
+        let maxH = Math.min(window.innerHeight - 240, 800);
+        const wrap = document.querySelector('.stg-canvas-wrap');
+        const meta = document.querySelector('.stg-meta-panel');
+        if (wrap) {
+            const top = wrap.getBoundingClientRect().top;
+            /** 棋盘下方：波次/说明 meta（含 #stgHintBar）；三选一已改为全屏居中，不占布局高度 */
+            let below = 32;
+            if (meta) below += meta.getBoundingClientRect().height;
+            const hFit = window.innerHeight - top - below;
+            if (hFit > 200) maxH = Math.min(hFit, 800);
+        }
+        maxH = Math.max(200, maxH);
         cellSize = Math.floor(maxH / GRID_ROWS);
         if (cellSize < 32) cellSize = 32;
         canvas.width = GRID_COLS * cellSize;
         canvas.height = GRID_ROWS * cellSize;
         if (player) {
-            player.x = Math.min(canvas.width - player.radius, Math.max(player.radius, player.x));
-            player.y = Math.min(canvas.height - player.radius, Math.max(player.radius, player.y));
+            const pr = player.radius != null ? player.radius : 14;
+            player.x = Math.min(canvas.width - pr, Math.max(pr, player.x));
+            player.y = Math.min(canvas.height - pr, Math.max(pr, player.y));
+            player._stgSpawnX = canvas.width * 0.5;
+            player._stgSpawnY = canvas.height - cellSize * 1.8;
         }
         console.log('[STG] 画布尺寸', canvas.width, 'x', canvas.height, 'cell', cellSize);
     }
@@ -3169,6 +6129,10 @@
             }
             ctx = canvas.getContext('2d');
             resizeCanvas();
+            /** 首帧布局后 .stg-canvas-wrap 位置才稳定，再算一次避免棋盘过高裁切感 */
+            requestAnimationFrame(() => {
+                resizeCanvas();
+            });
             /** 供波次阵型编辑器等读取，与局内棋盘格数一致（仅 cellSize 随窗口变） */
             window.__STG_GRID__ = { cols: GRID_COLS, rows: GRID_ROWS };
             /** 窗口拖拽时连续 resize 会微调 cellSize，画布变宽变窄 + flex 居中 = 棋盘「左右滑」；防抖合并重算 */
@@ -3205,6 +6169,14 @@
             if (btnResultRestart) {
                 btnResultRestart.addEventListener('click', onRestartFromUi);
             }
+            const levelUpHint = document.getElementById('stgLevelUpHint');
+            if (levelUpHint) {
+                levelUpHint.addEventListener('click', () => {
+                    if (phase === 'playing' && stgUpgradePending && upgradeChoices.length > 0) {
+                        openStgUpgradeModal();
+                    }
+                });
+            }
 
             phase = 'title';
             isRunning = true;
@@ -3212,6 +6184,7 @@
             lastFrameTime = performance.now();
             loop();
             refreshStgAttackBuildPanel();
+            loadStgBuildUpgradeOverridesFromStorage();
             console.log('[STG] StgMode 初始化完成');
         },
 
@@ -3253,8 +6226,73 @@
         /** 刷新左侧攻击构筑面板（语言切换或外部可调用） */
         refreshAttackBuildPanel() {
             refreshStgAttackBuildPanel();
+        },
+
+        /**
+         * 局内构筑道具面板：列出 STG_UPGRADE_POOL 条目（供勾选）
+         * @returns {{ id: string, name: string, icon: string, group: string, requires?: string }[]}
+         */
+        getBuildUpgradeCatalog() {
+            return STG_UPGRADE_POOL.map((u) => {
+                let desc = u.desc != null ? u.desc : '';
+                if (u.id === 'focus_crystal_base') {
+                    desc = buildFocusCrystalBaseDescZh();
+                }
+                return {
+                    id: u.id,
+                    name: u.name,
+                    desc,
+                    icon: u.icon,
+                    group: u.group,
+                    requires: u.requires || null
+                };
+            });
+        },
+
+        /** 三选一 / 构筑面板：道具 I 动态中文描述 */
+        getFocusCrystalBaseDesc() {
+            return buildFocusCrystalBaseDescZh();
+        },
+
+        /** 三选一：道具 I 动态英文描述 */
+        getFocusCrystalBaseDescEn() {
+            return buildFocusCrystalBaseDescEn();
+        },
+
+        /** 局内构筑面板：读取本地覆盖（水晶外观、狂怒参数等） */
+        getBuildUpgradeOverrides() {
+            try {
+                return JSON.parse(JSON.stringify(stgBuildUpgradeOverrides));
+            } catch (e) {
+                return {};
+            }
+        },
+
+        /**
+         * 合并写入覆盖并持久化；partial 形如 { focus_crystal_base: { crystalShape, ... }, ... }
+         */
+        mergeBuildUpgradeOverrides(partial) {
+            if (!partial || typeof partial !== 'object') return;
+            Object.keys(partial).forEach((k) => {
+                const v = partial[k];
+                if (v && typeof v === 'object') {
+                    stgBuildUpgradeOverrides[k] = Object.assign({}, stgBuildUpgradeOverrides[k] || {}, v);
+                }
+            });
+            try {
+                localStorage.setItem(STG_BUILD_OVERRIDES_KEY, JSON.stringify(stgBuildUpgradeOverrides));
+            } catch (e) {
+                /* ignore */
+            }
+        },
+
+        loadBuildUpgradeOverridesFromStorage() {
+            loadStgBuildUpgradeOverridesFromStorage();
         }
     };
 
+    loadStgBuildUpgradeOverridesFromStorage();
+
     window.StgMode = StgMode;
+    window.refreshStgReimuBonusAside = refreshStgReimuBonusAside;
 })();
