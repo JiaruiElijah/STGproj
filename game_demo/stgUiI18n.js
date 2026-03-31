@@ -15,7 +15,7 @@
         'toolbar.langToZh': '中文',
 
         'hint.controls':
-            '方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（五格充能，<strong>充能点</strong>与<strong>擦弹</strong>小白球蓄能）默认「试做型封魔阵」；升级可抽 Q–V 分支强化（选 T 后改为梦想妙珠） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · 升级后棋盘右下提示，按 <strong>E</strong> 打开三选一（<strong>1/2/3</strong> 选择，暂停）',
+            '方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（五格充能，<strong>充能点</strong>与<strong>擦弹</strong>小白球蓄能）默认「试做型封魔阵」；升级可抽 Q–V 分支强化（选 T 后改为梦想妙珠） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · <strong>波次阵型</strong>可配置「升级时刻」：指定波次结束后四选一（<strong>1～4</strong>，暂停）',
 
         'aside.title': '博丽灵梦 · 属性加成',
         'aside.hideStats': '隐藏',
@@ -23,13 +23,15 @@
         'aside.showStats': '显示属性',
         'aside.showStatsTitle': '展开右侧属性加成面板',
 
-        'upgrade.title': '升级 — 三选一（博丽灵梦 · 构筑）',
-        'upgrade.subhint': '游戏已暂停 · 按键盘 <strong>1</strong> / <strong>2</strong> / <strong>3</strong> 选择',
+        'upgrade.title': '升级时刻 — 四选一（博丽灵梦 · 构筑）',
+        'upgrade.subhint': '游戏已暂停 · 按键盘 <strong>1</strong> / <strong>2</strong> / <strong>3</strong> / <strong>4</strong> 选择',
+        'upgrade.subhintRound':
+            '游戏已暂停 · 第 <strong>{cur}</strong> / <strong>{total}</strong> 轮 · 按 <strong>1</strong>～<strong>4</strong> 选择',
 
         'levelUp.badge': '升级',
         'levelUp.key': 'E',
-        'levelUp.hintTitle': '按 E 打开升级三选一',
-        'levelUp.ariaOpen': '打开升级三选一',
+        'levelUp.hintTitle': '（波次衔接时自动打开升级时刻）',
+        'levelUp.ariaOpen': '升级时刻（通常自动打开）',
 
         'result.titleWin': '🎉 通关！',
         'result.titleLose': '💀 本局结束',
@@ -46,6 +48,9 @@
         'hud.expLabel': '经验',
         'hud.exp': 'Lv.{lv}  经验 {cur} / {next}',
         'hud.wave': '波次 {cur} / {w}  剩余敌 {en}  待出 {pending}',
+        'hud.waveChapter': '第 {ch}/{chTotal} 章 · 波次 {cur}/{w} · 剩余敌 {en} · 待出 {pending}',
+        'chapter.passTitle': '通过章节 {passed}',
+        'chapter.passMsg': '即将进入第 {next} 章',
         'hud.nextWaveNone': '下一波 —',
         'hud.nextWaveSoon': '下一波 即将',
         'hud.nextWaveSec': '下一波 {sec}s',
@@ -94,7 +99,9 @@
         'attackBuild.simple.aps': '攻速：{v} 发/s',
         'attackBuild.simple.bulletSpd': '弹速：{v}',
         'attackBuild.simple.crit': '暴击率：{v}%',
-        'attackBuild.emptyList': '（暂无）'
+        'attackBuild.emptyList': '（暂无）',
+        /** 发射模式简述（侧栏等，与 stgStyleLine 一致） */
+        'attackBuild.stat.styleDoubleCol': '双列 ×{n}，列距 {sep}px'
     };
 
     /** @type {Record<string, string>} */
@@ -106,17 +113,19 @@
         'toolbar.langToZh': '中文',
 
         'hint.controls':
-            'Move: Arrow keys · <strong>Z</strong> Main fire · <strong>X</strong> Ultimate (5 slots; <strong>charge pickups</strong> / <strong>graze</strong> orbs fill ult meter); Seal Prototype by default; upgrades Q–V (pick T for Dream Orb) · <strong>Shift</strong> Focus / hitbox · <strong>P</strong> pickups · Level-up: badge bottom-right, press <strong>E</strong> for pick 1/2/3 (pauses)',
+            'Move: Arrow keys · <strong>Z</strong> Main fire · <strong>X</strong> Ultimate (5 slots; <strong>charge pickups</strong> / <strong>graze</strong> orbs fill ult meter); Seal Prototype by default; upgrades Q–V (pick T for Dream Orb) · <strong>Shift</strong> Focus / hitbox · <strong>P</strong> pickups · Wave editor: <strong>upgrade moments</strong> after listed waves — pick 1 of 4 (<strong>1–4</strong>, pauses)',
 
         'aside.title': 'Reimu · Stat bonuses',
 
-        'upgrade.title': 'Level Up — Pick 1 of 3 (Reimu · Build)',
-        'upgrade.subhint': 'Paused · Press <strong>1</strong> / <strong>2</strong> / <strong>3</strong> to choose',
+        'upgrade.title': 'Upgrade Moment — Pick 1 of 4 (Reimu · Build)',
+        'upgrade.subhint': 'Paused · Press <strong>1</strong> / <strong>2</strong> / <strong>3</strong> / <strong>4</strong> to choose',
+        'upgrade.subhintRound':
+            'Paused · Round <strong>{cur}</strong> / <strong>{total}</strong> · Press <strong>1</strong>–<strong>4</strong>',
 
         'levelUp.badge': 'Lv up',
         'levelUp.key': 'E',
-        'levelUp.hintTitle': 'Press E to open level-up choices',
-        'levelUp.ariaOpen': 'Open level-up upgrade panel',
+        'levelUp.hintTitle': '(Upgrade moment opens at wave breaks)',
+        'levelUp.ariaOpen': 'Upgrade moment (usually auto-opens)',
 
         'result.titleWin': '🎉 Cleared!',
         'result.titleLose': '💀 Run Over',
@@ -132,6 +141,9 @@
         'hud.expLabel': 'EXP',
         'hud.exp': 'Lv.{lv}  EXP {cur} / {next}',
         'hud.wave': 'Wave {cur} / {w}  Enemies {en}  Pending {pending}',
+        'hud.waveChapter': 'Ch.{ch}/{chTotal} · Wave {cur}/{w} · Enemies {en} · Pending {pending}',
+        'chapter.passTitle': 'Chapter {passed} cleared',
+        'chapter.passMsg': 'Entering chapter {next}…',
         'hud.nextWaveNone': 'Next —',
         'hud.nextWaveSoon': 'Next wave soon',
         'hud.nextWaveSec': 'Next in {sec}s',
@@ -174,7 +186,8 @@
         'attackBuild.simple.aps': 'Fire rate: {v} /s',
         'attackBuild.simple.bulletSpd': 'Bullet spd: {v}',
         'attackBuild.simple.crit': 'Crit: {v}%',
-        'attackBuild.emptyList': '(none)'
+        'attackBuild.emptyList': '(none)',
+        'attackBuild.stat.styleDoubleCol': 'Double column ×{n}, gap {sep}px'
     };
 
     /**
@@ -397,7 +410,11 @@
         const upSub = document.getElementById('stgUpgradeSubHint');
         const modalRoot = document.getElementById('stgUpgradeModalRoot');
         if (upSub && modalRoot && !modalRoot.classList.contains('hidden')) {
-            upSub.innerHTML = t('upgrade.subhint');
+            if (window.StgMode && typeof window.StgMode.refreshUpgradeModalSubhintForI18n === 'function') {
+                window.StgMode.refreshUpgradeModalSubhintForI18n();
+            } else {
+                upSub.innerHTML = t('upgrade.subhint');
+            }
         }
         applyStgLevelUpHintLabels();
         const resBtn = document.getElementById('stgResultRestartBtn');

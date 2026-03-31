@@ -1,5 +1,77 @@
 # 开发记录
 
+## [2026-03-27] STG：波次清空判定修复 + 升级后延迟出怪（可调）与阵型面板持久化
+
+- **类型**：Bug 修复 / 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`stgSpawnWaveIndex`、`canStgAdvanceWaveNow`、`markStgWaveEnemyResolved` 按波计数、`tryStgAutoStartNextWave`/`checkStgWaveAllClearedAndAdvance` 与 `stgPostUpgradeAdvanceAtMs`、`getStgPostUpgradeSpawnDelaySec`/`postUpgradeSpawnDelaySec` 读档）、`game_demo/stgWaveFormationPanel.js`（`normalizeFullWaveConfigFromRaw`/`saveFullWaveConfigToStorage`/`persistCurrentChapterToDoc` 根级 `postUpgradeSpawnDelaySec`）、`game_demo/index.html`（`#stgFormationPostUpgradeSpawnDelaySec`、`?v=20260327a`）
+- **说明**：防止上一波残留敌的死亡计入新波导致「未清完即 all wave clear」；进入升级前须场上无未结算敌、无待发刷；选完升级后按配置秒数（默认 2，0～60）再刷下一波。阵型编辑器增加全局输入并写入本地波次 JSON。
+
+## [2026-04-02] STG：敌弹贴图防浏览器缓存 + 怪物编辑器应用后刷新
+
+- **类型**：Bug 修复 / 体验
+- **涉及文件**：`game_demo/stgMode.js`（`stgEnemyBulletSpriteCacheBust`、`getStgEnemyBulletSpriteUrlCandidates` 带 `?v=`、`clearStgEnemyBulletSpriteCacheAndBumpBust`、开局/init 刷新）、`game_demo/monsterEditorPanel.js`（`applyTypes` 后 `reloadEnemyBulletSpritesFromStorage`）、`game_demo/stgTextureEditorPanel.js`（保存日志说明）、`game_demo/index.html`（敌弹贴图说明：仅敌弹、须放文件、与自机弹区分）、`?v=20260402d`
+- **说明**：同一路径位图被浏览器强缓存，仅清空 JS 内 Image 仍可能显示旧图；现为每次加载 URL 加版本号，且新局/初始化/编辑器保存时 bump 并重建缓存。说明面板明确本工具只改**敌弹**贴图。
+
+## [2026-04-02] STG：章节系统（多章波次、章节设置、章间过渡全屏）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`stgWavePackRoot`、`stgChapterIndex`、`loadWaves` 读 `chapters`、`beginStgChapterTransitionOrWin`、`finishStgChapterTransitionAndStartNext`、`tryStgAdvanceWaveOrFinishChapter`、HUD `hud.waveChapter`、循环 `chapter_transition`）、`game_demo/stgWaveFormationPanel.js`（`version:2` 存档、`currentChapterIndex`、章下拉、`setChapterCount`）、`game_demo/index.html`（章节设置面板、波次面板「当前章节」、`#stgChapterTransitionOverlay`）、`game_demo/stgUiI18n.js`（`hud.waveChapter`、`chapter.passTitle`/`passMsg`）、`game_demo/game.js`（章节设置弹层）、`?v=20260402c`
+- **说明**：localStorage 存 `{ version:2, chapters:[{ waves, upgradeMomentsAfterWave }], enemyHpScale, enemyFireStopRow }`；旧档仅 `waves` 自动视为单章。打完一章最后一波后全屏约 4s「通过章节 X → 即将进入第 Y 章」，再进入下一章第一波（保留自机与成长）。顶栏「章节设置」改总章数；「波次阵型」内切换章编辑各章波次与升级时刻。
+
+## [2026-04-02] STG：玩家主武器发射模式「双列」（左右两列竖直弹）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`emitStyle === 'double_column'`、`mergeStgPlayerEditorIntoPlayer` 列距字段、`stgStyleLine`）、`game_demo/stgPlayerEditorPanel.js`（三处下拉 + 列距存档）、`game_demo/index.html`（选项与输入）、`game_demo/stgUiI18n.js`（`attackBuild.stat.styleDoubleCol`）、`?v=20260402b`
+- **说明**：双列共用「单发」的每列并列数（`singleCount`）；列间距 `doubleColumnSep` / `focusDoubleColumnSep` / `skillDoubleColumnSep`（8～56px，默认 20）。局内道具 A 仍强制扇形。
+
+## [2026-04-02] STG：升级时刻（波次可配置）替代即时三选一；四选一 × 升级次数
+
+- **类型**：新增功能 / 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`stgLevelUpsBanked`、波次衔接前 `tryStgAutoStartNextWave` 插入升级时刻、`advanceStgWaveIndexAndSpawnNext`、`prepareLevelUpChoices4`、`finalizeStgUpgradePick` 多轮、`loadWaves` 读 `upgradeMomentsAfterWave`、快捷键 4）、`game_demo/stgWaveFormationPanel.js`（保存/读取/解析「第几波结束后」）、`game_demo/index.html`（阵型面板输入、升级弹层与说明）、`game_demo/stgUiI18n.js`、`game_demo/styles.css`（四列网格）、`?v=20260402a`
+- **说明**：经验升级只累计次数；在波次阵型配置的「第 N 波结束后」触发时，按银行次数连续多轮四选一，再进入下一波。存档无该字段时默认 `1`；显式空数组则无波次升级时刻。旧「按 E 三选一」已移除。
+
+## [2026-04-01] STG：敌弹贴图编辑器面板 + 全局/按种类关闭位图
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgTextureEditorPanel.js`（读写字段 `stgEnemyBulletSprite`、文件选择写入合法文件名、预览、与 `StgMode` 联动）、`game_demo/stgMode.js`（`stgEnemyBulletTextureGloballyDisabled` 持久化、`reloadEnemyBulletSpritesFromStorage`、`drawStgEnemyBulletFill` 在种类表显式空串时不套默认 jpg）、`game_demo/index.html`（工具栏「敌弹贴图」与弹层）、`game_demo/game.js`（init/打开）、`game_demo/styles.css`（`.stg-texture-*`）、`?v=20260401b`
+- **说明**：与怪物编辑器共用 `tower_defense_enemy_types`；「清除贴图」写空串后该种类仅矢量；全局勾选则全部敌弹仅矢量；保存后清空位图缓存并预加载。另修正 `getEnemyTypeMap` 合并：存档显式空串不再回退到内置默认贴图。
+
+## [2026-04-01] STG：敌弹贴图绘制加固（complete 判定、drawImage try/catch、默认文件名兜底）
+
+- **类型**：Bug 修复
+- **涉及文件**：`game_demo/stgMode.js`（`getStgEnemyBulletSpriteImage` 仅用 `complete`；`drawStgEnemyBulletFill` 默认 `enemy_round_red.jpg`、数值校验、try/catch）、`game_demo/index.html` `?v=20260401a`
+- **说明**：排除 naturalWidth 未就绪与 drawImage 静默失败；无 sprite 信息时仍尝试仓库默认贴图。
+
+## [2026-03-27] STG：敌弹贴图以种类表为准 + 子弹 typeId 绘制回退
+
+- **类型**：Bug 修复
+- **涉及文件**：`game_demo/stgMode.js`（`emitStgEnemyAttackVolley` 从 `getEnemyTypeMap()[typeId]` 合并贴图；`pushStgEnemyBullet` 带 `typeId`；`drawStgEnemyBulletFill` 无 sprite 时按 typeId 回退；每帧一次 `getEnemyTypeMap` 传入绘制）、`game_demo/index.html` `?v=20260331z`
+- **说明**：避免仅依赖实例上 `stgEnemyBulletSprite` 导致子弹始终无 sprite。
+
+## [2026-03-27] STG：敌弹贴图与三角形样式解耦（预加载成功但仍画矢量）
+
+- **类型**：Bug 修复
+- **涉及文件**：`game_demo/stgMode.js`（`emitStgEnemyAttackVolley` 凡有 `stgEnemyBulletSprite` 即写入 `bulletExtra.sprite`；`drawStgEnemyBulletFill` 有 `sprite` 即优先位图；分裂子弹复制 sprite）、`game_demo/index.html` `?v=20260331y`
+- **说明**：原先仅圆形弹附带 sprite，三角形时子弹无 sprite 字段；贴图仅预加载成功但画面仍走矢量。
+
+## [2026-03-27] STG：敌弹贴图多路径加载 + game_demo 下镜像
+
+- **类型**：Bug 修复 / 修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`getStgEnemyBulletSpriteUrlCandidates` 依次尝试 `art_assets/bullets/` 与 `../art_assets/bullets/`）、`game_demo/art_assets/bullets/enemy_round_red.jpg`（镜像）、`art_assets/README.md`、`game_demo/index.html` `?v=20260331x`
+- **说明**：仅 `game_demo` 为站点根时原 `../art_assets` 会 404；镜像后首条候选即可命中。
+
+## [2026-03-27] STG：敌弹贴图（art_assets/bullets）接入绘制与怪物编辑器
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`STG_ART_BULLETS_BASE`、`stgEnemyBulletSprite` 合并与实例字段、`pushStgEnemyBullet.sprite`、预加载、`drawStgEnemyBulletFill` drawImage；内置 `normal` 默认 `enemy_round_red.jpg`）、`game_demo/monsterEditorPanel.js`（敌弹贴图输入）、`art_assets/README.md`、`game_demo/index.html` `?v=20260331w`
+- **说明**：圆形敌弹可显示位图；三角形仍为矢量；擦弹时整图降透明度。
+
+## [2026-03-27] 美术素材分类目录 art_assets
+
+- **类型**：新增功能（工程结构）
+- **涉及文件**：`art_assets/README.md`、其下 `player` / `enemies` / `bullets` / `effects` / `ui` / `backgrounds` / `props` / `common` 子目录（`.gitkeep` 占位）
+- **说明**：集中存放待替换进 STG 的图片资源，子目录用途与命名约定见 `README.md`。
+
 ## [2026-03-27] STG：arc_edges 离场切线叠加强制水平外偏（避免贴左右缘滑移不出屏）
 
 - **类型**：Bug 修复

@@ -41,6 +41,9 @@
         skillFanCount: 5,
         skillRingCount: 12,
         skillFanSpreadDeg: 60,
+        doubleColumnSep: 20,
+        focusDoubleColumnSep: 20,
+        skillDoubleColumnSep: 20,
         bulletPierceEnabled: false,
         bulletPierceHits: 3,
         focusBulletPierceEnabled: false,
@@ -111,9 +114,11 @@
         const sel = document.getElementById('stgPlayerEditEmitStyle');
         const v = sel ? sel.value : 'single';
         const rowSingle = document.getElementById('stgPlayerMainSingleRow');
+        const rowDouble = document.getElementById('stgPlayerMainDoubleColRow');
         const rowFan = document.getElementById('stgPlayerMainFanRow');
         const rowRing = document.getElementById('stgPlayerMainRingRow');
-        if (rowSingle) rowSingle.classList.toggle('hidden', v !== 'single');
+        if (rowSingle) rowSingle.classList.toggle('hidden', v !== 'single' && v !== 'double_column');
+        if (rowDouble) rowDouble.classList.toggle('hidden', v !== 'double_column');
         if (rowFan) rowFan.classList.toggle('hidden', v !== 'fan');
         if (rowRing) rowRing.classList.toggle('hidden', v !== 'ring');
     }
@@ -122,9 +127,11 @@
         const sel = document.getElementById('stgPlayerEditFocusEmitStyle');
         const v = sel ? sel.value : 'single';
         const rowSingle = document.getElementById('stgPlayerFocusSingleRow');
+        const rowDouble = document.getElementById('stgPlayerFocusDoubleColRow');
         const rowFan = document.getElementById('stgPlayerFocusFanRow');
         const rowRing = document.getElementById('stgPlayerFocusRingRow');
-        if (rowSingle) rowSingle.classList.toggle('hidden', v !== 'single');
+        if (rowSingle) rowSingle.classList.toggle('hidden', v !== 'single' && v !== 'double_column');
+        if (rowDouble) rowDouble.classList.toggle('hidden', v !== 'double_column');
         if (rowFan) rowFan.classList.toggle('hidden', v !== 'fan');
         if (rowRing) rowRing.classList.toggle('hidden', v !== 'ring');
     }
@@ -133,9 +140,11 @@
         const sel = document.getElementById('stgPlayerEditSkillEmitStyle');
         const v = sel ? sel.value : 'single';
         const rowSingle = document.getElementById('stgPlayerSkillSingleRow');
+        const rowDouble = document.getElementById('stgPlayerSkillDoubleColRow');
         const rowFan = document.getElementById('stgPlayerSkillFanRow');
         const rowRing = document.getElementById('stgPlayerSkillRingRow');
-        if (rowSingle) rowSingle.classList.toggle('hidden', v !== 'single');
+        if (rowSingle) rowSingle.classList.toggle('hidden', v !== 'single' && v !== 'double_column');
+        if (rowDouble) rowDouble.classList.toggle('hidden', v !== 'double_column');
         if (rowFan) rowFan.classList.toggle('hidden', v !== 'fan');
         if (rowRing) rowRing.classList.toggle('hidden', v !== 'ring');
     }
@@ -221,11 +230,12 @@
 
         const mainStyle = strVal(cfg, 'emitStyle', DEFAULTS.emitStyle);
         const ms = document.getElementById('stgPlayerEditEmitStyle');
-        if (ms) ms.value = ['single', 'fan', 'ring'].indexOf(mainStyle) >= 0 ? mainStyle : 'single';
+        if (ms) ms.value = ['single', 'fan', 'ring', 'double_column'].indexOf(mainStyle) >= 0 ? mainStyle : 'single';
         setNum('stgPlayerEditSingleCount', Math.round(val(cfg, 'singleCount', DEFAULTS.singleCount)));
         setNum('stgPlayerEditFanCount', Math.round(val(cfg, 'fanCount', DEFAULTS.fanCount)));
         setNum('stgPlayerEditRingCount', Math.round(val(cfg, 'ringCount', DEFAULTS.ringCount)));
         setNum('stgPlayerEditFanSpread', Math.round(val(cfg, 'fanSpreadDeg', DEFAULTS.fanSpreadDeg)));
+        setNum('stgPlayerEditDoubleColumnSep', Math.round(val(cfg, 'doubleColumnSep', DEFAULTS.doubleColumnSep)));
 
         const mainPierce = cfg && (cfg.bulletPierceEnabled === true || cfg.bulletPierce === true);
         const mainPierceEl = document.getElementById('stgPlayerEditBulletPierce');
@@ -257,7 +267,7 @@
         );
         const fStyle = strVal(cfg, 'focusEmitStyle', strVal(cfg, 'emitStyle', DEFAULTS.focusEmitStyle));
         const fs = document.getElementById('stgPlayerEditFocusEmitStyle');
-        if (fs) fs.value = ['single', 'fan', 'ring'].indexOf(fStyle) >= 0 ? fStyle : 'single';
+        if (fs) fs.value = ['single', 'fan', 'ring', 'double_column'].indexOf(fStyle) >= 0 ? fStyle : 'single';
         setNum(
             'stgPlayerEditFocusSingleCount',
             Math.round(val(cfg, 'focusSingleCount', val(cfg, 'singleCount', DEFAULTS.focusSingleCount)))
@@ -273,6 +283,10 @@
         setNum(
             'stgPlayerEditFocusFanSpread',
             Math.round(val(cfg, 'focusFanSpreadDeg', val(cfg, 'fanSpreadDeg', DEFAULTS.focusFanSpreadDeg)))
+        );
+        setNum(
+            'stgPlayerEditFocusDoubleColumnSep',
+            Math.round(val(cfg, 'focusDoubleColumnSep', val(cfg, 'doubleColumnSep', DEFAULTS.focusDoubleColumnSep)))
         );
 
         const fPierce = cfg && (cfg.focusBulletPierceEnabled === true || cfg.focusBulletPierce === true);
@@ -314,11 +328,12 @@
 
         const sk = strVal(cfg, 'skillEmitStyle', DEFAULTS.skillEmitStyle);
         const ss = document.getElementById('stgPlayerEditSkillEmitStyle');
-        if (ss) ss.value = ['single', 'fan', 'ring'].indexOf(sk) >= 0 ? sk : 'single';
+        if (ss) ss.value = ['single', 'fan', 'ring', 'double_column'].indexOf(sk) >= 0 ? sk : 'single';
         setNum('stgPlayerEditSkillSingleCount', Math.round(val(cfg, 'skillSingleCount', DEFAULTS.skillSingleCount)));
         setNum('stgPlayerEditSkillFanCount', Math.round(val(cfg, 'skillFanCount', DEFAULTS.skillFanCount)));
         setNum('stgPlayerEditSkillRingCount', Math.round(val(cfg, 'skillRingCount', DEFAULTS.skillRingCount)));
         setNum('stgPlayerEditSkillFanSpread', Math.round(val(cfg, 'skillFanSpreadDeg', DEFAULTS.skillFanSpreadDeg)));
+        setNum('stgPlayerEditSkillDoubleColumnSep', Math.round(val(cfg, 'skillDoubleColumnSep', DEFAULTS.skillDoubleColumnSep)));
 
         const sPierce = cfg && (cfg.skillBulletPierceEnabled === true || cfg.skillBulletPierce === true);
         const sPierceEl = document.getElementById('stgPlayerEditSkillBulletPierce');
@@ -395,20 +410,22 @@
             bulletVisualShape: gShape('stgPlayerEditBulletVisual'),
             fireIntervalMs: gi('stgPlayerEditFireInterval', 40, 400, DEFAULTS.fireIntervalMs),
             bulletSpeed: gi('stgPlayerEditBulletSpeed', 120, 900, DEFAULTS.bulletSpeed),
-            emitStyle: style === 'fan' || style === 'ring' ? style : 'single',
+            emitStyle: style === 'fan' || style === 'ring' || style === 'double_column' ? style : 'single',
             singleCount: gi('stgPlayerEditSingleCount', 1, 5, DEFAULTS.singleCount),
             fanCount: gi('stgPlayerEditFanCount', 2, 24, DEFAULTS.fanCount),
             ringCount: gi('stgPlayerEditRingCount', 3, 36, DEFAULTS.ringCount),
             fanSpreadDeg: gi('stgPlayerEditFanSpread', 10, 180, DEFAULTS.fanSpreadDeg),
+            doubleColumnSep: gf('stgPlayerEditDoubleColumnSep', 8, 56, DEFAULTS.doubleColumnSep),
             bulletPierceEnabled: gCheck('stgPlayerEditBulletPierce'),
             bulletPierceHits: gi('stgPlayerEditBulletPierceHits', 2, 20, DEFAULTS.bulletPierceHits),
             focusFireIntervalMs: gi('stgPlayerEditFocusFireInterval', 40, 400, DEFAULTS.focusFireIntervalMs),
             focusBulletSpeed: gi('stgPlayerEditFocusBulletSpeed', 120, 900, DEFAULTS.focusBulletSpeed),
-            focusEmitStyle: fStyle === 'fan' || fStyle === 'ring' ? fStyle : 'single',
+            focusEmitStyle: fStyle === 'fan' || fStyle === 'ring' || fStyle === 'double_column' ? fStyle : 'single',
             focusSingleCount: gi('stgPlayerEditFocusSingleCount', 1, 5, DEFAULTS.focusSingleCount),
             focusFanCount: gi('stgPlayerEditFocusFanCount', 2, 24, DEFAULTS.focusFanCount),
             focusRingCount: gi('stgPlayerEditFocusRingCount', 3, 36, DEFAULTS.focusRingCount),
             focusFanSpreadDeg: gi('stgPlayerEditFocusFanSpread', 10, 180, DEFAULTS.focusFanSpreadDeg),
+            focusDoubleColumnSep: gf('stgPlayerEditFocusDoubleColumnSep', 8, 56, DEFAULTS.focusDoubleColumnSep),
             focusBulletPierceEnabled: gCheck('stgPlayerEditFocusBulletPierce'),
             focusBulletPierceHits: gi('stgPlayerEditFocusBulletPierceHits', 2, 20, DEFAULTS.focusBulletPierceHits),
             focusWeaponAttack: gWeaponAtk('stgPlayerEditFocusAttack', DEFAULTS.focusWeaponAttack),
@@ -420,11 +437,12 @@
             skillFireIntervalMs: gi('stgPlayerEditSkillFireIv', 40, 400, DEFAULTS.skillFireIntervalMs),
             skillCooldownMs: gi('stgPlayerEditSkillCooldown', 0, 60000, DEFAULTS.skillCooldownMs),
             skillBulletSpeed: gi('stgPlayerEditSkillBulletSpeed', 120, 900, DEFAULTS.skillBulletSpeed),
-            skillEmitStyle: skStyle === 'fan' || skStyle === 'ring' ? skStyle : 'single',
+            skillEmitStyle: skStyle === 'fan' || skStyle === 'ring' || skStyle === 'double_column' ? skStyle : 'single',
             skillSingleCount: gi('stgPlayerEditSkillSingleCount', 1, 5, DEFAULTS.skillSingleCount),
             skillFanCount: gi('stgPlayerEditSkillFanCount', 2, 24, DEFAULTS.skillFanCount),
             skillRingCount: gi('stgPlayerEditSkillRingCount', 3, 36, DEFAULTS.skillRingCount),
             skillFanSpreadDeg: gi('stgPlayerEditSkillFanSpread', 10, 180, DEFAULTS.skillFanSpreadDeg),
+            skillDoubleColumnSep: gf('stgPlayerEditSkillDoubleColumnSep', 8, 56, DEFAULTS.skillDoubleColumnSep),
             skillBulletPierceEnabled: gCheck('stgPlayerEditSkillBulletPierce'),
             skillBulletPierceHits: gi('stgPlayerEditSkillBulletPierceHits', 2, 20, DEFAULTS.skillBulletPierceHits),
             ultInitialCharges: gi('stgPlayerEditUltInitialCharges', 0, 5, DEFAULTS.ultInitialCharges),

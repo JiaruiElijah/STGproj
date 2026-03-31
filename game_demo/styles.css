@@ -3890,6 +3890,15 @@ body {
     border: 1px solid #aac;
     font-size: 13px;
 }
+.stg-formation-hp-label .stg-formation-upgrade-moments-input {
+    flex: 1;
+    min-width: 200px;
+    max-width: 100%;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid #aac;
+    font-size: 13px;
+}
 .stg-formation-boards-wrap {
     display: flex;
     flex-wrap: wrap;
@@ -4210,7 +4219,7 @@ body {
 }
 /** 升级三选一：与棋盘同宽；紧凑单行三卡；全屏遮罩上加强阴影 */
 #stgUpgradeOverlay .stg-upgrade-panel-inner {
-    max-width: min(920px, 100%);
+    max-width: min(1100px, 100%);
     margin-left: auto;
     margin-right: auto;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.22);
@@ -4236,7 +4245,7 @@ body {
 /** 始终一行三列；窄屏由 minmax(0,1fr) 均分，文案在卡内换行 */
 #stgUpgradeOverlay .stg-upgrade-cards {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
     align-items: stretch;
 }
@@ -4446,4 +4455,70 @@ body {
     font-size: 12px;
     color: #7f8c8d;
     text-align: center;
+}
+
+/* 敌弹贴图编辑器 */
+#stgTextureEditorPanel.wave-config-panel .wave-config-panel-inner.stg-texture-editor-inner {
+    max-width: min(720px, 96vw);
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+}
+.stg-texture-global-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: #2c3e50;
+    cursor: pointer;
+}
+.stg-texture-global-row input {
+    margin-top: 3px;
+}
+.stg-texture-editor-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+.stg-texture-editor-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 8px 12px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(44, 62, 80, 0.12);
+}
+.stg-texture-editor-title {
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 14px;
+}
+.stg-texture-editor-actions {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+.stg-texture-filename-input {
+    flex: 1;
+    min-width: 140px;
+    padding: 6px 8px;
+    border: 1px solid #bdc3c7;
+    border-radius: 4px;
+    font-size: 13px;
+}
+.stg-tex-preview {
+    grid-column: 1 / -1;
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 4px;
+    border: 1px solid rgba(44, 62, 80, 0.15);
+}
+.stg-tex-preview.stg-tex-preview--empty {
+    opacity: 0.35;
 }

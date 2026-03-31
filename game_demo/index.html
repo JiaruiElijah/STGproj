@@ -8,15 +8,17 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <title>STG 纵版射击</title>
     <!-- ?v= 用于破坏浏览器缓存；修改 JS/CSS 后请改版本号否则可能一直用旧文件。若界面未更新请 Ctrl+F5 强刷。 -->
-    <link rel="stylesheet" href="styles.css?v=20260331q">
+    <link rel="stylesheet" href="styles.css?v=20260402a">
 </head>
 <body>
     <!-- STG 纵版射击（默认首页） -->
     <div id="stgPage" class="page active">
         <div class="stg-container">
             <div class="stg-toolbar">
+                <button type="button" class="open-shop-btn" id="stgOpenChapterEditorBtn" title="设置总章节数">📑 章节设置</button>
                 <button type="button" class="open-shop-btn" id="stgOpenWaveFormationBtn" title="波次与阵型（唯一配置入口）">📋 波次阵型</button>
                 <button type="button" class="open-shop-btn" id="stgOpenMonsterEditorBtn" title="编辑敌人种类与 STG 弹幕">👹 怪物编辑器</button>
+                <button type="button" class="open-shop-btn" id="stgOpenTextureEditorBtn" title="敌弹位图文件名与全局开关">🖼 敌弹贴图</button>
                 <button type="button" class="open-shop-btn" id="stgOpenHeroEditorBtn" title="英雄属性与物品栏数量">🦸 英雄编辑器</button>
                 <button type="button" class="open-shop-btn" id="stgOpenStgBuildInventoryBtn" title="勾选本局开局持有的局内升级（与三选一池同源）">🧰 局内构筑道具</button>
                 <button type="button" class="open-shop-btn" id="stgOpenPlayerEditorBtn" title="移动判定与武器参数（普通/慢速/大招）">🎮 玩家与武器编辑器</button>
@@ -101,7 +103,7 @@
                                 </button>
                             </div>
                         </div>
-                        <!-- 升级三选一：全屏居中遮罩，由 stgMode 在按 E 时打开；局内暂停 -->
+                        <!-- 升级时刻四选一：全屏居中遮罩，波次衔接时打开；局内暂停 -->
                         <div
                             id="stgUpgradeModalRoot"
                             class="stg-upgrade-modal-root hidden"
@@ -111,10 +113,10 @@
                             aria-labelledby="stgUpgradeTitle"
                         >
                             <div class="stg-upgrade-modal-backdrop" aria-hidden="true"></div>
-                            <div id="stgUpgradeOverlay" class="stg-upgrade-panel-dialog" aria-label="升级三选一">
+                            <div id="stgUpgradeOverlay" class="stg-upgrade-panel-dialog" aria-label="升级四选一">
                                 <div class="stg-upgrade-panel-inner">
                                     <div class="stg-upgrade-headline">
-                                        <h3 id="stgUpgradeTitle" class="stg-upgrade-panel-title">升级 — 三选一（博丽灵梦 · 构筑）</h3>
+                                        <h3 id="stgUpgradeTitle" class="stg-upgrade-panel-title">升级时刻 — 四选一（博丽灵梦 · 构筑）</h3>
                                         <p id="stgUpgradeSubHint" class="stg-upgrade-subhint" aria-live="polite"></p>
                                     </div>
                                     <div id="stgUpgradeCards" class="stg-upgrade-cards"></div>
@@ -127,7 +129,7 @@
                                 <span id="stgNextWaveText" class="stg-hud-item">下一波 —</span>
                                 <span id="stgTimeText" class="stg-hud-item">时间 —</span>
                             </div>
-                            <p id="stgHintBar" class="stg-hint-bar">方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（五格充能，<strong>充能点</strong>与<strong>擦弹</strong>小白球蓄能）默认「试做型封魔阵」；升级可抽 Q–V 分支强化（选 T 后改为梦想妙珠） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · 升级后右下提示，按 <strong>E</strong> 三选一（<strong>1/2/3</strong>，暂停）</p>
+                            <p id="stgHintBar" class="stg-hint-bar">方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（五格充能，<strong>充能点</strong>与<strong>擦弹</strong>小白球蓄能）默认「试做型封魔阵」；升级可抽 Q–V 分支强化（选 T 后改为梦想妙珠） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · <strong>波次阵型</strong>可配置「升级时刻」：在指定波结束后四选一（<strong>1～4</strong>，暂停）</p>
                         </div>
                     </div>
                 </div>
@@ -149,6 +151,12 @@
                 <p id="stgResultMsg" class="stg-result-msg"></p>
                 <button type="button" class="open-shop-btn stg-primary-btn stg-result-restart-btn" id="stgResultRestartBtn">🔄 重新开始</button>
                 <p class="stg-result-hint">也可点击顶栏「重新开始」</p>
+            </div>
+        </div>
+        <div id="stgChapterTransitionOverlay" class="stg-overlay hidden" aria-label="章节过渡">
+            <div class="stg-overlay-inner stg-chapter-transition-inner">
+                <h3 id="stgChapterTransitionTitle" class="stg-overlay-title">通过章节</h3>
+                <p id="stgChapterTransitionMsg" class="stg-result-msg"></p>
             </div>
         </div>
         <div id="stgPlayerEditorPanel" class="wave-config-panel hidden" aria-label="STG 玩家编辑器">
@@ -221,17 +229,21 @@
                     </label>
                     <label id="stgPlayerMainPierceHitsRow" class="stg-player-editor-label hidden">最多命中敌人数（含首次，2–20）<input type="number" id="stgPlayerEditBulletPierceHits" min="2" max="20" step="1" value="3" title="关闭穿透时忽略此项" /></label>
                     <details class="stg-player-editor-emit-details">
-                        <summary class="stg-player-editor-emit-summary">发射模式与弹道参数（单发 / 扇形 / 环形）</summary>
+                        <summary class="stg-player-editor-emit-summary">发射模式与弹道参数（单发 / 双列 / 扇形 / 环形）</summary>
                         <div class="stg-player-editor-emit-body">
                             <label class="stg-player-editor-label">发射模式
                                 <select id="stgPlayerEditEmitStyle">
                                     <option value="single">单发（竖直）</option>
+                                    <option value="double_column">双列（左右两列竖直）</option>
                                     <option value="fan">扇形</option>
                                     <option value="ring">环形</option>
                                 </select>
                             </label>
                             <div id="stgPlayerMainSingleRow" class="stg-player-editor-fields stg-player-editor-style-sub">
-                                <label class="stg-player-editor-label">子弹数量（单发并列，1–5）<input type="number" id="stgPlayerEditSingleCount" min="1" max="5" step="1" value="1" /></label>
+                                <label class="stg-player-editor-label">子弹数量（单发/双列时每列并列数，1–5）<input type="number" id="stgPlayerEditSingleCount" min="1" max="5" step="1" value="1" /></label>
+                            </div>
+                            <div id="stgPlayerMainDoubleColRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
+                                <label class="stg-player-editor-label">双列间距（两列中心距离，px，8–56）<input type="number" id="stgPlayerEditDoubleColumnSep" min="8" max="56" step="1" value="20" title="数值越大两列分得越开" /></label>
                             </div>
                             <div id="stgPlayerMainFanRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
                                 <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditFanCount" min="2" max="24" value="5" /></label>
@@ -266,17 +278,21 @@
                     </label>
                     <label id="stgPlayerFocusPierceHitsRow" class="stg-player-editor-label hidden">最多命中敌人数（含首次，2–20）<input type="number" id="stgPlayerEditFocusBulletPierceHits" min="2" max="20" step="1" value="3" /></label>
                     <details class="stg-player-editor-emit-details">
-                        <summary class="stg-player-editor-emit-summary">发射模式与弹道参数（单发 / 扇形 / 环形）</summary>
+                        <summary class="stg-player-editor-emit-summary">发射模式与弹道参数（单发 / 双列 / 扇形 / 环形）</summary>
                         <div class="stg-player-editor-emit-body">
                             <label class="stg-player-editor-label">发射模式
                                 <select id="stgPlayerEditFocusEmitStyle">
                                     <option value="single">单发（竖直）</option>
+                                    <option value="double_column">双列（左右两列竖直）</option>
                                     <option value="fan">扇形</option>
                                     <option value="ring">环形</option>
                                 </select>
                             </label>
                             <div id="stgPlayerFocusSingleRow" class="stg-player-editor-fields stg-player-editor-style-sub">
                                 <label class="stg-player-editor-label">子弹数量（1–5）<input type="number" id="stgPlayerEditFocusSingleCount" min="1" max="5" step="1" value="1" /></label>
+                            </div>
+                            <div id="stgPlayerFocusDoubleColRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
+                                <label class="stg-player-editor-label">双列间距（px，8–56）<input type="number" id="stgPlayerEditFocusDoubleColumnSep" min="8" max="56" step="1" value="20" /></label>
                             </div>
                             <div id="stgPlayerFocusFanRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
                                 <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditFocusFanCount" min="2" max="24" value="5" /></label>
@@ -314,17 +330,21 @@
                     </label>
                     <label id="stgPlayerSkillPierceHitsRow" class="stg-player-editor-label hidden">最多命中敌人数（含首次，2–20）<input type="number" id="stgPlayerEditSkillBulletPierceHits" min="2" max="20" step="1" value="3" /></label>
                     <details class="stg-player-editor-emit-details">
-                        <summary class="stg-player-editor-emit-summary">发射模式与弹道参数（单发 / 扇形 / 环形）</summary>
+                        <summary class="stg-player-editor-emit-summary">发射模式与弹道参数（单发 / 双列 / 扇形 / 环形）</summary>
                         <div class="stg-player-editor-emit-body">
                             <label class="stg-player-editor-label">发射模式
                                 <select id="stgPlayerEditSkillEmitStyle">
                                     <option value="single">单发（竖直）</option>
+                                    <option value="double_column">双列（左右两列竖直）</option>
                                     <option value="fan">扇形</option>
                                     <option value="ring">环形</option>
                                 </select>
                             </label>
                             <div id="stgPlayerSkillSingleRow" class="stg-player-editor-fields stg-player-editor-style-sub">
                                 <label class="stg-player-editor-label">子弹数量（1–5）<input type="number" id="stgPlayerEditSkillSingleCount" min="1" max="5" step="1" value="1" /></label>
+                            </div>
+                            <div id="stgPlayerSkillDoubleColRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
+                                <label class="stg-player-editor-label">双列间距（px，8–56）<input type="number" id="stgPlayerEditSkillDoubleColumnSep" min="8" max="56" step="1" value="20" /></label>
                             </div>
                             <div id="stgPlayerSkillFanRow" class="stg-player-editor-fields stg-player-editor-style-sub hidden">
                                 <label class="stg-player-editor-label">扇形发数（2–24）<input type="number" id="stgPlayerEditSkillFanCount" min="2" max="24" value="5" /></label>
@@ -499,6 +519,44 @@
         </div>
     </div>
 
+    <!-- 敌弹贴图编辑器（与怪物编辑器同存档，仅改 stgEnemyBulletSprite） -->
+    <div id="stgTextureEditorPanel" class="wave-config-panel hidden" aria-label="敌弹贴图编辑器">
+        <div class="wave-config-panel-inner stg-texture-editor-inner">
+            <div class="wave-config-header">
+                <h3>敌弹贴图编辑器</h3>
+                <button type="button" id="stgTextureEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+            </div>
+            <p class="wave-config-hint">与<strong>怪物编辑器</strong>共用本地存档 <code>tower_defense_enemy_types</code>。此处只改<strong>敌弹</strong>（敌人子弹）位图，<strong>不影响自机子弹</strong>。每种怪填写 <code>art_assets/bullets/</code> 下的<strong>文件名</strong>；选文件只会写入文件名，你必须把<strong>同名文件</strong>放到 <code>game_demo/art_assets/bullets/</code>（或上一级 <code>STGproj/art_assets/bullets/</code>）。点「应用并保存」后游戏会<strong>带版本参数重新加载</strong>，避免浏览器仍显示旧图。<strong>清除贴图</strong>或留空并应用后，该种类敌弹<strong>仅矢量</strong>。</p>
+            <label class="stg-texture-global-row">
+                <input type="checkbox" id="stgTextureGlobalDisableCb" />
+                <span>全局暂时不使用敌弹位图（全部敌弹仅矢量，便于调试）</span>
+            </label>
+            <div id="stgTextureEditorList" class="wave-config-list stg-texture-editor-list"></div>
+            <div class="wave-config-actions">
+                <button type="button" id="stgTextureEditorApplyBtn" class="open-shop-btn stg-primary-btn">应用并保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 章节数量设置（与波次阵型共用存档） -->
+    <div id="stgChapterEditorPanel" class="wave-config-panel hidden" aria-label="章节设置">
+        <div class="wave-config-panel-inner stg-formation-inner">
+            <div class="wave-config-header">
+                <h3>章节设置</h3>
+                <button type="button" id="stgChapterEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+            </div>
+            <p class="wave-config-hint">一局游戏按顺序通关各章；每章有独立的波次与「升级时刻」。增加章节时在末尾追加空章（进入波次阵型可编辑）；减少章节会删除<strong>末尾</strong>章节且不可恢复。</p>
+            <div class="stg-formation-toolbar">
+                <label class="stg-formation-label">章节总数（1～99）
+                    <input type="number" id="stgChapterEditorCountInput" class="stg-formation-num" min="1" max="99" step="1" value="1" />
+                </label>
+            </div>
+            <div class="wave-config-actions">
+                <button type="button" id="stgChapterEditorApplyBtn" class="open-shop-btn stg-primary-btn">应用</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 怪物编辑器弹窗 -->
     <div id="monsterEditorPanel" class="wave-config-panel hidden">
         <div class="wave-config-panel-inner">
@@ -526,7 +584,7 @@
                 <h3>波次阵型编辑器</h3>
                 <button type="button" id="stgWaveFormationCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
             </div>
-            <p class="wave-config-hint"><strong>种类与数量仅由下方格子决定</strong>。三块棋盘为主战场上/左/右延伸；<strong>左键按住拖动</strong>可连续摆放；<strong>右键</strong>擦除一格。同一格多只怪可写 <code>type1|type2</code>（需分次填入或导入）。用<strong>「在此波前/后插入」</strong>可在任意两波之间加入新波并自动选中新波编辑；选最后一波再点「之后插入」即末尾追加。「出兵间隔 / 灵力 / 下一波 / <strong>本波血量倍率</strong>」随当前波次变化；出怪顺序与格子遍历顺序一致（同类型合并为连续组）。旧存档仅有种类+数量时，会尝试摆到上棋盘以便编辑。</p>
+            <p class="wave-config-hint"><strong>种类与数量仅由下方格子决定</strong>。先选<strong>章节</strong>再编辑该章内的波次；多块棋盘为主战场上/左/右延伸；<strong>左键按住拖动</strong>可连续摆放；<strong>右键</strong>擦除一格。同一格多只怪可写 <code>type1|type2</code>（需分次填入或导入）。用<strong>「在此波前/后插入」</strong>可在任意两波之间加入新波并自动选中新波编辑；选最后一波再点「之后插入」即末尾追加。「出兵间隔 / 灵力 / 下一波 / <strong>本波血量倍率</strong>」随当前波次变化；出怪顺序与格子遍历顺序一致（同类型合并为连续组）。旧存档仅有种类+数量时，会尝试摆到上棋盘以便编辑。</p>
             <div class="stg-formation-hp-scale-block">
                 <div class="stg-formation-hp-scale-title">怪物血量倍率（按当前波次）</div>
                 <p class="stg-formation-hp-scale-hint">以<strong>怪物编辑器</strong>中该种类的血量为基准，在下方「当前波次」一行中设置<strong>本波敌人血量倍率</strong>（每一波可单独填写）。<strong>全局随波次自动增长公式已暂时禁用</strong>；旧档里若仍含「基础/线性/加速」系数，仅用于<strong>首次打开面板时</strong>把未写倍率的波次换算成数值，保存后即写入各波的 <code>enemyHpMult</code>。</p>
@@ -543,7 +601,18 @@
                     <label class="stg-formation-hp-label">停火行号（1=最上行下沿，空=不启用）<input type="number" id="stgFormationEnemyFireStopRow" class="stg-formation-num" min="1" max="21" step="1" placeholder="" title="与主棋盘行数一致；窗口变化时格高会变，行号不变则停火带始终对齐同一行" /></label>
                 </div>
             </div>
+            <div class="stg-formation-fire-stop-block">
+                <div class="stg-formation-hp-scale-title">升级时刻（局内四选一强化）</div>
+                <p class="stg-formation-hp-scale-hint">在<strong>当前章节内第 N 波结束后</strong>（进入下一波前）插入升级时刻。此前因经验累计升了几级，就会连续进行几轮「四选一」。多个波次用逗号分隔，如 <code>1,3,5</code>。<strong>留空并保存</strong>表示本章不在波次衔接插入升级时刻；若该章从未写过此项，游戏内仍默认在第 1 波结束后插入一次。</p>
+                <div class="stg-formation-hp-scale-inputs">
+                    <label class="stg-formation-hp-label">第几波结束后触发（逗号分隔，可多个）<input type="text" id="stgFormationUpgradeMomentsInput" class="stg-formation-upgrade-moments-input" maxlength="120" placeholder="例如 1,2 或留空" autocomplete="off" /></label>
+                    <label class="stg-formation-hp-label">选完升级后延迟出怪（秒，0～60，默认 2）<input type="number" id="stgFormationPostUpgradeSpawnDelaySec" class="stg-formation-num" min="0" max="60" step="0.1" value="2" title="四选一全部选完后，再等待此秒数才刷下一波敌人" /></label>
+                </div>
+            </div>
             <div class="stg-formation-toolbar">
+                <label class="stg-formation-label">当前章节
+                    <select id="stgFormationChapterSelect" class="stg-formation-select" title="切换章节前会自动保存当前章到内存"></select>
+                </label>
                 <label class="stg-formation-label">当前波次
                     <select id="stgFormationWaveSelect" class="stg-formation-select"></select>
                 </label>
@@ -592,15 +661,16 @@
     </div>
 
     <script src="pageManager.js?v=20260329z"></script>
-    <script src="stgUiI18n.js?v=20260331q"></script>
-    <script src="stgMode.js?v=20260331v"></script>
+    <script src="stgUiI18n.js?v=20260402c"></script>
+    <script src="stgMode.js?v=20260402d"></script>
     <script src="stgBuildInventoryPanel.js?v=20260331o"></script>
-    <script src="stgPlayerEditorPanel.js?v=20260331l"></script>
+    <script src="stgPlayerEditorPanel.js?v=20260402b"></script>
     <script src="stgScenePropsEditorPanel.js?v=20260329z"></script>
-    <script src="stgWaveFormationPanel.js?v=20260331f"></script>
-    <script src="monsterEditorPanel.js?v=20260331u"></script>
+    <script src="stgWaveFormationPanel.js?v=20260327a"></script>
+    <script src="stgTextureEditorPanel.js?v=20260402d"></script>
+    <script src="monsterEditorPanel.js?v=20260402d"></script>
     <script src="heroEditorPanel.js?v=20260329z"></script>
-    <script src="game.js?v=20260331q"></script>
+    <script src="game.js?v=20260402c"></script>
     <!-- Debug 工具栏：固定定位，不参与文档流，不影响游戏布局 -->
     <div id="debugToolbar" class="debug-toolbar">
         <span class="debug-toolbar-label">Debug</span>

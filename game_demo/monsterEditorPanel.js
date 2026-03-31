@@ -168,6 +168,10 @@
         } catch (e) {
             console.warn('保存怪物配置到本地失败', e);
         }
+        /** STG 敌弹贴图：与贴图编辑器同档，应用后须刷新位图缓存（含 URL 版本防浏览器缓存旧图） */
+        if (window.StgMode && typeof window.StgMode.reloadEnemyBulletSpritesFromStorage === 'function') {
+            window.StgMode.reloadEnemyBulletSpritesFromStorage();
+        }
         if (game && game.enemyManager) {
             game.enemyManager.setEnemyTypes(types);
         }
@@ -208,6 +212,7 @@
             const stgHomingInp = row.querySelector('.monster-stg-homing');
             const stgBulletRInp = row.querySelector('.monster-stg-bullet-r');
             const stgBulletShapeSel = row.querySelector('.monster-stg-bullet-shape');
+            const stgBulletSpriteInp = row.querySelector('.monster-stg-bullet-sprite');
             const stgEmitWhenSel = row.querySelector('.monster-stg-emit-when');
             const stgMoveModeSel = row.querySelector('.monster-stg-move-mode');
             const stgMoveAngle = row.querySelector('.monster-stg-move-angle');
@@ -282,6 +287,12 @@
                 stgEnemyBulletRadius: Math.max(2, Math.min(28, parseInt(stgBulletRInp && stgBulletRInp.value, 10) || 5)),
                 stgEnemyBulletShape:
                     stgBulletShapeSel && stgBulletShapeSel.value === 'triangle' ? 'triangle' : 'circle',
+                stgEnemyBulletSprite: (() => {
+                    const t = stgBulletSpriteInp && stgBulletSpriteInp.value ? stgBulletSpriteInp.value.trim() : '';
+                    if (!t) return '';
+                    const base = t.replace(/^.*[/\\]/, '');
+                    return /^[\w.-]+$/i.test(base) ? base : '';
+                })(),
                 stgEmitWhen: stgEmitWhenSel && stgEmitWhenSel.value === 'on_death' ? 'on_death' : 'cooldown',
                 stgMoveMode:
                     stgMoveModeSel &&
@@ -333,7 +344,7 @@
             stgEmitStyle: 'single', stgFanCount: 5, stgFanSpreadDeg: 60, stgRingCount: 12, stgLaserLength: 300, stgLaserWidth: 14, stgLaserDurationMs: 450,
             stgBulletKind: 'normal', stgSplitDelaySec: 0, stgSplitCount: 4, stgSplitStyle: 'cross',
             stgSplitChildSpeed: 220, stgHomingStrength: 0, stgEmitWhen: 'cooldown',
-            stgEnemyBulletRadius: 5, stgEnemyBulletShape: 'circle',
+            stgEnemyBulletRadius: 5, stgEnemyBulletShape: 'circle', stgEnemyBulletSprite: '',
             stgMoveMode: 'homing_legacy', stgMoveStraightAngleDeg: 0,
             stgAnchorXNorm: 0.5, stgAnchorYNorm: 0.45,
             stgLockTargetYNorm: 0.45, stgLockTargetXNorm: 0.5,
@@ -353,6 +364,9 @@
         const splitCnt = d.stgSplitCount != null ? d.stgSplitCount : 4;
         const moveMode = moveModeFromData(d);
         const bulletShape = d.stgEnemyBulletShape === 'triangle' ? 'triangle' : 'circle';
+        const bulletSpriteDisp = String(d.stgEnemyBulletSprite != null ? d.stgEnemyBulletSprite : '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;');
         const lockTy = d.stgLockTargetYNorm != null ? d.stgLockTargetYNorm : 0.45;
         const lockTx = d.stgLockTargetXNorm != null ? d.stgLockTargetXNorm : 0.5;
         const showLockPanel = moveMode === 'lock_y' || moveMode === 'lock_x';
@@ -632,6 +646,10 @@
                             <option value="circle" ${bulletShape === 'triangle' ? '' : 'selected'}>圆形</option>
                             <option value="triangle" ${bulletShape === 'triangle' ? 'selected' : ''}>三角形</option>
                         </select>
+                    </div>
+                    <div class="monster-stg-row">
+                        <label>敌弹贴图</label>
+                        <input type="text" class="monster-stg-bullet-sprite" placeholder="enemy_round_red.jpg" value="${bulletSpriteDisp}" title="仅圆形弹；文件名相对 art_assets/bullets/；留空=矢量填充">
                     </div>
                 </div>
             </div>

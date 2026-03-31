@@ -1889,6 +1889,41 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (window.StgWaveFormationPanel && typeof window.StgWaveFormationPanel.init === 'function') {
         window.StgWaveFormationPanel.init();
     }
+    (function initStgChapterEditorPanel() {
+        const panel = document.getElementById('stgChapterEditorPanel');
+        const inp = document.getElementById('stgChapterEditorCountInput');
+        const closeBtn = document.getElementById('stgChapterEditorCloseBtn');
+        const applyBtn = document.getElementById('stgChapterEditorApplyBtn');
+        const openBtn = document.getElementById('stgOpenChapterEditorBtn');
+        function open() {
+            if (inp && window.StgWaveFormationPanel && typeof window.StgWaveFormationPanel.syncChapterEditorInput === 'function') {
+                window.StgWaveFormationPanel.syncChapterEditorInput(inp);
+            }
+            if (panel) panel.classList.remove('hidden');
+        }
+        function close() {
+            if (panel) panel.classList.add('hidden');
+        }
+        if (openBtn) openBtn.addEventListener('click', open);
+        if (closeBtn) closeBtn.addEventListener('click', close);
+        if (panel) {
+            panel.addEventListener('click', (e) => {
+                if (e.target === panel) close();
+            });
+        }
+        if (applyBtn) {
+            applyBtn.addEventListener('click', () => {
+                const n = inp ? parseInt(String(inp.value), 10) : 1;
+                if (window.StgWaveFormationPanel && typeof window.StgWaveFormationPanel.setChapterCount === 'function') {
+                    const ok = window.StgWaveFormationPanel.setChapterCount(n, false);
+                    if (ok !== false) close();
+                }
+            });
+        }
+    })();
+    if (window.StgTextureEditorPanel && typeof window.StgTextureEditorPanel.init === 'function') {
+        window.StgTextureEditorPanel.init();
+    }
     applyStgPlayerAsideCollapsed(readStgPlayerAsideCollapsed());
     refreshStgPlayerStatsPanel();
 
@@ -1912,6 +1947,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         stgMonBtn.addEventListener('click', () => {
             if (window.MonsterEditorPanel && typeof window.MonsterEditorPanel.open === 'function') {
                 window.MonsterEditorPanel.open();
+            }
+        });
+    }
+    const stgTexBtn = document.getElementById('stgOpenTextureEditorBtn');
+    if (stgTexBtn) {
+        stgTexBtn.addEventListener('click', () => {
+            if (window.StgTextureEditorPanel && typeof window.StgTextureEditorPanel.open === 'function') {
+                window.StgTextureEditorPanel.open();
             }
         });
     }

@@ -1,5 +1,5 @@
 /**
- * STG 纵版射击模式（棋盘格竖屏、玩家移动 + Z 连射 + 波次 + P 点经验 + 三选一强化）
+ * STG 纵版射击模式（棋盘格竖屏、玩家移动 + Z 连射 + 波次 + P 点经验 + 波次「升级时刻」四选一强化）
  * 共用：波次 localStorage、怪物编辑器存档、英雄数值（物品池 + gameState.inventory 中英雄数量）
  */
 (function () {
@@ -25,6 +25,112 @@
     const STG_BUILD_INV_KEY = 'stg_build_inventory_granted';
     /** 穿透弹需避免对同一敌人重复结算：每实例唯一 id */
     let stgEnemyInstanceSeq = 0;
+    /**
+     * 敌弹贴图路径候选（相对当前页面 URL 解析）：
+     * 1) 与 index 同目录的 art_assets（适合静态站根目录=game_demo）
+     * 2) 上一级 art_assets（适合仓库根 STGproj 起服、或本机直接打开子路径）
+     * 仅填文件名；禁止用绝对盘符路径。
+     * 附带 query 版本号，避免浏览器对同一路径强缓存导致「换了图仍显示旧图」。
+     */
+    let stgEnemyBulletSpriteCacheBust = Date.now();
+
+    function getStgEnemyBulletSpriteUrlCandidates(key) {
+        const safe = sanitizeStgEnemyBulletSpriteName(key);
+        if (!safe) return [];
+        const relParts = ['art_assets/bullets/', '../art_assets/bullets/'];
+        const q = '?v=' + encodeURIComponent(String(stgEnemyBulletSpriteCacheBust));
+        const out = [];
+        for (let i = 0; i < relParts.length; i++) {
+            try {
+                out.push(new URL(relParts[i] + encodeURIComponent(safe) + q, window.location.href).href);
+            } catch (e) {
+                /* 忽略 */
+            }
+        }
+        return out;
+    }
+
+    /** @type {Record<string, { img: HTMLImageElement; failed: boolean; urlIdx: number }>} */
+    let stgEnemyBulletSpriteCache = {};
+
+    /** 贴图编辑器「全局暂不使用敌弹位图」：仅矢量绘制（忽略子弹上的 sprite 与默认 jpg） */
+    let stgEnemyBulletTextureGloballyDisabled = false;
+    const STG_ENEMY_BULLET_TEXTURE_DISABLED_KEY = 'stg_enemy_bullet_texture_disabled';
+
+    function loadEnemyBulletTextureGloballyDisabledFromStorage() {
+        try {
+            stgEnemyBulletTextureGloballyDisabled = localStorage.getItem(STG_ENEMY_BULLET_TEXTURE_DISABLED_KEY) === '1';
+        } catch (e) {
+            stgEnemyBulletTextureGloballyDisabled = false;
+        }
+    }
+
+    function sanitizeStgEnemyBulletSpriteName(s) {
+        const t = String(s).trim();
+        if (!t) return '';
+        const base = t.replace(/^.*[/\\]/, '');
+        return /^[\w.-]+$/i.test(base) ? base : '';
+    }
+
+    /**
+     * 异步加载并缓存；首帧可能尚未 decode，绘制时未就绪则回退矢量圆
+     */
+    function getStgEnemyBulletSpriteImage(filename) {
+        const key = sanitizeStgEnemyBulletSpriteName(filename);
+        if (!key) return null;
+        let entry = stgEnemyBulletSpriteCache[key];
+        if (entry && entry.failed) return null;
+        if (!entry) {
+            const urls = getStgEnemyBulletSpriteUrlCandidates(key);
+            if (urls.length === 0) {
+                stgEnemyBulletSpriteCache[key] = { img: new Image(), failed: true, urlIdx: 0 };
+                return null;
+            }
+            const img = new Image();
+            entry = { img, failed: false, urlIdx: 0 };
+            stgEnemyBulletSpriteCache[key] = entry;
+            img.onload = () => {
+                if (typeof img.decode === 'function') {
+                    img.decode().catch(() => {});
+                }
+                console.log('[STG] 敌弹贴图已加载', key, urls[entry.urlIdx] || '');
+            };
+            img.onerror = () => {
+                entry.urlIdx++;
+                if (entry.urlIdx >= urls.length) {
+                    entry.failed = true;
+                    console.warn('[STG] 敌弹贴图全部路径加载失败（请确认文件在 art_assets/bullets 且静态服务根目录含上级目录，或把 art_assets 拷到 game_demo 下）', key, urls);
+                    return;
+                }
+                img.src = urls[entry.urlIdx];
+            };
+            img.src = urls[0];
+        }
+        const im = entry.img;
+        /** 部分环境下 decode 完成前 naturalWidth 仍为 0，仍应允许 drawImage 尝试 */
+        return im.complete ? im : null;
+    }
+
+    /** 根据当前怪物种类表预加载可能用到的敌弹贴图 */
+    function preloadStgEnemyBulletSpritesFromTypes() {
+        const map = getEnemyTypeMap();
+        Object.keys(map).forEach((id) => {
+            const fn = map[id] && map[id].stgEnemyBulletSprite;
+            if (fn) getStgEnemyBulletSpriteImage(String(fn));
+        });
+    }
+
+    /** 新局或编辑器保存后：更新 URL 版本、清空 JS 内 Image 缓存并预加载（避免浏览器仍用旧位图） */
+    function clearStgEnemyBulletSpriteCacheAndBumpBust() {
+        stgEnemyBulletSpriteCacheBust = Date.now();
+        stgEnemyBulletSpriteCache = {};
+    }
+
+    /** 贴图/怪物编辑器保存后：强制按当前种类表重新拉取位图 */
+    function reloadEnemyBulletSpritesFromStorage() {
+        clearStgEnemyBulletSpriteCacheAndBumpBust();
+        preloadStgEnemyBulletSpritesFromTypes();
+    }
     /** 避免每帧读盘：应用编辑器或新开局时清空 */
     let scenePropsCache = null;
     /** 按住 Shift 慢速模式：在 bonusMoveMult 之后再乘此系数（可被玩家编辑器 focusMoveMult 覆盖） */
@@ -636,7 +742,12 @@
             const v = Number(cfg.bulletSpeed);
             if (Number.isFinite(v)) p.bulletSpeed = Math.max(120, Math.min(900, v));
         }
-        if (cfg.emitStyle === 'single' || cfg.emitStyle === 'fan' || cfg.emitStyle === 'ring') {
+        if (
+            cfg.emitStyle === 'single' ||
+            cfg.emitStyle === 'fan' ||
+            cfg.emitStyle === 'ring' ||
+            cfg.emitStyle === 'double_column'
+        ) {
             p.emitStyle = cfg.emitStyle;
         } else {
             delete p.emitStyle;
@@ -664,6 +775,12 @@
             if (Number.isFinite(n)) p.fanSpreadDeg = Math.max(10, Math.min(180, n));
         } else {
             delete p.fanSpreadDeg;
+        }
+        if (cfg.doubleColumnSep != null) {
+            const s = Number(cfg.doubleColumnSep);
+            if (Number.isFinite(s)) p.doubleColumnSep = Math.max(8, Math.min(56, s));
+        } else {
+            delete p.doubleColumnSep;
         }
         if (cfg.mainWeaponAttack != null) {
             const a = Number(cfg.mainWeaponAttack);
@@ -707,7 +824,12 @@
         } else {
             delete p.focusBulletSpeed;
         }
-        if (cfg.focusEmitStyle === 'single' || cfg.focusEmitStyle === 'fan' || cfg.focusEmitStyle === 'ring') {
+        if (
+            cfg.focusEmitStyle === 'single' ||
+            cfg.focusEmitStyle === 'fan' ||
+            cfg.focusEmitStyle === 'ring' ||
+            cfg.focusEmitStyle === 'double_column'
+        ) {
             p.focusEmitStyle = cfg.focusEmitStyle;
         } else {
             delete p.focusEmitStyle;
@@ -735,6 +857,12 @@
             if (Number.isFinite(n)) p.focusFanSpreadDeg = Math.max(10, Math.min(180, n));
         } else {
             delete p.focusFanSpreadDeg;
+        }
+        if (cfg.focusDoubleColumnSep != null) {
+            const s = Number(cfg.focusDoubleColumnSep);
+            if (Number.isFinite(s)) p.focusDoubleColumnSep = Math.max(8, Math.min(56, s));
+        } else {
+            delete p.focusDoubleColumnSep;
         }
         if (cfg.focusBulletRadius != null) {
             const r = Number(cfg.focusBulletRadius);
@@ -769,7 +897,12 @@
         } else {
             delete p.skillBulletSpeed;
         }
-        if (cfg.skillEmitStyle === 'single' || cfg.skillEmitStyle === 'fan' || cfg.skillEmitStyle === 'ring') {
+        if (
+            cfg.skillEmitStyle === 'single' ||
+            cfg.skillEmitStyle === 'fan' ||
+            cfg.skillEmitStyle === 'ring' ||
+            cfg.skillEmitStyle === 'double_column'
+        ) {
             p.skillEmitStyle = cfg.skillEmitStyle;
         } else {
             delete p.skillEmitStyle;
@@ -797,6 +930,12 @@
             if (Number.isFinite(n)) p.skillFanSpreadDeg = Math.max(10, Math.min(180, n));
         } else {
             delete p.skillFanSpreadDeg;
+        }
+        if (cfg.skillDoubleColumnSep != null) {
+            const s = Number(cfg.skillDoubleColumnSep);
+            if (Number.isFinite(s)) p.skillDoubleColumnSep = Math.max(8, Math.min(56, s));
+        } else {
+            delete p.skillDoubleColumnSep;
         }
         if (cfg.skillBulletRadius != null) {
             const r = Number(cfg.skillBulletRadius);
@@ -1000,12 +1139,21 @@
         ShiftRight: false
     };
 
-    /** 游戏阶段：title | playing | levelup（三选一，暂停局内）| dead | win */
+    /** 游戏阶段：title | playing | levelup（升级时刻四选一，暂停局内）| dead | win */
     let phase = 'title';
-    /** 三选一全屏弹层是否打开 */
+    /** 升级时刻全屏弹层是否打开 */
     let stgUpgradePickOpen = false;
-    /** 已升级但未打开弹层：棋盘右下提示，按 E 或点击打开 */
-    let stgUpgradePending = false;
+    /** 自上次升级时刻结算以来，因经验累计升了多少级（波次衔接时一轮 4 选一次） */
+    let stgLevelUpsBanked = 0;
+    /** 当前波次衔接因升级时刻而延后：选完所有轮后才 waveIndex++ */
+    let stgPendingWaveAdvanceAfterUpgradeMoment = false;
+    /** 升级四选一全部选完后，延迟到该时刻再执行 advanceStgWaveIndexAndSpawnNext（毫秒；null=未等待） */
+    let stgPostUpgradeAdvanceAtMs = null;
+    /** 默认：升级选完后隔几秒再出下一波（可被波次存档 `postUpgradeSpawnDelaySec` 覆盖） */
+    const STG_DEFAULT_POST_UPGRADE_SPAWN_DELAY_SEC = 2;
+    /** 本轮升级时刻剩余几轮 4 选一 */
+    let stgUpgradeMomentRoundsLeft = 0;
+    let stgUpgradeMomentRoundTotal = 0;
 
     /** @type {Array<{x:number,y:number,vx:number,vy:number,dmg:number,alive:boolean}>} */
     let playerBullets = [];
@@ -1062,6 +1210,14 @@
     /** @type {{waves:Array}} */
     let waveData = { waves: [] };
     let waveIndex = 0;
+    /** 完整波次包：多章节；与存档 chapters 对应，用于章节衔接与 HUD */
+    let stgWavePackRoot = null;
+    /** 当前章节下标（0 起） */
+    let stgChapterIndex = 0;
+    /** 章节过渡全屏层结束时刻（performance.now） */
+    let stgChapterTransitionEndMs = null;
+    /** 通过章节后全屏提示停留时长（毫秒） */
+    const STG_CHAPTER_TRANSITION_MS = 4000;
     /** 结算层是否通关，供切换语言时重刷文案 */
     let lastShowResultWin = null;
     /** 无阵型时：扁平 type 列表，按 spawnIntervalMs 每节拍 1 只 */
@@ -1236,11 +1392,11 @@
     /** 梦想妙珠：向上移动，大范围消弹 + 接触伤害；可选眩晕 */
     let stgDreamOrbs = [];
 
-    /** 升级候选（三选一） */
+    /** 升级候选（升级时刻：四选一，每轮洗牌后取至多 4 条） */
     let upgradeChoices = [];
 
     /**
-     * 【局内升级三选一】唯一随机源：prepareLevelUpChoices() 对本数组洗牌后取 3 条（见 isStgUpgradeEligible）。
+     * 【局内升级】唯一随机源：prepareLevelUpChoices4() 对本数组洗牌后取至多 4 条（见 isStgUpgradeEligible）。
      * 文案与《STG所有道具/新玩法--STG模式》一致：道具A–V + 基础道具1–7、9、10；仅 group=stat 影响右侧「属性加成」。
      * 试做型封魔阵为默认大招（按 X），不在本池；大招池仅含 Q–S / T–V 分支强化。
      * 与 obj_list/enhance_items.json（局外 meta）无关。
@@ -1506,11 +1662,17 @@
                 Math.min(28, typeDef.stgEnemyBulletRadius != null ? Number(typeDef.stgEnemyBulletRadius) : 5)
             );
             this.stgEnemyBulletShape = typeDef.stgEnemyBulletShape === 'triangle' ? 'triangle' : 'circle';
+            /** 非空且贴图加载成功时绘制位图；仅圆形弹使用 */
+            this.stgEnemyBulletSprite = sanitizeStgEnemyBulletSpriteName(
+                typeDef.stgEnemyBulletSprite != null ? String(typeDef.stgEnemyBulletSprite) : ''
+            );
             this.icon = typeDef.icon || '👹';
             this.color = typeDef.color || '#e74c3c';
             this.alive = true;
             /** 是否已计入本波「已消灭」（击杀或有效边界离场），防止重复计数 */
             this.stgWaveCounted = false;
+            /** 生成时的全局 waveIndex（0 起）；用于跨波时拒绝把上一波敌计入下一波 resolved */
+            this.stgSpawnWaveIndex = -1;
             /** 阵型来源边：'top' | 'left' | 'right'，用于离场边界是否算「清除」 */
             this.stgSpawnEdge = 'top';
             /** 曾与画布区域有重叠：未成立前不因「在生成侧外」而剔除，避免上/左/右出生点首帧被误判离场 */
@@ -1945,6 +2107,10 @@
             splitStyle: o.splitStyle === 'cross' ? 'cross' : 'cross',
             /** 0~100，每帧向玩家方向扭转速度（见 update 内跟踪逻辑） */
             homingStr: o.homingStr != null ? o.homingStr : 0,
+            /** 非空则尝试用 art_assets/bullets 下位图绘制 */
+            sprite: o.sprite != null && String(o.sprite).trim() !== '' ? sanitizeStgEnemyBulletSpriteName(String(o.sprite)) : '',
+            /** 绘制时若 sprite 丢失可回退到 getEnemyTypeMap()[typeId].stgEnemyBulletSprite */
+            typeId: o.typeId != null && String(o.typeId).trim() !== '' ? String(o.typeId) : 'normal',
             /** 每颗敌弹仅可触发一次擦弹 */
             _stgGrazed: false
         });
@@ -2006,7 +2172,21 @@
         const hom = e.stgHomingStrength != null ? Math.max(0, Math.min(100, e.stgHomingStrength)) : 0;
         const bulletR = e.stgEnemyBulletRadius != null ? e.stgEnemyBulletRadius : 5;
         const bulletShape = e.stgEnemyBulletShape === 'triangle' ? 'triangle' : 'circle';
-        const bulletExtra = { radius: bulletR, shape: bulletShape };
+        /** 贴图以种类表为准（与实例字段双保险），避免存档/旧实例上 stgEnemyBulletSprite 未带上 */
+        const typesMapEmit = getEnemyTypeMap();
+        const tidEmit = e.typeId != null && String(e.typeId).trim() !== '' ? String(e.typeId) : 'normal';
+        const defEmit = typesMapEmit[tidEmit] || typesMapEmit.normal;
+        const spFromMap =
+            defEmit && defEmit.stgEnemyBulletSprite != null && String(defEmit.stgEnemyBulletSprite).trim() !== ''
+                ? String(defEmit.stgEnemyBulletSprite)
+                : '';
+        const spFromInst = e.stgEnemyBulletSprite != null && String(e.stgEnemyBulletSprite).trim() !== '' ? String(e.stgEnemyBulletSprite) : '';
+        const spMerged = spFromMap || spFromInst;
+        const bulletExtra = { radius: bulletR, shape: bulletShape, typeId: tidEmit };
+        if (spMerged) {
+            const sn = sanitizeStgEnemyBulletSpriteName(spMerged);
+            if (sn) bulletExtra.sprite = sn;
+        }
         const lifeHalves = resolveStgBulletLifeDamageHalvesFromEnemy(e);
 
         if (style === 'laser') {
@@ -2277,8 +2457,18 @@
             result: document.getElementById('stgResultOverlay'),
             resultTitle: document.getElementById('stgResultTitle'),
             resultMsg: document.getElementById('stgResultMsg'),
+            chapterTransition: document.getElementById('stgChapterTransitionOverlay'),
+            chapterTransitionTitle: document.getElementById('stgChapterTransitionTitle'),
+            chapterTransitionMsg: document.getElementById('stgChapterTransitionMsg'),
             hintBar: document.getElementById('stgHintBar')
         };
+    }
+
+    function hideStgChapterTransitionOverlay() {
+        const h = getHudElements();
+        if (h.chapterTransition) {
+            h.chapterTransition.classList.add('hidden');
+        }
     }
 
     /**
@@ -2306,6 +2496,8 @@
                 stgArcBulge2: 80,
                 stgEnemyBulletRadius: 5,
                 stgEnemyBulletShape: 'circle',
+                /** 默认使用 art_assets/bullets 下贴图；怪物编辑器可清空改回矢量圆 */
+                stgEnemyBulletSprite: 'enemy_round_red.jpg',
                 stgBurstCount: 1,
                 stgBurstIntervalMs: 100,
                 stgBurstSpeedMode: 'average',
@@ -2331,6 +2523,7 @@
                 stgArcBulge2: 80,
                 stgEnemyBulletRadius: 5,
                 stgEnemyBulletShape: 'circle',
+                stgEnemyBulletSprite: '',
                 stgBurstCount: 1,
                 stgBurstIntervalMs: 100,
                 stgBurstSpeedMode: 'average',
@@ -2356,6 +2549,7 @@
                 stgArcBulge2: 80,
                 stgEnemyBulletRadius: 5,
                 stgEnemyBulletShape: 'circle',
+                stgEnemyBulletSprite: '',
                 stgBurstCount: 1,
                 stgBurstIntervalMs: 100,
                 stgBurstSpeedMode: 'average',
@@ -2394,6 +2588,7 @@
                 stgArcBulge2: 80,
                 stgEnemyBulletRadius: 5,
                 stgEnemyBulletShape: 'circle',
+                stgEnemyBulletSprite: '',
                 stgBurstCount: 1,
                 stgBurstIntervalMs: 100,
                 stgBurstSpeedMode: 'average',
@@ -2495,6 +2690,17 @@
                         : b.stgEnemyBulletShape === 'triangle'
                           ? 'triangle'
                           : 'circle',
+                stgEnemyBulletSprite: (() => {
+                    /** 存档里显式写空串：仅矢量，不回退到内置 enemy_round_red.jpg（与贴图编辑器「清除贴图」一致） */
+                    if (s.stgEnemyBulletSprite !== undefined && s.stgEnemyBulletSprite !== null) {
+                        const raw = String(s.stgEnemyBulletSprite);
+                        if (raw.trim() === '') return '';
+                        const sn = sanitizeStgEnemyBulletSpriteName(raw);
+                        if (sn) return sn;
+                    }
+                    const fb = b.stgEnemyBulletSprite != null ? String(b.stgEnemyBulletSprite) : '';
+                    return sanitizeStgEnemyBulletSpriteName(fb);
+                })(),
                 /** 击杀额外掉落充能点（怪物编辑器）；此前合并遗漏会导致勾选永远不生效 */
                 stgDropChargePickup: !!s.stgDropChargePickup,
                 stgChargeDropMult:
@@ -2591,6 +2797,85 @@
     }
 
     /**
+     * 将磁盘 JSON 归一化为运行时用的 root（多章）；每章 waves 已套 legacy 血量补全。
+     */
+    function normalizeStoredWavePackToRoot(d) {
+        if (!d || typeof d !== 'object') return null;
+        const hpNorm = normalizeWaveDataEnemyHpScale(d.enemyHpScale);
+        const fireRow = normalizeWaveDataEnemyFireStopRow(d.enemyFireStopRow);
+        const mkChapter = (wavesIn, um) => ({
+            waves: attachLegacyEnemyHpMultIfMissing(Array.isArray(wavesIn) ? wavesIn : [], hpNorm),
+            upgradeMomentsAfterWave: um
+        });
+        const pud =
+            d.postUpgradeSpawnDelaySec != null && Number.isFinite(Number(d.postUpgradeSpawnDelaySec))
+                ? Math.max(0, Math.min(60, Number(d.postUpgradeSpawnDelaySec)))
+                : undefined;
+        if (Array.isArray(d.chapters) && d.chapters.length > 0) {
+            const chapters = d.chapters.map((ch) => mkChapter(ch && ch.waves, ch && ch.upgradeMomentsAfterWave));
+            return {
+                chapters,
+                enemyHpScale: hpNorm,
+                enemyFireStopRow: fireRow,
+                enemyFireStopLineY: d.enemyFireStopLineY,
+                postUpgradeSpawnDelaySec: pud
+            };
+        }
+        if (Array.isArray(d.waves) && d.waves.length > 0) {
+            return {
+                chapters: [mkChapter(d.waves, d.upgradeMomentsAfterWave)],
+                enemyHpScale: hpNorm,
+                enemyFireStopRow: fireRow,
+                enemyFireStopLineY: d.enemyFireStopLineY,
+                postUpgradeSpawnDelaySec: pud
+            };
+        }
+        return null;
+    }
+
+    function waveDataSliceFromRoot(root, chIdx) {
+        const ch = root.chapters[chIdx];
+        if (!ch) return null;
+        const o = {
+            waves: ch.waves,
+            enemyHpScale: root.enemyHpScale,
+            enemyFireStopRow: normalizeWaveDataEnemyFireStopRow(root.enemyFireStopRow)
+        };
+        if (root.enemyFireStopLineY != null && Number.isFinite(Number(root.enemyFireStopLineY))) {
+            o.enemyFireStopLineY = Number(root.enemyFireStopLineY);
+        }
+        const um = ch.upgradeMomentsAfterWave;
+        if (um !== undefined && um !== null) {
+            o.upgradeMomentsAfterWave = Array.isArray(um)
+                ? um.map((x) => parseInt(Number(x), 10)).filter((n) => Number.isFinite(n))
+                : null;
+        }
+        if (root.postUpgradeSpawnDelaySec != null && Number.isFinite(Number(root.postUpgradeSpawnDelaySec))) {
+            o.postUpgradeSpawnDelaySec = Math.max(0, Math.min(60, Number(root.postUpgradeSpawnDelaySec)));
+        }
+        return o;
+    }
+
+    /** 单章 waveData 写入 root（用于旧档/默认仅 pack 了一章时） */
+    function assignRootFromSingleWaveData(wd) {
+        if (!wd || !wd.waves) return;
+        stgWavePackRoot = {
+            chapters: [{
+                waves: wd.waves,
+                upgradeMomentsAfterWave: wd.upgradeMomentsAfterWave
+            }],
+            enemyHpScale: wd.enemyHpScale,
+            enemyFireStopRow: wd.enemyFireStopRow,
+            enemyFireStopLineY: wd.enemyFireStopLineY,
+            postUpgradeSpawnDelaySec:
+                wd.postUpgradeSpawnDelaySec != null && Number.isFinite(Number(wd.postUpgradeSpawnDelaySec))
+                    ? Math.max(0, Math.min(60, Number(wd.postUpgradeSpawnDelaySec)))
+                    : undefined
+        };
+        stgChapterIndex = 0;
+    }
+
+    /**
      * 异步加载波次：与塔防共用 tower_defense_wave_config
      */
     function loadWaves() {
@@ -2605,7 +2890,7 @@
                     stgFormation: null
                 }
             ];
-            const pack = (waves, enemyHpScale, enemyFireStopRow, enemyFireStopLineYLegacy) => {
+            const pack = (waves, enemyHpScale, enemyFireStopRow, enemyFireStopLineYLegacy, upgradeMomentsAfterWave, postUpgradeSpawnDelaySec) => {
                 const hpNorm = normalizeWaveDataEnemyHpScale(enemyHpScale);
                 const o = {
                     waves: attachLegacyEnemyHpMultIfMissing(waves, hpNorm),
@@ -2616,15 +2901,27 @@
                     /** 仅旧档兼容，运行时优先用 enemyFireStopRow */
                     o.enemyFireStopLineY = Number(enemyFireStopLineYLegacy);
                 }
+                if (upgradeMomentsAfterWave !== undefined && upgradeMomentsAfterWave !== null) {
+                    o.upgradeMomentsAfterWave = Array.isArray(upgradeMomentsAfterWave)
+                        ? upgradeMomentsAfterWave.map((x) => parseInt(Number(x), 10)).filter((n) => Number.isFinite(n))
+                        : null;
+                }
+                if (postUpgradeSpawnDelaySec != null && Number.isFinite(Number(postUpgradeSpawnDelaySec))) {
+                    o.postUpgradeSpawnDelaySec = Math.max(0, Math.min(60, Number(postUpgradeSpawnDelaySec)));
+                }
                 return o;
             };
             try {
                 const raw = localStorage.getItem(WAVE_STORAGE_KEY);
                 if (raw) {
                     const d = JSON.parse(raw);
-                    if (d && Array.isArray(d.waves) && d.waves.length > 0) {
-                        console.log('[STG] 已自本地加载波次，共', d.waves.length, '波');
-                        resolve(pack(d.waves, d.enemyHpScale, d.enemyFireStopRow, d.enemyFireStopLineY));
+                    const root = normalizeStoredWavePackToRoot(d);
+                    if (root && root.chapters.length > 0) {
+                        stgWavePackRoot = root;
+                        stgChapterIndex = 0;
+                        const wd = waveDataSliceFromRoot(root, 0);
+                        console.log('[STG] 已自本地加载波次包，共', root.chapters.length, '章；第 1 章', wd.waves.length, '波');
+                        resolve(wd);
                         return;
                     }
                 }
@@ -2634,20 +2931,55 @@
             fetch('waveConfig.json?' + Date.now())
                 .then((r) => (r.ok ? r.json() : null))
                 .then((data) => {
+                    if (data && Array.isArray(data.chapters) && data.chapters.length > 0) {
+                        const migrated = {
+                            ...data,
+                            chapters: data.chapters.map((ch) => ({
+                                ...ch,
+                                waves:
+                                    window.StgWaveFormationPanel &&
+                                    typeof window.StgWaveFormationPanel.migrateWaveForRuntime === 'function'
+                                        ? (ch.waves || []).map((w) => window.StgWaveFormationPanel.migrateWaveForRuntime(w))
+                                        : ch.waves || []
+                            }))
+                        };
+                        const root = normalizeStoredWavePackToRoot(migrated);
+                        if (root && root.chapters.length > 0) {
+                            stgWavePackRoot = root;
+                            stgChapterIndex = 0;
+                            const wd = waveDataSliceFromRoot(root, 0);
+                            console.log('[STG] 已加载 waveConfig.json，', root.chapters.length, '章');
+                            resolve(wd);
+                            return;
+                        }
+                    }
                     if (data && Array.isArray(data.waves)) {
                         const waves =
                             window.StgWaveFormationPanel &&
                             typeof window.StgWaveFormationPanel.migrateWaveForRuntime === 'function'
                                 ? data.waves.map((w) => window.StgWaveFormationPanel.migrateWaveForRuntime(w))
                                 : data.waves;
-                        console.log('[STG] 已加载 waveConfig.json，共', waves.length, '波');
-                        resolve(pack(waves, data.enemyHpScale, data.enemyFireStopRow, data.enemyFireStopLineY));
+                        console.log('[STG] 已加载 waveConfig.json，共', waves.length, '波（单章）');
+                        const wd = pack(
+                            waves,
+                            data.enemyHpScale,
+                            data.enemyFireStopRow,
+                            data.enemyFireStopLineY,
+                            data.upgradeMomentsAfterWave,
+                            data.postUpgradeSpawnDelaySec
+                        );
+                        assignRootFromSingleWaveData(wd);
+                        resolve(wd);
                     } else {
-                        resolve(pack(fallbackWaves, DEFAULT_ENEMY_HP_SCALE, null, null));
+                        const wd = pack(fallbackWaves, DEFAULT_ENEMY_HP_SCALE, null, null, null, null);
+                        assignRootFromSingleWaveData(wd);
+                        resolve(wd);
                     }
                 })
                 .catch(() => {
-                    resolve(pack(fallbackWaves, DEFAULT_ENEMY_HP_SCALE, null, null));
+                    const wd = pack(fallbackWaves, DEFAULT_ENEMY_HP_SCALE, null, null, null, null);
+                    assignRootFromSingleWaveData(wd);
+                    resolve(wd);
                 });
         });
     }
@@ -2848,20 +3180,43 @@
 
     function markStgWaveEnemyResolved(e) {
         if (!e || e.stgWaveCounted) return;
+        /** 仅统计「本波」生成敌；避免倒计时提前开波后上一波残敌死亡计入下一波 resolved */
+        if (e.stgSpawnWaveIndex != null && (e.stgSpawnWaveIndex | 0) !== (waveIndex | 0)) return;
         e.stgWaveCounted = true;
         stgWaveResolvedCount++;
+    }
+
+    /**
+     * 下一波/升级/结算前：出兵队列空、场上无敌人、本波登记数已齐（与 checkStgWaveAllCleared 一致）
+     * @returns {boolean}
+     */
+    function canStgAdvanceWaveNow() {
+        if (getSpawnPendingCount() > 0) return false;
+        if (enemies.length > 0) return false;
+        if (stgWaveSpawnTotal > 0 && stgWaveResolvedCount < stgWaveSpawnTotal) return false;
+        return true;
+    }
+
+    /** 升级选完后延迟出波秒数：波次存档优先，否则默认 2s */
+    function getStgPostUpgradeSpawnDelaySec() {
+        const raw = waveData && waveData.postUpgradeSpawnDelaySec;
+        const n = raw != null ? Number(raw) : STG_DEFAULT_POST_UPGRADE_SPAWN_DELAY_SEC;
+        if (!Number.isFinite(n)) return STG_DEFAULT_POST_UPGRADE_SPAWN_DELAY_SEC;
+        return Math.max(0, Math.min(60, n));
     }
 
     /**
      * 本波登记敌全部消灭（击杀或有效边界离场）且仍有下一波时，立即开波（不等到倒计时）。
      */
     function checkStgWaveAllClearedAndAdvance() {
+        if (phase !== 'playing') return;
         const waves = waveData.waves || [];
         if (waves.length === 0) return;
-        if (waveIndex >= waves.length - 1) return;
         if (stgWaveSpawnTotal <= 0) return;
         if (stgWaveResolvedCount < stgWaveSpawnTotal) return;
         if (getSpawnPendingCount() > 0) return;
+        /** 与 resolved 一致：场上必须已无敌（防跨波计数错位） */
+        if (enemies.length > 0) return;
         console.log('[STG] 本波敌人已全部消灭或从有效边界离场，提前开始下一波');
         tryStgAutoStartNextWave();
     }
@@ -2891,15 +3246,40 @@
     }
 
     /**
-     * 与 towerDefense.tryAutoStartNextWave 一致：上一波出兵队列未清空则延后
+     * 波次阵型中配置的「升级时刻」：在第 N 波（1 起算）结束后触发。
+     * 存档缺省字段时视为 [1]；显式空数组 [] 表示本局不在波次衔接插入升级时刻（经验仍累计银行）。
+     */
+    function getStgUpgradeMomentsAfterWaveNormalized() {
+        const waves = waveData && waveData.waves ? waveData.waves : [];
+        const maxW = Math.max(1, waves.length);
+        const raw = waveData && waveData.upgradeMomentsAfterWave;
+        if (raw === undefined || raw === null) {
+            return [1];
+        }
+        if (!Array.isArray(raw)) {
+            return [1];
+        }
+        if (raw.length === 0) {
+            return [];
+        }
+        const out = [];
+        for (let i = 0; i < raw.length; i++) {
+            const n = parseInt(Number(raw[i]), 10);
+            if (Number.isFinite(n) && n >= 1 && n <= maxW) {
+                out.push(n);
+            }
+        }
+        const uniq = [...new Set(out)];
+        uniq.sort((a, b) => a - b);
+        return uniq;
+    }
+
+    /**
+     * waveIndex+1 并应用下一波阵型与出兵计时（与塔防 tryAutoStartNextWave 核心一致）
      * @returns {boolean}
      */
-    function tryStgAutoStartNextWave() {
+    function advanceStgWaveIndexAndSpawnNext() {
         const waves = waveData.waves || [];
-        if (getSpawnPendingCount() > 0) {
-            console.log('[STG] 上一波仍在按间隔出兵，延后自动下一波');
-            return false;
-        }
         if (waveIndex >= waves.length - 1) {
             interWaveCountEnd = null;
             return false;
@@ -2921,6 +3301,134 @@
         scheduleStgNextWaveTimerAfterCurrentWaveStarted();
         console.log('[STG] 自动开始第', waveIndex + 1, '波，待出', getSpawnPendingCount());
         return true;
+    }
+
+    /**
+     * 本波结束后：进入下一波，或本章节已结束则进入章节过渡/全关通关。
+     * @returns {boolean}
+     */
+    function tryStgAdvanceWaveOrFinishChapter() {
+        const waves = waveData.waves || [];
+        if (waveIndex >= waves.length - 1) {
+            interWaveCountEnd = null;
+            beginStgChapterTransitionOrWin();
+            return false;
+        }
+        return advanceStgWaveIndexAndSpawnNext();
+    }
+
+    /** 最后一章打完：通关；否则全屏提示后进入下一章第一波 */
+    function beginStgChapterTransitionOrWin() {
+        /** 升级时刻选完后 phase 仍为 levelup，须允许衔接章节 */
+        if (phase !== 'playing' && phase !== 'levelup') return;
+        interWaveCountEnd = null;
+        stgPostUpgradeAdvanceAtMs = null;
+        const pack = stgWavePackRoot && stgWavePackRoot.chapters;
+        const chCount = pack && Array.isArray(pack) ? pack.length : 1;
+        if (stgChapterIndex < chCount - 1) {
+            const h = getHudElements();
+            if (h.chapterTransitionTitle) {
+                h.chapterTransitionTitle.textContent = stgUiT('chapter.passTitle', { passed: stgChapterIndex + 1 });
+            }
+            if (h.chapterTransitionMsg) {
+                h.chapterTransitionMsg.textContent = stgUiT('chapter.passMsg', { next: stgChapterIndex + 2 });
+            }
+            if (h.chapterTransition) {
+                h.chapterTransition.classList.remove('hidden');
+            }
+            phase = 'chapter_transition';
+            stgChapterTransitionEndMs = performance.now() + STG_CHAPTER_TRANSITION_MS;
+            console.log('[STG] 章节', stgChapterIndex + 1, '完成，', STG_CHAPTER_TRANSITION_MS, 'ms 后进入下一章');
+            return;
+        }
+        phase = 'win';
+        showResult(true);
+        isRunning = false;
+        interWaveCountEnd = null;
+        console.log('[STG] 通关：全部章节已完成');
+    }
+
+    /** 章节过渡层关闭后：保留自机与成长，清空战场并开下一章第一波 */
+    function finishStgChapterTransitionAndStartNext() {
+        hideStgChapterTransitionOverlay();
+        stgChapterTransitionEndMs = null;
+        stgPostUpgradeAdvanceAtMs = null;
+        stgChapterIndex++;
+        if (!stgWavePackRoot || !stgWavePackRoot.chapters || !stgWavePackRoot.chapters[stgChapterIndex]) {
+            phase = 'win';
+            showResult(true);
+            isRunning = false;
+            return;
+        }
+        waveData = waveDataSliceFromRoot(stgWavePackRoot, stgChapterIndex);
+        waveIndex = 0;
+        playerBullets.length = 0;
+        enemies.length = 0;
+        enemyBullets.length = 0;
+        enemyLasers.length = 0;
+        pickups.length = 0;
+        stgGrazeOrbs.length = 0;
+        stgGrazeRangeFlashes.length = 0;
+        spawnQueueLegacy = [];
+        spawnAccMs = 0;
+        interWaveCountEnd = null;
+        spawnSlotUsage.clear();
+        stgSealField = null;
+        stgDreamOrbs.length = 0;
+        const w0 = waveData.waves && waveData.waves[0];
+        if (w0) {
+            spawnIntervalMs = w0.spawnInterval != null ? w0.spawnInterval : 400;
+            applyWaveFlattenResult(flattenWaveToQueue(w0));
+        } else {
+            spawnIntervalMs = 400;
+        }
+        spawnAccMs = spawnIntervalMs;
+        scheduleStgNextWaveTimerAfterCurrentWaveStarted();
+        phase = 'playing';
+        invalidateScenePropsCache();
+        updateHud();
+        console.log('[STG] 已进入第', stgChapterIndex + 1, '章，第 1 波待出', getSpawnPendingCount());
+    }
+
+    /**
+     * 与 towerDefense.tryAutoStartNextWave 一致：上一波出兵队列未清空则延后。
+     * 若本波结束落在「升级时刻」配置中：先消耗银行等级次数的 4 选一，再进入下一波或下一章。
+     * @returns {boolean}
+     */
+    function tryStgAutoStartNextWave() {
+        const waves = waveData.waves || [];
+        if (getSpawnPendingCount() > 0) {
+            console.log('[STG] 上一波仍在按间隔出兵，延后自动下一波');
+            return false;
+        }
+        if (stgPendingWaveAdvanceAfterUpgradeMoment) {
+            return false;
+        }
+        /** 升级选完后延迟出波尚未到时，禁止其它路径抢先进波 */
+        if (stgPostUpgradeAdvanceAtMs != null) {
+            return false;
+        }
+        /** 必须清完本波登记敌且场上无敌，才允许进入升级时刻或下一波（修复倒计时提前开波导致跨波计数错乱） */
+        if (!canStgAdvanceWaveNow()) {
+            return false;
+        }
+        const completedWave1Based = waveIndex + 1;
+        const moments = getStgUpgradeMomentsAfterWaveNormalized();
+        if (moments.indexOf(completedWave1Based) >= 0) {
+            interWaveCountEnd = null;
+            const rounds = stgLevelUpsBanked;
+            stgLevelUpsBanked = 0;
+            stgUpgradeMomentRoundTotal = Math.max(0, rounds);
+            stgUpgradeMomentRoundsLeft = Math.max(0, rounds);
+            if (rounds <= 0) {
+                return tryStgAdvanceWaveOrFinishChapter();
+            }
+            stgPendingWaveAdvanceAfterUpgradeMoment = true;
+            prepareLevelUpChoices4();
+            openStgUpgradeModal();
+            return true;
+        }
+        return tryStgAdvanceWaveOrFinishChapter();
     }
 
     /**
@@ -3442,6 +3950,40 @@
             trySpreadExtraAndYinyang();
             return;
         }
+        /** 双列：左右两列各一组「单发并列」竖直弹，列间距可配置（px） */
+        if (style === 'double_column') {
+            const n = Math.max(1, Math.min(5, nSingle));
+            const gap = 10;
+            let sep = 20;
+            if (isSkill) {
+                sep =
+                    p.skillDoubleColumnSep != null && Number.isFinite(Number(p.skillDoubleColumnSep))
+                        ? Math.max(8, Math.min(56, Number(p.skillDoubleColumnSep)))
+                        : 20;
+            } else if (useFocusMain) {
+                sep =
+                    p.focusDoubleColumnSep != null && Number.isFinite(Number(p.focusDoubleColumnSep))
+                        ? Math.max(8, Math.min(56, Number(p.focusDoubleColumnSep)))
+                        : 20;
+            } else {
+                sep =
+                    p.doubleColumnSep != null && Number.isFinite(Number(p.doubleColumnSep))
+                        ? Math.max(8, Math.min(56, Number(p.doubleColumnSep)))
+                        : 20;
+            }
+            const half = sep * 0.5;
+            const leftCx = px - half;
+            const rightCx = px + half;
+            for (let col = 0; col < 2; col++) {
+                const cx = col === 0 ? leftCx : rightCx;
+                for (let i = 0; i < n; i++) {
+                    const ox = (i - (n - 1) * 0.5) * gap;
+                    pushBullet(cx + ox, py, 0, -spd, {});
+                }
+            }
+            trySpreadExtraAndYinyang();
+            return;
+        }
         if (style === 'fan') {
             const n = Math.max(2, Math.min(24, nFan));
             const spread = (spreadDeg * Math.PI) / 180;
@@ -3792,7 +4334,11 @@
         stgFocusBranch = null;
         stgUltBranch = null;
         stgUpgradePickOpen = false;
-        stgUpgradePending = false;
+        stgLevelUpsBanked = 0;
+        stgPendingWaveAdvanceAfterUpgradeMoment = false;
+        stgPostUpgradeAdvanceAtMs = null;
+        stgUpgradeMomentRoundsLeft = 0;
+        stgUpgradeMomentRoundTotal = 0;
         upgradeChoices = [];
         {
             const root = document.getElementById('stgUpgradeModalRoot');
@@ -3845,6 +4391,9 @@
             '只'
         );
         refreshStgAttackBuildPanel();
+        /** 每局开局刷新贴图版本，避免仅替换磁盘同名文件仍走浏览器 HTTP 缓存 */
+        clearStgEnemyBulletSpriteCacheAndBumpBust();
+        preloadStgEnemyBulletSpritesFromTypes();
     }
 
     function startGame() {
@@ -3855,6 +4404,11 @@
             }
             waveData.enemyHpScale = normalizeWaveDataEnemyHpScale(waveData.enemyHpScale);
             waveData.enemyFireStopRow = normalizeWaveDataEnemyFireStopRow(waveData.enemyFireStopRow);
+            if (!stgWavePackRoot) {
+                assignRootFromSingleWaveData(waveData);
+            }
+            stgChapterIndex = 0;
+            hideStgChapterTransitionOverlay();
             resetRun();
             isRunning = true;
             isPaused = false;
@@ -3874,7 +4428,7 @@
         if (dt > 80) dt = 80;
         lastFrameTime = now;
 
-        if (phase === 'playing') {
+        if (phase === 'playing' || phase === 'chapter_transition') {
             update(dt);
         }
         draw();
@@ -3933,6 +4487,7 @@
         x += ox;
         y += oy;
         const en = new StgEnemy(x, y, def, pattern, typeId, col);
+        en.stgSpawnWaveIndex = waveIndex | 0;
         en.stgSpawnEdge = edge === 'left' || edge === 'right' || edge === 'top' ? edge : 'top';
         /** 波次阵型：按当前波配置的 enemyHpMult 抬血（waveIndex 从 0 起，第 1 波为 0） */
         const hpMult = getStgEnemyHpMultiplierForWaveIndex(waveIndex);
@@ -3943,6 +4498,21 @@
 
     function update(dt) {
         if (!canvas || !player) return;
+        /** 章节过渡：仅计时，不跑局内逻辑 */
+        if (phase === 'chapter_transition') {
+            if (performance.now() >= stgChapterTransitionEndMs) {
+                finishStgChapterTransitionAndStartNext();
+            }
+            return;
+        }
+        /** 升级四选一选完后延迟再出下一波 */
+        if (stgPostUpgradeAdvanceAtMs != null && performance.now() >= stgPostUpgradeAdvanceAtMs) {
+            stgPostUpgradeAdvanceAtMs = null;
+            const ok = advanceStgWaveIndexAndSpawnNext();
+            if (!ok) {
+                beginStgChapterTransitionOrWin();
+            }
+        }
         const dtSec = dt * 0.001;
         const typesMap = getEnemyTypeMap();
         const cw = canvas.width;
@@ -4140,13 +4710,16 @@
             }
         }
 
-        /** --- 出兵与自动下一波（与 towerDefense：本波开始起算 nextWaveDelaySec，不等待清怪） --- */
+        /** --- 出兵与自动下一波：倒计时到点后仅当本波已净空才衔接；否则短间隔重试（与清怪一致） --- */
         const waves = waveData.waves || [];
         if (interWaveCountEnd != null && performance.now() >= interWaveCountEnd) {
             if (waveIndex >= waves.length - 1) {
                 interWaveCountEnd = null;
             } else {
-                tryStgAutoStartNextWave();
+                const progressed = tryStgAutoStartNextWave();
+                if (!progressed) {
+                    interWaveCountEnd = performance.now() + 400;
+                }
             }
         }
 
@@ -4157,12 +4730,14 @@
                 const raw = spawnQueueLegacy.shift();
                 spawnEnemyFromRaw(raw, typesMap, null);
             }
-        } else if (enemies.length === 0 && getSpawnPendingCount() === 0 && waveIndex >= waves.length - 1) {
-            phase = 'win';
-            showResult(true);
-            isRunning = false;
-            interWaveCountEnd = null;
-            console.log('[STG] 通关：最后一波已清空');
+        } else if (
+            phase === 'playing' &&
+            enemies.length === 0 &&
+            getSpawnPendingCount() === 0 &&
+            waveIndex >= waves.length - 1
+        ) {
+            /** 最后一波净空：衔接升级时刻 / 下一章 / 通关（见 tryStgAutoStartNextWave） */
+            tryStgAutoStartNextWave();
         }
 
         /** 全局停火几何线 Y（由阵型「停火行号」× 当前格高 得到；null=仅要求先入场） */
@@ -4395,7 +4970,9 @@
                         splitChildSpeed: sp,
                         homingStr: b.homingStr != null ? b.homingStr : 0,
                         radius: b.radius != null ? b.radius : 5,
-                        shape: b.shape === 'triangle' ? 'triangle' : 'circle'
+                        shape: b.shape === 'triangle' ? 'triangle' : 'circle',
+                        sprite: b.sprite ? b.sprite : '',
+                        typeId: b.typeId != null && String(b.typeId).trim() !== '' ? String(b.typeId) : 'normal'
                     });
                 }
                 continue;
@@ -4719,14 +5296,11 @@
                     pickups.splice(i, 1);
                     console.log('[STG] 拾取 P点，经验', exp, '/', expToNext);
                     while (exp >= expToNext) {
-                        if (stgUpgradePending && upgradeChoices.length > 0) {
-                            forceRandomStgUpgradePick();
-                        }
                         exp -= expToNext;
                         level++;
                         expToNext = computeExpToNextForLevel(level);
-                        prepareLevelUpChoices();
-                        return;
+                        /** 经验升级不再即时三选一，累计到「升级时刻」按次数连续 4 选一 */
+                        stgLevelUpsBanked++;
                     }
                 }
             } else if (p.y > ch + 30) {
@@ -4740,41 +5314,68 @@
     }
 
     /**
-     * 确认三选一选择：与点击卡牌、快捷键 1/2/3、叠级强制随机共用。
+     * 确认四选一选择：与点击卡牌、快捷键 1～4 共用；一轮升级时刻内可能连续多轮。
      */
     function finalizeStgUpgradePick(u) {
         if (!player || !u) return;
         applyStgUpgradePick(u);
         if (typeof u.apply === 'function') u.apply(player);
         console.log('[STG] 选择强化:', u.id, u.name, 'focusBranch=', stgFocusBranch, 'ultBranch=', stgUltBranch);
+
+        stgUpgradeMomentRoundsLeft--;
+        if (stgUpgradeMomentRoundsLeft > 0) {
+            prepareLevelUpChoices4();
+            const h = getHudElements();
+            if (h.upgradeCards) {
+                h.upgradeCards.innerHTML = '';
+                upgradeChoices.forEach((u2, idx) => {
+                    h.upgradeCards.appendChild(createStgUpgradeChoiceButton(u2, idx));
+                });
+            }
+            const subEl = document.getElementById('stgUpgradeSubHint');
+            if (subEl) {
+                const cur = stgUpgradeMomentRoundTotal - stgUpgradeMomentRoundsLeft + 1;
+                subEl.innerHTML = stgUiT('upgrade.subhintRound', { cur, total: stgUpgradeMomentRoundTotal });
+            }
+            const titleEl = document.getElementById('stgUpgradeTitle');
+            if (titleEl) titleEl.textContent = stgUiT('upgrade.title');
+            stgUpgradePickOpen = true;
+            phase = 'levelup';
+            lastFrameTime = performance.now();
+            refreshStgAttackBuildPanel();
+            refreshStgReimuBonusAside();
+            return;
+        }
+
         const h = getHudElements();
         if (h.upgrade) {
             h.upgrade.classList.add('hidden');
             h.upgrade.setAttribute('aria-hidden', 'true');
         }
         stgUpgradePickOpen = false;
-        stgUpgradePending = false;
-        phase = 'playing';
         const hintBtn = document.getElementById('stgLevelUpHint');
         if (hintBtn) hintBtn.classList.add('hidden');
         const subEl = document.getElementById('stgUpgradeSubHint');
         if (subEl) subEl.innerHTML = '';
+
+        if (stgPendingWaveAdvanceAfterUpgradeMoment) {
+            stgPendingWaveAdvanceAfterUpgradeMoment = false;
+            /** 选完后延迟再刷下一波怪（秒数见波次配置 postUpgradeSpawnDelaySec，默认 2） */
+            const sec = getStgPostUpgradeSpawnDelaySec();
+            stgPostUpgradeAdvanceAtMs = performance.now() + sec * 1000;
+        }
+        /** 升级弹层关闭后恢复游玩；若已切到章节过渡或通关则勿覆盖 */
+        if (phase === 'levelup') {
+            phase = 'playing';
+        }
         lastFrameTime = performance.now();
         refreshStgAttackBuildPanel();
         refreshStgReimuBonusAside();
     }
 
-    /** 叠级时上一张面板未选：随机一项并结算 */
-    function forceRandomStgUpgradePick() {
-        if (!upgradeChoices.length) return;
-        const u = upgradeChoices[(Math.random() * upgradeChoices.length) | 0];
-        console.warn('[STG] 升级叠层：上一组三选一未选，随机', u.id);
-        finalizeStgUpgradePick(u);
-    }
-
     /**
-     * 升级三选一单卡：顶栏为所属武器体系（博丽御符 / 伏魔针 / 封魔阵分支 Q–S / 妙珠分支 T–V / 基础属性；试做型封魔阵默认自带不进池）
-     * @param {number} keyIndex 0..2，对应快捷键 1/2/3
+     * 升级四选一单卡：顶栏为所属武器体系（博丽御符 / 伏魔针 / 封魔阵分支 Q–S / 妙珠分支 T–V / 基础属性；试做型封魔阵默认自带不进池）
+     * @param {number} keyIndex 0..3，对应快捷键 1～4
      */
     function createStgUpgradeChoiceButton(u, keyIndex) {
         const btn = document.createElement('button');
@@ -4813,13 +5414,9 @@
     }
 
     /**
-     * 升级后仅准备三选一候选并显示棋盘右下提示；按 E 或点击再 openStgUpgradeModal（暂停）。
-     * 叠级时若上一组仍未处理，先随机消耗上一组。
+     * 升级时刻：洗牌后取至多 4 条构筑（不足则全展示）。
      */
-    function prepareLevelUpChoices() {
-        if (stgUpgradePending && upgradeChoices.length > 0) {
-            forceRandomStgUpgradePick();
-        }
+    function prepareLevelUpChoices4() {
         let pool = STG_UPGRADE_POOL.filter(isStgUpgradeEligible);
         if (pool.length === 0) {
             pool = [
@@ -4832,28 +5429,20 @@
                 }
             ];
         }
-        /** Fisher-Yates 洗牌，取 3 个（不足 3 张则只展示已有数量） */
         for (let i = pool.length - 1; i > 0; i--) {
             const j = (Math.random() * (i + 1)) | 0;
             const t = pool[i];
             pool[i] = pool[j];
             pool[j] = t;
         }
-        upgradeChoices = pool.slice(0, 3);
-        stgUpgradePending = true;
+        const n = Math.min(4, pool.length);
+        upgradeChoices = pool.slice(0, n);
         stgUpgradePickOpen = false;
-        const hintBtn = document.getElementById('stgLevelUpHint');
-        if (hintBtn) {
-            hintBtn.classList.remove('hidden');
-            if (window.StgUiI18n && typeof window.StgUiI18n.applyStgLevelUpHintLabels === 'function') {
-                window.StgUiI18n.applyStgLevelUpHintLabels();
-            }
-        }
     }
 
-    /** 按 E / 点击右下提示：全屏居中三选一，phase=levelup，局内 update 暂停 */
+    /** 全屏居中四选一，phase=levelup，局内 update 暂停（由波次衔接或连续轮次调用） */
     function openStgUpgradeModal() {
-        if (!stgUpgradePending || upgradeChoices.length === 0 || stgUpgradePickOpen) return;
+        if (upgradeChoices.length === 0 || stgUpgradePickOpen) return;
         const h = getHudElements();
         if (!h.upgrade || !h.upgradeCards) return;
         h.upgradeCards.innerHTML = '';
@@ -4863,12 +5452,18 @@
         const titleEl = document.getElementById('stgUpgradeTitle');
         if (titleEl) titleEl.textContent = stgUiT('upgrade.title');
         const subEl = document.getElementById('stgUpgradeSubHint');
-        if (subEl) subEl.innerHTML = stgUiT('upgrade.subhint');
+        if (subEl) {
+            if (stgUpgradeMomentRoundTotal > 1) {
+                const cur = stgUpgradeMomentRoundTotal - stgUpgradeMomentRoundsLeft + 1;
+                subEl.innerHTML = stgUiT('upgrade.subhintRound', { cur, total: stgUpgradeMomentRoundTotal });
+            } else {
+                subEl.innerHTML = stgUiT('upgrade.subhint');
+            }
+        }
         h.upgrade.classList.remove('hidden');
         h.upgrade.setAttribute('aria-hidden', 'false');
         const hintBtn = document.getElementById('stgLevelUpHint');
         if (hintBtn) hintBtn.classList.add('hidden');
-        stgUpgradePending = false;
         stgUpgradePickOpen = true;
         phase = 'levelup';
         lastFrameTime = performance.now();
@@ -4876,6 +5471,7 @@
 
     function showResult(win) {
         lastShowResultWin = win;
+        hideStgChapterTransitionOverlay();
         const h = getHudElements();
         /** 死亡/通关时关闭升级弹层与右下提示，避免挡结算 */
         if (h.upgrade) {
@@ -4883,7 +5479,10 @@
             h.upgrade.setAttribute('aria-hidden', 'true');
         }
         stgUpgradePickOpen = false;
-        stgUpgradePending = false;
+        stgPendingWaveAdvanceAfterUpgradeMoment = false;
+        stgPostUpgradeAdvanceAtMs = null;
+        stgUpgradeMomentRoundsLeft = 0;
+        stgLevelUpsBanked = 0;
         const hintGo = document.getElementById('stgLevelUpHint');
         if (hintGo) hintGo.classList.add('hidden');
         const subGo = document.getElementById('stgUpgradeSubHint');
@@ -4922,6 +5521,19 @@
                 ? Math.max(10, Math.min(180, p.skillFanSpreadDeg != null ? p.skillFanSpreadDeg : 60))
                 : Math.max(10, Math.min(180, p.fanSpreadDeg != null ? p.fanSpreadDeg : 60));
             return stgUiT('attackBuild.stat.styleFan', { n, deg });
+        }
+        if (est === 'double_column') {
+            const n = isSkill
+                ? Math.max(1, Math.min(5, p.skillSingleCount != null ? p.skillSingleCount : 1))
+                : Math.max(1, Math.min(5, p.singleCount != null ? p.singleCount : 1));
+            const sep = isSkill
+                ? p.skillDoubleColumnSep != null && Number.isFinite(Number(p.skillDoubleColumnSep))
+                    ? Math.max(8, Math.min(56, Number(p.skillDoubleColumnSep)))
+                    : 20
+                : p.doubleColumnSep != null && Number.isFinite(Number(p.doubleColumnSep))
+                  ? Math.max(8, Math.min(56, Number(p.doubleColumnSep)))
+                  : 20;
+            return stgUiT('attackBuild.stat.styleDoubleCol', { n, sep });
         }
         if (est === 'ring') {
             const n = isSkill
@@ -5347,8 +5959,11 @@
                 : '—';
         }
         const waves = waveData.waves || [];
+        const chTotal = stgWavePackRoot && stgWavePackRoot.chapters ? Math.max(1, stgWavePackRoot.chapters.length) : 1;
         if (h.wave) {
-            h.wave.textContent = stgUiT('hud.wave', {
+            h.wave.textContent = stgUiT('hud.waveChapter', {
+                ch: stgChapterIndex + 1,
+                chTotal,
                 cur: waveIndex + 1,
                 w: Math.max(1, waves.length),
                 en: enemies.length,
@@ -5379,7 +5994,12 @@
         const h = getHudElements();
         if (h.upgradeTitle) h.upgradeTitle.textContent = stgUiT('upgrade.title');
         if (h.upgradeSubHint && h.upgrade && !h.upgrade.classList.contains('hidden')) {
-            h.upgradeSubHint.innerHTML = stgUiT('upgrade.subhint');
+            if (stgUpgradeMomentRoundTotal > 1 && stgUpgradeMomentRoundsLeft > 0) {
+                const cur = stgUpgradeMomentRoundTotal - stgUpgradeMomentRoundsLeft + 1;
+                h.upgradeSubHint.innerHTML = stgUiT('upgrade.subhintRound', { cur, total: stgUpgradeMomentRoundTotal });
+            } else {
+                h.upgradeSubHint.innerHTML = stgUiT('upgrade.subhint');
+            }
         }
         if (h.upgrade && h.upgradeCards && !h.upgrade.classList.contains('hidden') && upgradeChoices.length) {
             h.upgradeCards.innerHTML = '';
@@ -5393,14 +6013,65 @@
         if (lastShowResultWin !== null && h.result && !h.result.classList.contains('hidden')) {
             showResult(lastShowResultWin);
         }
+        if (h.chapterTransition && !h.chapterTransition.classList.contains('hidden') && phase === 'chapter_transition') {
+            if (h.chapterTransitionTitle) {
+                h.chapterTransitionTitle.textContent = stgUiT('chapter.passTitle', { passed: stgChapterIndex + 1 });
+            }
+            if (h.chapterTransitionMsg) {
+                h.chapterTransitionMsg.textContent = stgUiT('chapter.passMsg', { next: stgChapterIndex + 2 });
+            }
+        }
     }
 
     /**
-     * 绘制敌弹：圆形或三角形（三角尖端朝向速度方向，与碰撞半径一致）
+     * 绘制敌弹：圆形或三角形（三角尖端朝向速度方向，与碰撞半径一致）；圆形可套 art_assets/bullets 贴图
      */
-    function drawStgEnemyBulletFill(b) {
+    function drawStgEnemyBulletFill(b, spGrazeA, typesMapOpt) {
         if (!ctx) return;
         const r = b.radius != null ? b.radius : 5;
+        const gz = spGrazeA != null && Number.isFinite(spGrazeA) ? Math.max(0.05, Math.min(0.98, spGrazeA)) : 0.38;
+        let spriteKey = null;
+        /** 种类表 stgEnemyBulletSprite 显式写空串时：不套默认 jpg，仅矢量 */
+        let skipDefaultSprite = false;
+        if (!stgEnemyBulletTextureGloballyDisabled) {
+            spriteKey = b.sprite;
+            if (!spriteKey && b.typeId) {
+                const tm = typesMapOpt || getEnemyTypeMap();
+                const d = tm[b.typeId] || tm.normal;
+                if (d && d.stgEnemyBulletSprite != null) {
+                    const raw = String(d.stgEnemyBulletSprite);
+                    if (raw.trim() === '') {
+                        skipDefaultSprite = true;
+                    } else {
+                        const sk = sanitizeStgEnemyBulletSpriteName(raw);
+                        if (sk) spriteKey = sk;
+                    }
+                }
+            }
+            /** 最后兜底：内置默认文件名（未显式关闭贴图时） */
+            if (!spriteKey && !skipDefaultSprite) {
+                spriteKey = 'enemy_round_red.jpg';
+            }
+        }
+        if (spriteKey) {
+            const img = getStgEnemyBulletSpriteImage(spriteKey);
+            if (img && img.complete) {
+                ctx.save();
+                ctx.globalAlpha = b._stgGrazed ? gz : 1;
+                ctx.imageSmoothingEnabled = true;
+                const w = Math.max(2, r * 2);
+                try {
+                    if (Number.isFinite(b.x) && Number.isFinite(b.y) && Number.isFinite(r)) {
+                        ctx.drawImage(img, b.x - r, b.y - r, w, w);
+                        ctx.restore();
+                        return;
+                    }
+                } catch (drawErr) {
+                    console.warn('[STG] 敌弹 drawImage 失败', spriteKey, drawErr);
+                }
+                ctx.restore();
+            }
+        }
         if (b.shape !== 'triangle') {
             ctx.beginPath();
             ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
@@ -5839,11 +6510,12 @@
             const a = sc && sc.grazedBulletAlpha != null ? Number(sc.grazedBulletAlpha) : 0.38;
             return Number.isFinite(a) ? Math.max(0.05, Math.min(0.98, a)) : 0.38;
         })();
+        const stgTypesForEnemyBullets = getEnemyTypeMap();
         enemyBullets.forEach((b) => {
             if (!b.alive) return;
-            /** 已擦弹敌弹透明度由场景道具编辑器配置 */
+            /** 已擦弹敌弹透明度由场景道具编辑器配置；位图敌弹用 globalAlpha */
             ctx.fillStyle = b._stgGrazed ? `rgba(231, 76, 60, ${spGrazeA})` : '#e74c3c';
-            drawStgEnemyBulletFill(b);
+            drawStgEnemyBulletFill(b, spGrazeA, stgTypesForEnemyBullets);
         });
 
         /** 擦弹：吸附向判定点的小白球 */
@@ -6031,23 +6703,12 @@
             if (e.code === 'Digit1' || e.code === 'Numpad1') idx = 0;
             else if (e.code === 'Digit2' || e.code === 'Numpad2') idx = 1;
             else if (e.code === 'Digit3' || e.code === 'Numpad3') idx = 2;
+            else if (e.code === 'Digit4' || e.code === 'Numpad4') idx = 3;
             if (idx >= 0 && idx < upgradeChoices.length) {
                 e.preventDefault();
                 finalizeStgUpgradePick(upgradeChoices[idx]);
                 return;
             }
-        }
-        if (
-            phase === 'playing' &&
-            stgUpgradePending &&
-            upgradeChoices.length > 0 &&
-            !stgUpgradePickOpen &&
-            e.code === 'KeyE' &&
-            !e.repeat
-        ) {
-            e.preventDefault();
-            openStgUpgradeModal();
-            return;
         }
         if (keys.hasOwnProperty(e.code)) {
             keys[e.code] = true;
@@ -6094,7 +6755,7 @@
         const meta = document.querySelector('.stg-meta-panel');
         if (wrap) {
             const top = wrap.getBoundingClientRect().top;
-            /** 棋盘下方：波次/说明 meta（含 #stgHintBar）；三选一已改为全屏居中，不占布局高度 */
+            /** 棋盘下方：波次/说明 meta（含 #stgHintBar）；升级四选一全屏居中，不占布局高度 */
             let below = 32;
             if (meta) below += meta.getBoundingClientRect().height;
             const hFit = window.innerHeight - top - below;
@@ -6172,7 +6833,7 @@
             const levelUpHint = document.getElementById('stgLevelUpHint');
             if (levelUpHint) {
                 levelUpHint.addEventListener('click', () => {
-                    if (phase === 'playing' && stgUpgradePending && upgradeChoices.length > 0) {
+                    if (phase === 'playing' && upgradeChoices.length > 0 && !stgUpgradePickOpen) {
                         openStgUpgradeModal();
                     }
                 });
@@ -6185,6 +6846,9 @@
             loop();
             refreshStgAttackBuildPanel();
             loadStgBuildUpgradeOverridesFromStorage();
+            loadEnemyBulletTextureGloballyDisabledFromStorage();
+            clearStgEnemyBulletSpriteCacheAndBumpBust();
+            preloadStgEnemyBulletSpritesFromTypes();
             console.log('[STG] StgMode 初始化完成');
         },
 
@@ -6288,6 +6952,37 @@
 
         loadBuildUpgradeOverridesFromStorage() {
             loadStgBuildUpgradeOverridesFromStorage();
+        },
+
+        /** 敌弹贴图编辑器：保存种类表后调用，强制重新加载位图缓存 */
+        reloadEnemyBulletSpritesFromStorage() {
+            reloadEnemyBulletSpritesFromStorage();
+        },
+
+        /** 全局开关：true 时局内敌弹一律不绘位图（仅矢量） */
+        setEnemyBulletTextureGloballyDisabled(on) {
+            stgEnemyBulletTextureGloballyDisabled = !!on;
+            try {
+                localStorage.setItem(STG_ENEMY_BULLET_TEXTURE_DISABLED_KEY, stgEnemyBulletTextureGloballyDisabled ? '1' : '0');
+            } catch (e) {
+                /* ignore */
+            }
+        },
+
+        getEnemyBulletTextureGloballyDisabled() {
+            return stgEnemyBulletTextureGloballyDisabled;
+        },
+
+        /** 语言切换时刷新升级弹层副标题（多轮时保留「第几轮」） */
+        refreshUpgradeModalSubhintForI18n() {
+            const subEl = document.getElementById('stgUpgradeSubHint');
+            if (!subEl) return;
+            if (stgUpgradeMomentRoundTotal > 1 && stgUpgradeMomentRoundsLeft > 0) {
+                const cur = stgUpgradeMomentRoundTotal - stgUpgradeMomentRoundsLeft + 1;
+                subEl.innerHTML = stgUiT('upgrade.subhintRound', { cur, total: stgUpgradeMomentRoundTotal });
+            } else {
+                subEl.innerHTML = stgUiT('upgrade.subhint');
+            }
         }
     };
 

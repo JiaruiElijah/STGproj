@@ -1,6 +1,7 @@
 /**
  * 波次阵型编辑器（唯一波次配置入口）：上/左/右 三块与 STG 同格数棋盘；
  * 种类与数量仅由格子决定；存档键 tower_defense_wave_config（历史键名保留）。
+ * 支持多章节：存档为 { version:2, chapters:[{ waves, upgradeMomentsAfterWave }], ... }；旧档仅 waves 时视为单章。
  */
 (function () {
     'use strict';
@@ -38,6 +39,11 @@
     let enemyFireStopRowBuffer = null;
 
     let panelEl = null;
+    /** 内存中的完整文档（含多章），与 localStorage 结构一致 */
+    let fullDoc = null;
+    /** 当前编辑的章节下标（0 起） */
+    let currentChapterIndex = 0;
+    let chapterSelectEl = null;
     let waveSelectEl = null;
     let brushSelectEl = null;
     let spawnIntervalInp = null;
@@ -48,6 +54,9 @@
     let hpLinearInp = null;
     let hpAccelInp = null;
     let enemyFireStopRowInp = null;
+    /** 升级四选一结束后延迟多少秒再刷下一波（根级存档，与 stgMode getStgPostUpgradeSpawnDelaySec 对应） */
+    let postUpgradeDelayInp = null;
+    let upgradeMomentsInp = null;
     let grids = { top: null, left: null, right: null };
     /** @type {Array<{top:string[][],left:string[][],right:string[][]}>} */
     let formationBuffers = [];
@@ -72,24 +81,64 @@
         return { cols: 16, rows: 21 };
     }
 
-    /** 读取完整配置（含怪物血量全局系数） */
+    /**
+     * 将磁盘/旧档 JSON 归一化为多章节结构（含 version:2）。
+     * @param {object|null} data
+     */
+    function normalizeFullWaveConfigFromRaw(data) {
+        const empty = () => ({
+            version: 2,
+            chapters: [{ waves: [], upgradeMomentsAfterWave: undefined }],
+            enemyHpScale: { ...DEFAULT_ENEMY_HP_SCALE },
+            enemyFireStopRow: null
+        });
+        if (!data || typeof data !== 'object') return empty();
+        const g = getGridSize();
+        const maxR = g.rows || 21;
+        const enemyHpScale = normalizeEnemyHpScale(data.enemyHpScale);
+        const enemyFireStopRow = normalizeEnemyFireStopRow(data.enemyFireStopRow, maxR, data.enemyFireStopLineY);
+        const pud =
+            data.postUpgradeSpawnDelaySec != null && Number.isFinite(Number(data.postUpgradeSpawnDelaySec))
+                ? Math.max(0, Math.min(60, Number(data.postUpgradeSpawnDelaySec)))
+                : undefined;
+
+        if (Array.isArray(data.chapters) && data.chapters.length > 0) {
+            const chapters = data.chapters.map((ch) => {
+                const wavesRaw = ch && Array.isArray(ch.waves) ? ch.waves : [];
+                const waves = wavesRaw.map((w) => migrateEnemiesToFormation({ ...w }));
+                return {
+                    waves,
+                    upgradeMomentsAfterWave: ch && ch.upgradeMomentsAfterWave !== undefined ? ch.upgradeMomentsAfterWave : undefined
+                };
+            });
+            return { version: 2, chapters, enemyHpScale, enemyFireStopRow, postUpgradeSpawnDelaySec: pud };
+        }
+        const wavesLegacy = Array.isArray(data.waves) ? data.waves.map((w) => migrateEnemiesToFormation({ ...w })) : [];
+        return {
+            version: 2,
+            chapters: [
+                {
+                    waves: wavesLegacy,
+                    upgradeMomentsAfterWave: data.upgradeMomentsAfterWave !== undefined ? data.upgradeMomentsAfterWave : undefined
+                }
+            ],
+            enemyHpScale,
+            enemyFireStopRow,
+            postUpgradeSpawnDelaySec: pud
+        };
+    }
+
+    /** 读取完整配置（多章节 + 全局字段） */
     function loadWaveConfigFromStorage() {
         try {
             const raw = localStorage.getItem(WAVE_STORAGE_KEY);
             if (!raw) {
-                return { waves: [], enemyHpScale: { ...DEFAULT_ENEMY_HP_SCALE }, enemyFireStopRow: null };
+                return normalizeFullWaveConfigFromRaw(null);
             }
             const data = JSON.parse(raw);
-            const waves = data && Array.isArray(data.waves) ? data.waves : [];
-            const g = getGridSize();
-            const maxR = g.rows || 21;
-            return {
-                waves,
-                enemyHpScale: normalizeEnemyHpScale(data && data.enemyHpScale),
-                enemyFireStopRow: normalizeEnemyFireStopRow(data && data.enemyFireStopRow, maxR, data && data.enemyFireStopLineY)
-            };
+            return normalizeFullWaveConfigFromRaw(data);
         } catch (e) {
-            return { waves: [], enemyHpScale: { ...DEFAULT_ENEMY_HP_SCALE }, enemyFireStopRow: null };
+            return normalizeFullWaveConfigFromRaw(null);
         }
     }
 
@@ -112,17 +161,41 @@
         return null;
     }
 
-    function saveWaveConfigToStorage(waves, enemyHpScale, enemyFireStopRow) {
+    /**
+     * 写入完整多章节存档（version:2）。
+     * @param {object} full 归一化后的 fullDoc
+     */
+    function saveFullWaveConfigToStorage(full) {
         try {
+            if (!full || !Array.isArray(full.chapters)) return;
+            const g = getGridSize();
+            const mr = g.rows || 21;
             const payload = {
-                waves,
-                enemyHpScale: normalizeEnemyHpScale(enemyHpScale),
-                enemyFireStopRow: normalizeEnemyFireStopRow(enemyFireStopRow, getGridSize().rows || 21, null)
+                version: 2,
+                chapters: full.chapters.map((ch) => ({
+                    waves: ch && Array.isArray(ch.waves) ? ch.waves : [],
+                    upgradeMomentsAfterWave: Array.isArray(ch && ch.upgradeMomentsAfterWave) ? ch.upgradeMomentsAfterWave : []
+                })),
+                enemyHpScale: normalizeEnemyHpScale(full.enemyHpScale),
+                enemyFireStopRow: normalizeEnemyFireStopRow(full.enemyFireStopRow, mr, null)
             };
+            if (full.postUpgradeSpawnDelaySec != null && Number.isFinite(Number(full.postUpgradeSpawnDelaySec))) {
+                payload.postUpgradeSpawnDelaySec = Math.max(0, Math.min(60, Number(full.postUpgradeSpawnDelaySec)));
+            }
             localStorage.setItem(WAVE_STORAGE_KEY, JSON.stringify(payload));
         } catch (e) {
             console.warn('[阵型] 保存失败', e);
         }
+    }
+
+    /** 解析「第几波结束后」：逗号/分号/空白分隔，返回 ≥1 的整数列表 */
+    function parseUpgradeMomentsFromInput(str) {
+        const s = String(str || '').trim();
+        if (s === '') return [];
+        return s
+            .split(/[,，;；\s]+/)
+            .map((x) => parseInt(String(x).trim(), 10))
+            .filter((n) => Number.isFinite(n) && n >= 1);
     }
 
     function createEmptyFormation() {
@@ -439,6 +512,20 @@
                     ? String(enemyFireStopRowBuffer)
                     : '';
         }
+        if (postUpgradeDelayInp && fullDoc) {
+            const pud =
+                fullDoc.postUpgradeSpawnDelaySec != null && Number.isFinite(Number(fullDoc.postUpgradeSpawnDelaySec))
+                    ? Math.max(0, Math.min(60, Number(fullDoc.postUpgradeSpawnDelaySec)))
+                    : 2;
+            postUpgradeDelayInp.value = String(pud);
+        }
+    }
+
+    function readPostUpgradeFromInputs() {
+        if (!postUpgradeDelayInp || !fullDoc) return;
+        const v = String(postUpgradeDelayInp.value).trim();
+        const n = v === '' ? 2 : parseFloat(v.replace(',', '.'));
+        fullDoc.postUpgradeSpawnDelaySec = Number.isFinite(n) ? Math.max(0, Math.min(60, n)) : 2;
     }
 
     function readHpFromInputs() {
@@ -478,20 +565,39 @@
         }
     }
 
-    function rebuildBuffersFromWaves() {
-        const full = loadWaveConfigFromStorage();
-        enemyHpScaleBuffer = full.enemyHpScale || { ...DEFAULT_ENEMY_HP_SCALE };
+    /** 将当前 UI 缓冲写回 fullDoc 中当前章 */
+    function persistCurrentChapterToDoc() {
+        if (!fullDoc || !Array.isArray(fullDoc.chapters)) return;
+        if (!fullDoc.chapters[currentChapterIndex]) return;
+        fullDoc.chapters[currentChapterIndex] = {
+            waves: buildWavesPayload(),
+            upgradeMomentsAfterWave: parseUpgradeMomentsFromInput(upgradeMomentsInp && upgradeMomentsInp.value)
+        };
+        fullDoc.enemyHpScale = normalizeEnemyHpScale(enemyHpScaleBuffer);
+        fullDoc.enemyFireStopRow = enemyFireStopRowBuffer;
+        readPostUpgradeFromInputs();
+    }
+
+    /** 从 fullDoc 当前章加载三棋盘与 meta 缓冲 */
+    function rebuildBuffersFromCurrentChapter() {
+        fullDoc = fullDoc || loadWaveConfigFromStorage();
+        if (!fullDoc.chapters || fullDoc.chapters.length === 0) {
+            fullDoc = normalizeFullWaveConfigFromRaw(null);
+        }
+        currentChapterIndex = Math.max(0, Math.min(currentChapterIndex, fullDoc.chapters.length - 1));
+        enemyHpScaleBuffer = normalizeEnemyHpScale(fullDoc.enemyHpScale);
         const g = getGridSize();
         const mr = g.rows || 21;
-        enemyFireStopRowBuffer = normalizeEnemyFireStopRow(full.enemyFireStopRow, mr, full.enemyFireStopLineY);
-        const waves = full.waves || [];
+        enemyFireStopRowBuffer = normalizeEnemyFireStopRow(fullDoc.enemyFireStopRow, mr, null);
+        const ch = fullDoc.chapters[currentChapterIndex];
+        const waves = ch && Array.isArray(ch.waves) ? ch.waves : [];
         if (waves.length === 0) {
             formationBuffers = [createEmptyFormation()];
             waveMetaBuffers = [defaultNewWaveMeta()];
         } else {
             formationBuffers = [];
             waveMetaBuffers = [];
-            const sHp = normalizeEnemyHpScale(full.enemyHpScale);
+            const sHp = normalizeEnemyHpScale(fullDoc.enemyHpScale);
             waves.forEach((w, wi) => {
                 const migrated = migrateEnemiesToFormation({ ...w });
                 formationBuffers.push(normalizeFormation(migrated.stgFormation));
@@ -516,6 +622,63 @@
         }
     }
 
+    function populateChapterSelect() {
+        if (!chapterSelectEl) return;
+        const n = fullDoc && fullDoc.chapters ? Math.max(1, fullDoc.chapters.length) : 1;
+        let html = '';
+        for (let i = 0; i < n; i++) {
+            html += `<option value="${i}">第 ${i + 1} 章</option>`;
+        }
+        chapterSelectEl.innerHTML = html;
+        chapterSelectEl.value = String(Math.min(currentChapterIndex, n - 1));
+    }
+
+    function syncUpgradeMomentsFromCurrentChapter() {
+        if (!upgradeMomentsInp || !fullDoc || !fullDoc.chapters[currentChapterIndex]) return;
+        const u = fullDoc.chapters[currentChapterIndex].upgradeMomentsAfterWave;
+        if (u === undefined) {
+            upgradeMomentsInp.value = '1';
+        } else if (Array.isArray(u) && u.length === 0) {
+            upgradeMomentsInp.value = '';
+        } else {
+            upgradeMomentsInp.value = Array.isArray(u) ? u.join(', ') : '';
+        }
+    }
+
+    /**
+     * 设置章节总数：多出的章为「空章」（0 波时读档会显示 1 个空波）；减少时删末尾章。
+     * @param {number} n
+     * @param {boolean} [skipConfirm] 已确认删章
+     */
+    function setChapterCount(n, skipConfirm) {
+        const target = Math.max(1, Math.min(99, parseInt(n, 10) || 1));
+        persistCurrentChapterToDoc();
+        fullDoc = fullDoc || loadWaveConfigFromStorage();
+        const prevLen = fullDoc.chapters.length;
+        if (target < prevLen && !skipConfirm) {
+            if (!confirm(`将删除第 ${target + 1}～${prevLen} 章的配置（不可恢复）。确定？`)) {
+                return false;
+            }
+        }
+        while (fullDoc.chapters.length < target) {
+            fullDoc.chapters.push({ waves: [], upgradeMomentsAfterWave: undefined });
+        }
+        while (fullDoc.chapters.length > target) {
+            fullDoc.chapters.pop();
+        }
+        if (currentChapterIndex >= fullDoc.chapters.length) {
+            currentChapterIndex = fullDoc.chapters.length - 1;
+        }
+        rebuildBuffersFromCurrentChapter();
+        populateChapterSelect();
+        populateWaveSelect();
+        syncMetaInputsFromBuffer();
+        syncHpInputsFromBuffer();
+        syncUpgradeMomentsFromCurrentChapter();
+        refreshAllGrids();
+        return true;
+    }
+
     function populateWaveSelect() {
         if (!waveSelectEl) return;
         const n = Math.max(1, formationBuffers.length);
@@ -531,12 +694,16 @@
         const g = getGridSize();
         cols = g.cols;
         rows = g.rows;
-        rebuildBuffersFromWaves();
+        fullDoc = loadWaveConfigFromStorage();
+        currentChapterIndex = 0;
+        rebuildBuffersFromCurrentChapter();
+        populateChapterSelect();
         populateWaveSelect();
         buildBrushOptions();
         currentWaveIndex = parseInt(waveSelectEl.value, 10) || 0;
         syncMetaInputsFromBuffer();
         syncHpInputsFromBuffer();
+        syncUpgradeMomentsFromCurrentChapter();
         refreshAllGrids();
         if (panelEl) panelEl.classList.remove('hidden');
     }
@@ -576,15 +743,17 @@
     }
 
     function applyAllToWaves() {
-        const waves = buildWavesPayload();
+        persistCurrentChapterToDoc();
+        const ch = fullDoc && fullDoc.chapters ? fullDoc.chapters[currentChapterIndex] : null;
+        const waves = ch && ch.waves ? ch.waves : [];
         if (waves.length === 0) {
             alert('请至少保留一波');
             return;
         }
-        saveWaveConfigToStorage(waves, enemyHpScaleBuffer, enemyFireStopRowBuffer);
-        console.log('[阵型] 已保存波次（共', waves.length, '波）与每波血量倍率、兼容字段 enemyHpScale', enemyHpScaleBuffer);
+        saveFullWaveConfigToStorage(fullDoc);
+        console.log('[阵型] 已保存：共', fullDoc.chapters.length, '章；当前第', currentChapterIndex + 1, '章', waves.length, '波');
         alert(
-            '已保存到本地波次配置。\n' +
+            '已保存到本地波次配置（含多章节）。\n' +
                 '种类与数量仅由「三棋盘」格子决定；STG 出怪顺序与阵型遍历顺序一致（同类型会合并为连续组）。\n' +
                 '每波「敌人血量倍率」已写入；全局随波次公式当前不参与计算（见面板说明）。'
         );
@@ -641,6 +810,7 @@
 
     function init() {
         panelEl = document.getElementById('stgWaveFormationPanel');
+        chapterSelectEl = document.getElementById('stgFormationChapterSelect');
         waveSelectEl = document.getElementById('stgFormationWaveSelect');
         brushSelectEl = document.getElementById('stgFormationBrushSelect');
         spawnIntervalInp = document.getElementById('stgFormationSpawnInterval');
@@ -651,6 +821,8 @@
         hpLinearInp = document.getElementById('stgFormationHpLinear');
         hpAccelInp = document.getElementById('stgFormationHpAccel');
         enemyFireStopRowInp = document.getElementById('stgFormationEnemyFireStopRow');
+        postUpgradeDelayInp = document.getElementById('stgFormationPostUpgradeSpawnDelaySec');
+        upgradeMomentsInp = document.getElementById('stgFormationUpgradeMomentsInput');
         grids.top = document.getElementById('stgFormationGridTop');
         grids.left = document.getElementById('stgFormationGridLeft');
         grids.right = document.getElementById('stgFormationGridRight');
@@ -690,6 +862,20 @@
         const removeWaveBtn = document.getElementById('stgFormationRemoveWaveBtn');
         if (removeWaveBtn) removeWaveBtn.addEventListener('click', removeCurrentWave);
 
+        if (chapterSelectEl) {
+            chapterSelectEl.addEventListener('change', () => {
+                persistCurrentChapterToDoc();
+                currentChapterIndex = parseInt(chapterSelectEl.value, 10) || 0;
+                currentWaveIndex = 0;
+                rebuildBuffersFromCurrentChapter();
+                populateWaveSelect();
+                if (waveSelectEl) waveSelectEl.value = String(currentWaveIndex);
+                syncMetaInputsFromBuffer();
+                syncHpInputsFromBuffer();
+                syncUpgradeMomentsFromCurrentChapter();
+                refreshAllGrids();
+            });
+        }
         if (waveSelectEl) {
             waveSelectEl.addEventListener('change', () => {
                 readMetaFromInputs();
@@ -714,6 +900,11 @@
                 });
             }
         });
+        if (postUpgradeDelayInp) {
+            postUpgradeDelayInp.addEventListener('change', () => {
+                readPostUpgradeFromInputs();
+            });
+        }
     }
 
     window.StgWaveFormationPanel = {
@@ -722,6 +913,15 @@
         close,
         flattenFormationToSpawnList,
         formationToEnemiesOrdered,
-        migrateWaveForRuntime
+        migrateWaveForRuntime,
+        setChapterCount,
+        getChapterCount: function () {
+            return fullDoc && fullDoc.chapters ? fullDoc.chapters.length : 1;
+        },
+        syncChapterEditorInput: function (inputEl) {
+            if (!inputEl) return;
+            const n = fullDoc && fullDoc.chapters ? fullDoc.chapters.length : 1;
+            inputEl.value = String(n);
+        }
     };
 })();
