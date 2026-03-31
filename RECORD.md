@@ -1,5 +1,17 @@
 # 开发记录
 
+## [2026-04-03] STG：打包分享数据说明 + 导出 waveConfig / enemyTypesBundled + 运行时加载合并
+
+- **类型**：文档 / 新增功能
+- **涉及文件**：`game_demo/数据与分享说明.md`（根因：localStorage 不进压缩包）、`game_demo/stgWaveFormationPanel.js`（`buildWaveStoragePayload`、`downloadWaveConfigJsonForSharing`）、`game_demo/monsterEditorPanel.js`（导出 `enemyTypesBundled.json`）、`game_demo/stgMode.js`（`ensureBundledEnemyTypesLoaded`、`getEnemyTypeMap` 与文件浅合并、`startGame` 与开局预取）、`game_demo/index.html`（导出按钮与 `?v=20260403a`）
+- **说明**：他人解压项目后波次/怪物与作者不一致，因浏览器存档未随目录分发；提供导出按钮与随包 JSON，并文档说明须覆盖/放置到 `game_demo` 且用 HTTP 打开。
+
+## [2026-03-27] STG：升级时刻先棋盘播报「升级时刻」再弹四选一
+
+- **类型**：修改功能 / 体验
+- **涉及文件**：`game_demo/stgMode.js`（`phase === 'upgrade_announce'`、`STG_UPGRADE_MOMENT_ANNOUNCE_MS`、`stgUpgradeMomentAnnounceEndMs`、`loop`/`update`/`draw` 播报、`tryStgAutoStartNextWave` 延后 `openStgUpgradeModal`、`resetRun`/`showResult` 清理）、`game_demo/stgUiI18n.js`（`upgrade.boardAnnounce`）、`game_demo/index.html`（`?v=20260327b`）
+- **说明**：到达配置的升级时刻时先进入播报阶段约 1.5s，在画布中上方绘制大字「升级时刻」（随语言包），再打开原有全屏四选一；多轮四选一从第二轮起仍立即换卡。
+
 ## [2026-03-27] STG：波次清空判定修复 + 升级后延迟出怪（可调）与阵型面板持久化
 
 - **类型**：Bug 修复 / 修改功能

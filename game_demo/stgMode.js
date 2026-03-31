@@ -12,6 +12,24 @@
     /** 与棋盘思路一致：竖向长条战场 */
     const WAVE_STORAGE_KEY = 'tower_defense_wave_config';
     const MONSTER_STORAGE_KEY = 'tower_defense_enemy_types';
+    /** 与 waveConfig.json 类似：随项目放置 enemyTypesBundled.json，无 localStorage 时仍能对齐怪物数值；有 localStorage 时与其浅合并（LS 覆盖同名种类） */
+    let stgBundledEnemyTypesFromFile = null;
+    let stgBundledEnemyTypesFetchPromise = null;
+
+    function ensureBundledEnemyTypesLoaded() {
+        if (stgBundledEnemyTypesFetchPromise) return stgBundledEnemyTypesFetchPromise;
+        stgBundledEnemyTypesFetchPromise = fetch('enemyTypesBundled.json?' + Date.now())
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+                if (data && typeof data === 'object') {
+                    stgBundledEnemyTypesFromFile = data;
+                    console.log('[STG] 已加载 enemyTypesBundled.json（与怪物编辑器 localStorage 合并或作默认）');
+                }
+                return null;
+            })
+            .catch(() => null);
+        return stgBundledEnemyTypesFetchPromise;
+    }
     /**
      * 敌弹命中：中心距 < 机体半径 + 此余量即扣血（与东方系「判定点」思路一致）
      * 绘制慢速模式下的受击圈时须用同一数值，避免「圈与判定不一致」
@@ -1139,7 +1157,7 @@
         ShiftRight: false
     };
 
-    /** 游戏阶段：title | playing | levelup（升级时刻四选一，暂停局内）| dead | win */
+    /** 游戏阶段：title | playing | upgrade_announce（棋盘播报「升级时刻」，尚未弹四选一）| levelup | chapter_transition | dead | win */
     let phase = 'title';
     /** 升级时刻全屏弹层是否打开 */
     let stgUpgradePickOpen = false;
@@ -1151,6 +1169,10 @@
     let stgPostUpgradeAdvanceAtMs = null;
     /** 默认：升级选完后隔几秒再出下一波（可被波次存档 `postUpgradeSpawnDelaySec` 覆盖） */
     const STG_DEFAULT_POST_UPGRADE_SPAWN_DELAY_SEC = 2;
+    /** 进入升级时刻后：棋盘播报「升级时刻」的时长（毫秒），之后再弹出四选一 */
+    const STG_UPGRADE_MOMENT_ANNOUNCE_MS = 1500;
+    /** 与 STG_UPGRADE_MOMENT_ANNOUNCE_MS 配套：到时刻后打开四选一 */
+    let stgUpgradeMomentAnnounceEndMs = null;
     /** 本轮升级时刻剩余几轮 4 选一 */
     let stgUpgradeMomentRoundsLeft = 0;
     let stgUpgradeMomentRoundTotal = 0;
@@ -2563,6 +2585,10 @@
         } catch (e) {
             console.warn('[STG] 读取怪物编辑器存档失败', e);
         }
+        const file = stgBundledEnemyTypesFromFile;
+        if (file && typeof file === 'object') {
+            saved = saved && typeof saved === 'object' ? { ...file, ...saved } : { ...file };
+        }
         if (!saved || typeof saved !== 'object') return base;
         const out = { ...base };
         Object.keys(saved).forEach((id) => {
@@ -3319,7 +3345,7 @@
 
     /** 最后一章打完：通关；否则全屏提示后进入下一章第一波 */
     function beginStgChapterTransitionOrWin() {
-        /** 升级时刻选完后 phase 仍为 levelup，须允许衔接章节 */
+        /** 升级时刻选完后 phase 仍为 levelup，须允许衔接章节；upgrade_announce 非 playing/levelup，会于下行 return */
         if (phase !== 'playing' && phase !== 'levelup') return;
         interWaveCountEnd = null;
         stgPostUpgradeAdvanceAtMs = null;
@@ -3425,7 +3451,9 @@
             }
             stgPendingWaveAdvanceAfterUpgradeMoment = true;
             prepareLevelUpChoices4();
-            openStgUpgradeModal();
+            /** 先棋盘播报「升级时刻」，再开四选一（与 loop 中 upgrade_announce 分支配合） */
+            stgUpgradeMomentAnnounceEndMs = performance.now() + STG_UPGRADE_MOMENT_ANNOUNCE_MS;
+            phase = 'upgrade_announce';
             return true;
         }
         return tryStgAdvanceWaveOrFinishChapter();
@@ -4337,6 +4365,7 @@
         stgLevelUpsBanked = 0;
         stgPendingWaveAdvanceAfterUpgradeMoment = false;
         stgPostUpgradeAdvanceAtMs = null;
+        stgUpgradeMomentAnnounceEndMs = null;
         stgUpgradeMomentRoundsLeft = 0;
         stgUpgradeMomentRoundTotal = 0;
         upgradeChoices = [];
@@ -4397,7 +4426,7 @@
     }
 
     function startGame() {
-        loadWaves().then((data) => {
+        Promise.all([ensureBundledEnemyTypesLoaded(), loadWaves()]).then(([_, data]) => {
             waveData = data;
             if (!waveData.waves || waveData.waves.length === 0) {
                 waveData = { waves: [{ waveNumber: 1, spawnInterval: 450, enemies: [{ type: 'normal', count: 5 }] }] };
@@ -4428,7 +4457,7 @@
         if (dt > 80) dt = 80;
         lastFrameTime = now;
 
-        if (phase === 'playing' || phase === 'chapter_transition') {
+        if (phase === 'playing' || phase === 'chapter_transition' || phase === 'upgrade_announce') {
             update(dt);
         }
         draw();
@@ -4502,6 +4531,14 @@
         if (phase === 'chapter_transition') {
             if (performance.now() >= stgChapterTransitionEndMs) {
                 finishStgChapterTransitionAndStartNext();
+            }
+            return;
+        }
+        /** 升级时刻：仅等播报结束再弹层，不跑移动/碰撞，局面保持上一帧 */
+        if (phase === 'upgrade_announce') {
+            if (stgUpgradeMomentAnnounceEndMs != null && performance.now() >= stgUpgradeMomentAnnounceEndMs) {
+                stgUpgradeMomentAnnounceEndMs = null;
+                openStgUpgradeModal();
             }
             return;
         }
@@ -5481,6 +5518,7 @@
         stgUpgradePickOpen = false;
         stgPendingWaveAdvanceAfterUpgradeMoment = false;
         stgPostUpgradeAdvanceAtMs = null;
+        stgUpgradeMomentAnnounceEndMs = null;
         stgUpgradeMomentRoundsLeft = 0;
         stgLevelUpsBanked = 0;
         const hintGo = document.getElementById('stgLevelUpHint');
@@ -6685,6 +6723,29 @@
 
         drawStgCornerFocusBuffHud(ctx, cw, ch);
 
+        /** 升级时刻：先棋盘上方居中播报文案，再开四选一（阶段 upgrade_announce） */
+        if (phase === 'upgrade_announce') {
+            const txt = stgUiT('upgrade.boardAnnounce') || '升级时刻';
+            const tPulse = performance.now() * 0.004;
+            const pulse = 0.9 + 0.1 * Math.sin(tPulse);
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const fontPx = Math.max(24, Math.floor(Math.min(cw, ch) * 0.072));
+            ctx.font = `bold ${fontPx}px "Microsoft YaHei","Segoe UI",sans-serif`;
+            const bx = cw * 0.5;
+            const by = ch * 0.16;
+            ctx.shadowColor = 'rgba(0,0,0,0.75)';
+            ctx.shadowBlur = 14;
+            ctx.lineWidth = Math.max(3, fontPx * 0.08);
+            ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+            ctx.strokeText(txt, bx, by);
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = `rgba(255, 224, 120, ${pulse})`;
+            ctx.fillText(txt, bx, by);
+            ctx.restore();
+        }
+
         if (phase === 'title') {
             ctx.fillStyle = 'rgba(0,0,0,0.45)';
             ctx.fillRect(0, 0, cw, ch);
@@ -6844,6 +6905,8 @@
             isPaused = false;
             lastFrameTime = performance.now();
             loop();
+            /** 预取随包分发的怪物表，减少「开始游戏」首帧与内置默认不一致 */
+            ensureBundledEnemyTypesLoaded();
             refreshStgAttackBuildPanel();
             loadStgBuildUpgradeOverridesFromStorage();
             loadEnemyBulletTextureGloballyDisabledFromStorage();

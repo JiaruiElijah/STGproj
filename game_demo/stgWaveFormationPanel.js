@@ -162,29 +162,63 @@
     }
 
     /**
+     * 构建与 localStorage / waveConfig.json 一致的根对象（version:2），供保存与导出共用。
+     * @param {object} full 归一化后的 fullDoc
+     * @returns {object|null}
+     */
+    function buildWaveStoragePayload(full) {
+        if (!full || !Array.isArray(full.chapters)) return null;
+        const g = getGridSize();
+        const mr = g.rows || 21;
+        const payload = {
+            version: 2,
+            chapters: full.chapters.map((ch) => ({
+                waves: ch && Array.isArray(ch.waves) ? ch.waves : [],
+                upgradeMomentsAfterWave: Array.isArray(ch && ch.upgradeMomentsAfterWave) ? ch.upgradeMomentsAfterWave : []
+            })),
+            enemyHpScale: normalizeEnemyHpScale(full.enemyHpScale),
+            enemyFireStopRow: normalizeEnemyFireStopRow(full.enemyFireStopRow, mr, null)
+        };
+        if (full.postUpgradeSpawnDelaySec != null && Number.isFinite(Number(full.postUpgradeSpawnDelaySec))) {
+            payload.postUpgradeSpawnDelaySec = Math.max(0, Math.min(60, Number(full.postUpgradeSpawnDelaySec)));
+        }
+        return payload;
+    }
+
+    /**
      * 写入完整多章节存档（version:2）。
      * @param {object} full 归一化后的 fullDoc
      */
     function saveFullWaveConfigToStorage(full) {
         try {
-            if (!full || !Array.isArray(full.chapters)) return;
-            const g = getGridSize();
-            const mr = g.rows || 21;
-            const payload = {
-                version: 2,
-                chapters: full.chapters.map((ch) => ({
-                    waves: ch && Array.isArray(ch.waves) ? ch.waves : [],
-                    upgradeMomentsAfterWave: Array.isArray(ch && ch.upgradeMomentsAfterWave) ? ch.upgradeMomentsAfterWave : []
-                })),
-                enemyHpScale: normalizeEnemyHpScale(full.enemyHpScale),
-                enemyFireStopRow: normalizeEnemyFireStopRow(full.enemyFireStopRow, mr, null)
-            };
-            if (full.postUpgradeSpawnDelaySec != null && Number.isFinite(Number(full.postUpgradeSpawnDelaySec))) {
-                payload.postUpgradeSpawnDelaySec = Math.max(0, Math.min(60, Number(full.postUpgradeSpawnDelaySec)));
-            }
+            const payload = buildWaveStoragePayload(full);
+            if (!payload) return;
             localStorage.setItem(WAVE_STORAGE_KEY, JSON.stringify(payload));
         } catch (e) {
             console.warn('[阵型] 保存失败', e);
+        }
+    }
+
+    /** 下载 waveConfig.json：覆盖到 game_demo 后打包，他人无你本机 localStorage 也能对齐波次 */
+    function downloadWaveConfigJsonForSharing() {
+        persistCurrentChapterToDoc();
+        fullDoc = fullDoc || loadWaveConfigFromStorage();
+        const payload = buildWaveStoragePayload(fullDoc);
+        if (!payload) {
+            alert('无有效波次数据');
+            return;
+        }
+        try {
+            const text = JSON.stringify(payload, null, 2);
+            const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'waveConfig.json';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            console.log('[阵型] 已下载 waveConfig.json，请覆盖 game_demo/waveConfig.json 后再压缩分享');
+        } catch (e) {
+            console.warn('[阵型] 导出失败', e);
         }
     }
 
@@ -847,6 +881,8 @@
         });
         const applyBtn = document.getElementById('stgFormationApplyBtn');
         if (applyBtn) applyBtn.addEventListener('click', applyAllToWaves);
+        const exportWaveBtn = document.getElementById('stgFormationExportWaveConfigBtn');
+        if (exportWaveBtn) exportWaveBtn.addEventListener('click', downloadWaveConfigJsonForSharing);
         const clearBtn = document.getElementById('stgFormationClearBoardBtn');
         if (clearBtn) {
             clearBtn.addEventListener('click', () => {
@@ -911,6 +947,7 @@
         init,
         open,
         close,
+        downloadWaveConfigJsonForSharing,
         flattenFormationToSpawnList,
         formationToEnemiesOrdered,
         migrateWaveForRuntime,

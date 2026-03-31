@@ -24,6 +24,8 @@
         'aside.showStatsTitle': '展开右侧属性加成面板',
 
         'upgrade.title': '升级时刻 — 四选一（博丽灵梦 · 构筑）',
+        /** 棋盘内大字播报（四选一弹出前） */
+        'upgrade.boardAnnounce': '升级时刻',
         'upgrade.subhint': '游戏已暂停 · 按键盘 <strong>1</strong> / <strong>2</strong> / <strong>3</strong> / <strong>4</strong> 选择',
         'upgrade.subhintRound':
             '游戏已暂停 · 第 <strong>{cur}</strong> / <strong>{total}</strong> 轮 · 按 <strong>1</strong>～<strong>4</strong> 选择',
@@ -118,6 +120,7 @@
         'aside.title': 'Reimu · Stat bonuses',
 
         'upgrade.title': 'Upgrade Moment — Pick 1 of 4 (Reimu · Build)',
+        'upgrade.boardAnnounce': 'Upgrade Moment',
         'upgrade.subhint': 'Paused · Press <strong>1</strong> / <strong>2</strong> / <strong>3</strong> / <strong>4</strong> to choose',
         'upgrade.subhintRound':
             'Paused · Round <strong>{cur}</strong> / <strong>{total}</strong> · Press <strong>1</strong>–<strong>4</strong>',

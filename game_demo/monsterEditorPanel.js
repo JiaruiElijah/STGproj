@@ -709,6 +709,29 @@
         applyTypes(types);
     }
 
+    /**
+     * 导出当前 localStorage 中的怪物表为 enemyTypesBundled.json，放入 game_demo 与 index.html 同目录后打包，
+     * 他人浏览器无你本机存档时仍能对齐血量/弹幕等（与 stgMode 中 fetch 配套）。
+     */
+    function onExportBundledJson() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw || raw === '{}') {
+                alert('暂无怪物存档。请先编辑并点击「应用」保存。');
+                return;
+            }
+            const blob = new Blob([raw], { type: 'application/json;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'enemyTypesBundled.json';
+            a.click();
+            URL.revokeObjectURL(a.href);
+            console.log('[怪物编辑器] 已下载 enemyTypesBundled.json，请放入 game_demo 目录再打包');
+        } catch (e) {
+            console.warn('[怪物编辑器] 导出失败', e);
+        }
+    }
+
     function init(g) {
         game = g;
         panelEl = document.getElementById('monsterEditorPanel');
@@ -718,11 +741,13 @@
         const openBtn = document.getElementById('openMonsterEditorBtn');
         const closeBtn = document.getElementById('monsterEditorCloseBtn');
         const applyBtn = document.getElementById('monsterEditorApplyBtn');
+        const exportBundledBtn = document.getElementById('monsterEditorExportBundledBtn');
 
         if (openBtn) openBtn.addEventListener('click', open);
         if (closeBtn) closeBtn.addEventListener('click', close);
         if (panelEl) panelEl.addEventListener('click', (e) => { if (e.target === panelEl) close(); });
         if (applyBtn) applyBtn.addEventListener('click', onApply);
+        if (exportBundledBtn) exportBundledBtn.addEventListener('click', onExportBundledJson);
 
         const addBtn = document.getElementById('monsterEditorAddTypeBtn');
         const newIdInp = document.getElementById('monsterEditorNewIdInput');
