@@ -58,7 +58,9 @@
             m === 'horizontal_left' ||
             m === 'horizontal_right' ||
             m === 'lock_y' ||
-            m === 'lock_x'
+            m === 'lock_x' ||
+            m === 'waypoint_a' ||
+            m === 'waypoint_b'
         ) {
             return m;
         }
@@ -81,6 +83,8 @@
         if (lk) lk.classList.toggle('hidden', v !== 'lock_y' && v !== 'lock_x');
         if (lkY) lkY.classList.toggle('hidden', v !== 'lock_y');
         if (lkX) lkX.classList.toggle('hidden', v !== 'lock_x');
+        const wp = row.querySelector('.monster-stg-move-waypoint');
+        if (wp) wp.classList.toggle('hidden', v !== 'waypoint_a' && v !== 'waypoint_b');
     }
 
     function syncBulletKindRow(row) {
@@ -305,7 +309,9 @@
                         'horizontal_left',
                         'horizontal_right',
                         'lock_y',
-                        'lock_x'
+                        'lock_x',
+                        'waypoint_a',
+                        'waypoint_b'
                     ].indexOf(stgMoveModeSel.value) >= 0
                         ? stgMoveModeSel.value
                         : 'homing_legacy',
@@ -331,7 +337,18 @@
                     const el = row.querySelector('.monster-stg-charge-mult');
                     const n = parseFloat(el && el.value);
                     return Number.isFinite(n) ? Math.max(0.25, Math.min(4, n)) : 1;
-                })()
+                })(),
+                stgWaypointSpeedCurve: (() => {
+                    const el = row.querySelector('.monster-stg-waypoint-curve');
+                    const v = el && el.value;
+                    if (v === 'smooth' || v === 'ease_in' || v === 'ease_out' || v === 'linear') return v;
+                    return 'linear';
+                })(),
+                stgWaypointDwellMs: [0, 1, 2, 3].map((i) => {
+                    const inp = row.querySelector('.monster-stg-waypoint-dwell-' + i);
+                    const n = parseInt(inp && inp.value, 10);
+                    return Math.max(0, Math.min(120000, Number.isFinite(n) ? n : 0));
+                })
             };
         });
         return types;
@@ -354,7 +371,9 @@
             stgArcEdge1XNorm: 0.12, stgArcEdge1YNorm: 0.42, stgArcEdge2XNorm: 0.88, stgArcEdge2YNorm: 0.58,
             stgArcBulge1: 80, stgArcBulge2: 80,
             stgContactDamagePlayer: true,
-            stgDropChargePickup: false, stgChargeDropMult: 1
+            stgDropChargePickup: false, stgChargeDropMult: 1,
+            stgWaypointSpeedCurve: 'linear',
+            stgWaypointDwellMs: [0, 0, 0, 0]
         };
         const dmStyle = danmakuStyleFromData(d);
         const mainDir = mainDirFromData(d);
@@ -385,6 +404,19 @@
             .replace(/</g, '&lt;')
             .replace(/"/g, '&quot;');
         const iconPrev = String(d.icon || '👹').replace(/</g, '');
+        const wpCurveRaw = d.stgWaypointSpeedCurve;
+        const wpCurve =
+            wpCurveRaw === 'smooth' || wpCurveRaw === 'ease_in' || wpCurveRaw === 'ease_out' || wpCurveRaw === 'linear'
+                ? wpCurveRaw
+                : 'linear';
+        const wpd = [0, 1, 2, 3].map((i) => {
+            if (Array.isArray(d.stgWaypointDwellMs) && d.stgWaypointDwellMs[i] != null) {
+                const n = parseInt(d.stgWaypointDwellMs[i], 10);
+                return Number.isFinite(n) ? Math.max(0, Math.min(120000, n)) : 0;
+            }
+            return 0;
+        });
+        const showWaypointPanel = moveMode === 'waypoint_a' || moveMode === 'waypoint_b';
 
         const row = document.createElement('div');
         row.className = 'monster-editor-row';
@@ -439,6 +471,8 @@
                             <option value="horizontal_right" ${moveMode === 'horizontal_right' ? 'selected' : ''}>水平向右</option>
                             <option value="lock_y" ${moveMode === 'lock_y' ? 'selected' : ''}>锁 Y（仅竖直移动至目标 Y 后停止）</option>
                             <option value="lock_x" ${moveMode === 'lock_x' ? 'selected' : ''}>锁 X（仅水平移动至目标 X 后停止）</option>
+                            <option value="waypoint_a" ${moveMode === 'waypoint_a' ? 'selected' : ''}>多段移动 · A 组（信标 a1→a2→a3→a4）</option>
+                            <option value="waypoint_b" ${moveMode === 'waypoint_b' ? 'selected' : ''}>多段移动 · B 组（信标 b1→b2→b3→b4）</option>
                         </select>
                     </div>
                     <div class="monster-stg-move-lock monster-editor-stg-section ${showLockPanel ? '' : 'hidden'}">
@@ -484,6 +518,35 @@
                         <div class="monster-stg-row">
                             <label>弧高（px，弦中点法向鼓包）</label>
                             <input type="number" class="monster-stg-arc-bulge" min="15" max="280" step="5" value="${arcBulgeSingle}">
+                        </div>
+                    </div>
+                    <div class="monster-stg-move-waypoint monster-editor-stg-section ${showWaypointPanel ? '' : 'hidden'}">
+                        <div class="monster-editor-stg-section-title">多段移动（信标路径）</div>
+                        <p class="monster-stg-wp-hint" style="margin:4px 0 8px;font-size:12px;color:#555;">路径仍为直线弦；「速率」决定沿弦位移的快慢分布。「两端缓动」为拐点慢、中间快。A 组对应信标 a1～a4，B 组对应 b1～b4。多段敌机之间局内会<strong>互斥推挤</strong>，避免机体重叠。</p>
+                        <div class="monster-stg-row">
+                            <label>路径速率</label>
+                            <select class="monster-stg-waypoint-curve" title="沿相邻信标连线的归一化位移曲线">
+                                <option value="linear" ${wpCurve === 'linear' ? 'selected' : ''}>直线匀速</option>
+                                <option value="smooth" ${wpCurve === 'smooth' ? 'selected' : ''}>两端缓动（中间快）</option>
+                                <option value="ease_in" ${wpCurve === 'ease_in' ? 'selected' : ''}>缓入（由慢到快）</option>
+                                <option value="ease_out" ${wpCurve === 'ease_out' ? 'selected' : ''}>缓出（由快到慢）</option>
+                            </select>
+                        </div>
+                        <div class="monster-stg-row">
+                            <label>信标1停留(ms)</label>
+                            <input type="number" class="monster-stg-waypoint-dwell-0" min="0" max="120000" step="50" value="${wpd[0]}">
+                        </div>
+                        <div class="monster-stg-row">
+                            <label>信标2停留(ms)</label>
+                            <input type="number" class="monster-stg-waypoint-dwell-1" min="0" max="120000" step="50" value="${wpd[1]}">
+                        </div>
+                        <div class="monster-stg-row">
+                            <label>信标3停留(ms)</label>
+                            <input type="number" class="monster-stg-waypoint-dwell-2" min="0" max="120000" step="50" value="${wpd[2]}">
+                        </div>
+                        <div class="monster-stg-row">
+                            <label>信标4停留(ms)</label>
+                            <input type="number" class="monster-stg-waypoint-dwell-3" min="0" max="120000" step="50" value="${wpd[3]}">
                         </div>
                     </div>
                 </div>

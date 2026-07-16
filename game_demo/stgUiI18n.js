@@ -59,6 +59,8 @@
         'hud.time': '时间 {sec}s',
         'hud.ultLabel': '大招（X）',
         'hud.ultAria': '大招充能，共五格，按 X 消耗一格',
+        /** 画布：自机下方，每充满一格显示约 1s */
+        'hud.ultReadyBelow': '大招就绪',
 
         'upgrade.pool_empty.name': '（无更多强化）',
         'upgrade.pool_empty.desc': '本局可抽取的构筑已全部获得。',
@@ -80,6 +82,7 @@
         /** 三选一卡牌顶栏：所属武器/体系（与《新玩法--STG模式》命名一致） */
         'upgrade.weapon.spread': '博丽御符（Z）',
         'upgrade.weapon.focusCrystal': '伏魔针 · 水晶',
+        'upgrade.weapon.focusMisc': '伏魔针 · 通用',
         'upgrade.weapon.focusRage': '伏魔针 · 狂怒',
         /** Q–S 卡顶栏：强化封魔阵线（非默认试做型） */
         'upgrade.weapon.ultSeal': '强化封魔阵',
@@ -153,6 +156,7 @@
         'hud.time': 'Time {sec}s',
         'hud.ultLabel': 'Ult (X)',
         'hud.ultAria': 'Ultimate charges, five slots, press X to spend one',
+        'hud.ultReadyBelow': 'Ult ready',
 
         'upgrade.pool_empty.name': '(No upgrades left)',
         'upgrade.pool_empty.desc': 'All available build picks for this run are taken.',
@@ -171,6 +175,7 @@
 
         'upgrade.weapon.spread': 'Hakurei Ofuda (Z)',
         'upgrade.weapon.focusCrystal': 'Fumashin · Crystal',
+        'upgrade.weapon.focusMisc': 'Fumashin · General',
         'upgrade.weapon.focusRage': 'Fumashin · Rage',
         'upgrade.weapon.ultSeal': 'Fortified Seal',
         'upgrade.weapon.ultDream': 'Dream Orb',
@@ -212,7 +217,7 @@
         },
         spread_homing: {
             name: 'Item D',
-            desc: 'Homing bullets; −40% damage.'
+            desc: 'Homing bullets; damage ×0.5 (tunable).'
         },
         spread_yinyang: {
             name: 'Item E',
@@ -222,9 +227,37 @@
             name: 'Item F',
             desc: 'Kills may drop large P pickups.'
         },
-        spread_crit: {
-            name: 'Item G',
-            desc: 'Higher crit chance for this attack.'
+        spread_rof: {
+            name: 'Spread ROF',
+            desc: 'Spread mode: shorter fire interval (not in focus).'
+        },
+        spread_might: {
+            name: 'Spread Might',
+            desc: 'Spread mode: higher damage per shot (not in focus).'
+        },
+        spread_kill_haste: {
+            name: 'Kill Haste',
+            desc: 'Spread mode: kills add ROF stacks for a short time.'
+        },
+        focus_bullet_spd: {
+            name: 'Needle Spd',
+            desc: 'Focus main bullets move faster.'
+        },
+        focus_shikigami: {
+            name: 'Shikigami',
+            desc: 'Focus + hold Z: periodic side shots toward nearest enemy.'
+        },
+        focus_stationary_ramp: {
+            name: 'Stand Ramp',
+            desc: 'Focus: standing still ramps needle damage.'
+        },
+        focus_graze_snipe: {
+            name: 'Graze Snipe',
+            desc: 'Graze while focus: add one homing needle.'
+        },
+        focus_needle_slow: {
+            name: 'Needle Stun',
+            desc: 'Focus needles may briefly stun on hit.'
         },
         spread_big_energy: {
             name: 'Item H',
@@ -369,6 +402,7 @@
         const map = {
             spread: { key: 'upgrade.weapon.spread', cssClass: 'spread' },
             focus_crystal: { key: 'upgrade.weapon.focusCrystal', cssClass: 'focus-crystal' },
+            focus_misc: { key: 'upgrade.weapon.focusMisc', cssClass: 'focus-misc' },
             focus_rage: { key: 'upgrade.weapon.focusRage', cssClass: 'focus-rage' },
             ult_seal: { key: 'upgrade.weapon.ultSeal', cssClass: 'ult-seal' },
             ult_dream: { key: 'upgrade.weapon.ultDream', cssClass: 'ult-dream' },

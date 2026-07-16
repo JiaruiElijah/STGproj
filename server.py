@@ -50,7 +50,7 @@ if __name__ == "__main__":
             print(f"访问地址: http://localhost:{PORT}/game_demo/index.html")
             print(f"项目根目录: {script_dir}")
             print("=" * 60)
-            print("按 Ctrl+C 停止服务器")
+            print("停止服务：直接关闭本命令行窗口即可")
             print("=" * 60)
             httpd.serve_forever()
     except KeyboardInterrupt:

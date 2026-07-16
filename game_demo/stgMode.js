@@ -12,6 +12,8 @@
     /** 与棋盘思路一致：竖向长条战场 */
     const WAVE_STORAGE_KEY = 'tower_defense_wave_config';
     const MONSTER_STORAGE_KEY = 'tower_defense_enemy_types';
+    /** 与 BOSS 编辑器 bossEditorPanel.js 一致；波次格子 token 为 __boss_<id> */
+    const STG_BOSS_CONFIG_KEY = 'stg_boss_configs';
     /** 与 waveConfig.json 类似：随项目放置 enemyTypesBundled.json，无 localStorage 时仍能对齐怪物数值；有 localStorage 时与其浅合并（LS 覆盖同名种类） */
     let stgBundledEnemyTypesFromFile = null;
     let stgBundledEnemyTypesFetchPromise = null;
@@ -130,12 +132,26 @@
     }
 
     /** 根据当前怪物种类表预加载可能用到的敌弹贴图 */
+    function preloadStgBossBulletPoolSpritesFromStorage() {
+        try {
+            const raw = localStorage.getItem('stg_boss_bullet_texture_pool');
+            const arr = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(arr)) return;
+            arr.forEach((fn) => {
+                if (fn) getStgEnemyBulletSpriteImage(String(fn));
+            });
+        } catch (e) {
+            /* ignore */
+        }
+    }
+
     function preloadStgEnemyBulletSpritesFromTypes() {
         const map = getEnemyTypeMap();
         Object.keys(map).forEach((id) => {
             const fn = map[id] && map[id].stgEnemyBulletSprite;
             if (fn) getStgEnemyBulletSpriteImage(String(fn));
         });
+        preloadStgBossBulletPoolSpritesFromStorage();
     }
 
     /** 新局或编辑器保存后：更新 URL 版本、清空 JS 内 Image 缓存并预加载（避免浏览器仍用旧位图） */
@@ -480,8 +496,9 @@
         return Number.isFinite(atk) && atk >= 2 ? 2 : 1;
     }
 
-    /** 受伤无敌窗口内：不受敌弹与激光伤害 */
+    /** 受伤无敌窗口内：不受敌弹与激光伤害；试做型封魔阵持续期间亦无敌（与《角色设计》一致） */
     function isStgPlayerInvulnerable(nowMs) {
+        if (player && stgSealField && nowMs < stgSealField.endMs) return true;
         return !!(player && player._invulnUntil != null && nowMs < player._invulnUntil);
     }
 
@@ -558,6 +575,8 @@
                 extra: 32,
                 minMove: 0.9,
                 gain: 6,
+                /** 单颗敌弹重复擦弹冷却（毫秒） */
+                perBulletCdMs: 180,
                 orbR: 5,
                 orbSpd: 480,
                 glow: 0.65,
@@ -575,6 +594,7 @@
             extra: p.grazeExtraPx != null ? Math.max(0, Math.min(160, p.grazeExtraPx)) : 32,
             minMove: p.grazeMinMovePx != null ? Math.max(0.05, Math.min(30, p.grazeMinMovePx)) : 0.9,
             gain: p.grazeMeterGain != null ? Math.max(0, Math.min(200, p.grazeMeterGain)) : 6,
+            perBulletCdMs: p.grazePerBulletCdMs != null ? Math.max(30, Math.min(1000, Number(p.grazePerBulletCdMs))) : 180,
             orbR: p.grazeOrbRadius != null ? Math.max(2, Math.min(16, p.grazeOrbRadius)) : 5,
             orbSpd: p.grazeOrbSpeedPx != null ? Math.max(60, Math.min(1200, p.grazeOrbSpeedPx)) : 480,
             glow: p.grazeOrbGlowAlpha != null ? Math.max(0.05, Math.min(1, p.grazeOrbGlowAlpha)) : 0.65,
@@ -601,25 +621,60 @@
     }
 
     /**
-     * 敌弹本帧位移后检测擦弹：在受击圆外、在外椭圆内，且本帧有位移 → 每弹仅一次
+     * 判定点：子弹中心是否在「受击圆之外、擦弹外椭圆之内」（与 tryStgGraze 几何一致）
      */
-    function tryStgGrazeEnemyBullet(b, movedPx) {
-        if (!player || phase !== 'playing' || !b || !b.alive || b._stgGrazed) return;
+    function stgEnemyBulletPointInGrazeBand(px, py, g, prHit, br) {
+        if (!player) return false;
+        const hitDist = prHit + br;
+        const dx = px - player.x;
+        const dy = py - player.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= hitDist * hitDist) return false;
+        const { rx, ry } = getStgGrazeOuterEllipseRadii(hitDist, g);
+        if (rx <= 0 || ry <= 0) return false;
+        const ne = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+        return ne <= 1;
+    }
+
+    /**
+     * 敌弹本帧位移后检测擦弹：沿轨迹采样，在受击圆外、外椭圆内 → 每弹按冷却可重复触发
+     */
+    function tryStgGrazeEnemyBullet(b, bx0, by0, movedPx, nowMs, shiftHeld) {
+        if (!player || phase !== 'playing' || !b || !b.alive) return;
+        if (!shiftHeld) return;
         const g = getStgGrazeRuntimeParams();
         if (!g.enabled || g.extra <= 0 || g.gain <= 0) return;
-        if (movedPx < g.minMove) return;
+        const lastGrazeMs = b._stgGrazeLastMs != null ? b._stgGrazeLastMs : -1e9;
+        if (nowMs - lastGrazeMs < g.perBulletCdMs) return;
+        /**
+         * 原逻辑用「子弹本帧位移」与 grazeMinMovePx 比较：低速弹（含低弹速环形）每帧常 < 0.9px，会永久无法擦弹。
+         * 改为：子弹位移与自机本帧位移取较大，再与阈值比；阈值上限钳制，避免过严。
+         */
+        const pm = player._stgFrameMovePx != null ? player._stgFrameMovePx : 0;
+        const thr = Math.min(Math.max(g.minMove, 0.04), 0.35);
+        if (Math.max(movedPx, pm) < thr) return;
         const prHit = getStgPlayerHitRadius();
         const br = b.radius != null ? b.radius : 5;
+        const baseN = STG_GRAZE_PATH_SAMPLES | 0;
+        const n = Math.min(48, Math.max(Math.max(2, baseN), Math.ceil(movedPx / 3) + 2));
+        let inBand = false;
+        for (let si = 0; si < n; si++) {
+            const t = si / Math.max(1, n - 1);
+            const px = bx0 + (b.x - bx0) * t;
+            const py = by0 + (b.y - by0) * t;
+            if (stgEnemyBulletPointInGrazeBand(px, py, g, prHit, br)) {
+                inBand = true;
+                break;
+            }
+        }
+        if (!inBand) return;
         const hitDist = prHit + br;
-        const dx = b.x - player.x;
-        const dy = b.y - player.y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 <= hitDist * hitDist) return;
         const { rx, ry } = getStgGrazeOuterEllipseRadii(hitDist, g);
-        if (rx <= 0 || ry <= 0) return;
-        const ne = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
-        if (ne > 1) return;
+        b._stgGrazeLastMs = nowMs;
         b._stgGrazed = true;
+        b._stgGrazeHighlightUntil = nowMs + 120;
+        /** 慢速期间擦弹会累计一次「退慢速释放」能量弹，达到上限后不再增长 */
+        stgFocusGrazeEnergyCount = Math.min(STG_FOCUS_GRAZE_ENERGY_MAX, stgFocusGrazeEnergyCount + 1);
         stgGrazeOrbs.push({
             x: b.x,
             y: b.y,
@@ -642,6 +697,51 @@
             });
         }
         console.log('[STG] 擦弹触发，本帧位移 px=', movedPx.toFixed(2));
+        if ((keys.ShiftLeft || keys.ShiftRight) && stgTakenUpgradeIds.has('focus_graze_snipe')) {
+            emitFocusGrazeCounterShot();
+        }
+    }
+
+    /**
+     * 退出慢速时释放擦弹积攒的能量弹（扇形向前）
+     */
+    function emitStgFocusGrazeEnergyBurst(count) {
+        if (!player || !count || count <= 0) return;
+        const n = Math.max(1, Math.floor(count));
+        const spreadDeg = 70;
+        const baseDeg = -90;
+        const spd = (player.focusBulletSpeed != null ? player.focusBulletSpeed : player.bulletSpeed) * bonusBulletSpeed * 0.92;
+        const baseAtk = player.focusWeaponAttack != null ? player.focusWeaponAttack : player.mainWeaponAttack != null ? player.mainWeaponAttack : 10;
+        const dmg = applyStgWeaponBaseAttackBonuses(baseAtk) * bonusDamage * getStgUltAtkDamageMult() * 0.58;
+        const r = Math.max(3, (player.focusBulletRadius != null ? player.focusBulletRadius : player.bulletRadius != null ? player.bulletRadius : 4) * 1.05);
+        const shape = normalizePlayerBulletVisualShape(
+            player.focusBulletVisualShape != null ? player.focusBulletVisualShape : player.bulletVisualShape
+        );
+        for (let i = 0; i < n; i++) {
+            const t = n <= 1 ? 0.5 : i / (n - 1);
+            const deg = baseDeg - spreadDeg * 0.5 + spreadDeg * t;
+            const a = (deg * Math.PI) / 180;
+            playerBullets.push({
+                x: player.x,
+                y: player.y - player.radius * 0.4,
+                vx: Math.cos(a) * spd,
+                vy: Math.sin(a) * spd,
+                dmg: dmg,
+                alive: true,
+                radius: r,
+                shape: shape,
+                pierceHitsLeft: 1,
+                pierceHitEnemyIds: null,
+                homing: false,
+                homingStr: 0,
+                spreadCritBonus: 0,
+                fromSpread: false,
+                fromFocusMain: true,
+                isCrystal: false,
+                allowCrystalAcc: false,
+                isGrazeEnergy: true
+            });
+        }
     }
 
     /** 移除过期的擦弹范围提示，避免数组无限增长 */
@@ -713,12 +813,7 @@
             if (d < absorb) {
                 const gain = o.meterGain != null ? o.meterGain : 6;
                 stgUltChargeMeter += gain * bonusUltChargeMult * bonusGrazeChargeMult;
-                const th = getUltChargeMeterThreshold();
-                while (stgUltChargeMeter >= th && stgUltCharges < STG_ULT_CHARGE_MAX) {
-                    stgUltCharges++;
-                    stgUltChargeMeter -= th;
-                }
-                if (stgUltCharges >= STG_ULT_CHARGE_MAX) stgUltChargeMeter = 0;
+                applyStgUltChargeMeterOverflowAndHints();
                 stgGrazeOrbs.splice(i, 1);
                 console.log('[STG] 擦弹球吸附，蓄能折算', gain);
                 continue;
@@ -1071,6 +1166,13 @@
         } else {
             delete p.focusShipAlpha;
         }
+        /** P 点吸引范围（px，圆心为判定点；0=关闭；不绘制） */
+        if (cfg.pPickupAttractRadius != null) {
+            const n = Number(cfg.pPickupAttractRadius);
+            if (Number.isFinite(n)) p.pPickupAttractRadius = Math.max(0, Math.min(1200, n));
+        } else {
+            delete p.pPickupAttractRadius;
+        }
         if (cfg.lifeCellsMax != null) {
             const bc = Number(cfg.lifeCellsMax);
             if (Number.isFinite(bc)) {
@@ -1194,6 +1296,14 @@
     let stgGrazeRangeFlashes = [];
     const STG_GRAZE_RANGE_FLASH_MS = 560;
     const STG_GRAZE_RANGE_FLASH_MAX = 8;
+    /** 擦弹：沿本帧子弹轨迹多点采样，避免高速弹（如环形齐射）一帧穿过擦弹带却不触发 */
+    const STG_GRAZE_PATH_SAMPLES = 10;
+    /** 慢速一次期间累计的「退出释放」能量弹数量 */
+    let stgFocusGrazeEnergyCount = 0;
+    /** 本次慢速能累计的能量弹上限 */
+    const STG_FOCUS_GRAZE_ENERGY_MAX = 28;
+    /** 上一帧是否处于慢速，用于检测进入/退出 */
+    let stgFocusHeldPrevFrame = false;
 
     /** 道具E：阴阳玉（《新玩法--STG模式》间隔产球、圆形绕机、挡弹、对敌持续伤、限时存在） */
     /** @type {Array<{x:number,y:number,r:number,visR?:number,alive:boolean,lifeMs:number,maxLifeMs:number,phaseRad?:number,orbitR?:number,orbitOmega?:number}>} */
@@ -1223,6 +1333,20 @@
     let stgRageKillAcc = 0;
     /** 道具C：伴身炮台上次发射时刻 */
     let stgSideTurretLastFireMs = 0;
+    /** 道具：连杀激射（spread_kill_haste）叠层与到期时刻 */
+    let stgSpreadKillHasteStacks = 0;
+    let stgSpreadKillHasteEndMs = 0;
+    /** 式神援护（focus_shikigami）上次发射 */
+    let stgShikigamiLastFireMs = 0;
+    const STG_SPREAD_KILL_HASTE_MS = 3500;
+    const STG_SPREAD_KILL_HASTE_MAX = 12;
+    const STG_SPREAD_KILL_HASTE_ROF_PER_STACK = 0.04;
+    /**
+     * 从未与主画布 [0,cw]×[0,ch] 重叠、且长时间保持完全在画布外时强制剔除（秒）。
+     * 原因：离场逻辑要求先 stgHasEnteredPlayfield，而 lock_y/lock_x/anchor 等若停在左右扩展格，
+     * 机体可能永不对画布矩形重叠 → 既不绘制有效区、也不触发离场，波次与 HUD「剩余敌」永久卡死。
+     */
+    const STG_ENEMY_OFFSCREEN_NO_ENTRY_STUCK_MS = 12000;
 
     /** 玩家受击：粒子 + 全屏闪（仅 STG 画布内） */
     let stgPlayerFxParticles = [];
@@ -1244,6 +1368,14 @@
     let lastShowResultWin = null;
     /** 无阵型时：扁平 type 列表，按 spawnIntervalMs 每节拍 1 只 */
     let spawnQueueLegacy = [];
+    /**
+     * 当前波次阵型解析出的移动信标占位（a1–a4、b1–b4 → 扩展棋盘格索引）。
+     * 多段移动（waypoint_a / waypoint_b）的敌人按序途经对应格心；局内不绘制信标本体。
+     * @type {Record<string, { edge: string, col: number, row: number }|null>|null}
+     */
+    let stgCurrentWaveBeaconMap = null;
+    /** 多段移动「阵型队列」自增 id（相邻格并查集分组后写入 stgWaypointQueueId） */
+    let stgNextWaypointQueueId = 1;
     /** 同一 (边,列,行) 已生成次数：用于同格多怪时螺旋错开 + 每波重置 */
     let spawnSlotUsage = new Map();
     let spawnAccMs = 0;
@@ -1286,6 +1418,8 @@
     let stgUltCharges = 0;
     /** 当前格内已累积量（0～阈值） */
     let stgUltChargeMeter = 0;
+    /** 自机下方「大招就绪」小字显示结束时刻（每充满一格追加 1s） */
+    let stgUltReadyHintUntilMs = null;
 
     /**
      * 仅「基础属性强化」中、与《新玩法--STG模式》基础道具对应的项会累加并写入右侧栏（7 条）。
@@ -1419,79 +1553,146 @@
 
     /**
      * 【局内升级】唯一随机源：prepareLevelUpChoices4() 对本数组洗牌后取至多 4 条（见 isStgUpgradeEligible）。
-     * 文案与《STG所有道具/新玩法--STG模式》一致：道具A–V + 基础道具1–7、9、10；仅 group=stat 影响右侧「属性加成」。
-     * 试做型封魔阵为默认大招（按 X），不在本池；大招池仅含 Q–S / T–V 分支强化。
+     * 条目必须与策划文档《新模式玩法开发/道具列表》一致：不含已废弃狂怒分支、不含未立项的「水晶 J/K/L」「阵内经济」、不含通用 stat 卡。
+     * 试做型封魔阵为默认大招（按 X），不在本池；封魔阵强化仅「阵界扩续」「阵疗愈攻」；妙珠线为 T–V。
      * 与 obj_list/enhance_items.json（局外 meta）无关。
      *
-     * group: spread | focus_crystal | focus_rage | ult_seal | ult_dream | stat
+     * group: spread | focus_crystal | focus_misc | ult_seal | ult_dream
      * requires: 须本局已选过该 id 后，本条才进入随机池（分支内先解锁基础再出强化）
      */
     const STG_UPGRADE_POOL = [
         // —— 扩散攻击（普通模式）道具A–H ——
-        { id: 'spread_fan', icon: '📐', group: 'spread', name: '道具A', desc: '攻击方式改为扇形，散射子弹+2', apply: () => {} },
+        {
+            id: 'spread_fan',
+            icon: '📐',
+            group: 'spread',
+            name: '三向散射',
+            desc: '攻击方式改为扇形散射；相对基础扇条数 +2（与武器编辑器一致，可构筑覆盖角度与齐射倍率）',
+            apply: () => {}
+        },
         {
             id: 'spread_extra',
             icon: '➕',
             group: 'spread',
-            name: '道具B',
-            desc: '攻击概率发射额外的追踪子弹。追踪子弹可以穿透2次。',
+            name: '追噬副弹',
+            desc: '攻击概率发射额外的追踪子弹；额外弹可穿透多段敌机（默认穿透 2 次）。',
             apply: () => {}
         },
-        { id: 'spread_turret', icon: '🔰', group: 'spread', name: '道具C', desc: '自机旁边增加一个造成玩家伤害150%的炮台，随自机移动', apply: () => {} },
-        { id: 'spread_homing', icon: '🎯', group: 'spread', name: '道具D', desc: '子弹可以追踪，但是伤害降低40%', apply: () => {} },
+        {
+            id: 'spread_turret',
+            icon: '🔰',
+            group: 'spread',
+            name: '伴身炮台',
+            desc: '自机旁增加炮台，造成约 150% 主武器单发伤害，随自机移动。',
+            apply: () => {}
+        },
+        {
+            id: 'spread_homing',
+            icon: '🎯',
+            group: 'spread',
+            name: '灵符追踪',
+            desc: '扩散主弹附带追踪；伤害降低 50%（与追踪强度平衡）。',
+            apply: () => {}
+        },
         {
             id: 'spread_yinyang',
             icon: '☯️',
             group: 'spread',
-            name: '道具E',
-            desc: '每 10 秒产生一枚阴阳玉，存在 3 秒；绕自机圆形公转，可阻挡敌弹，对接触的敌人造成 50% 攻击力持续伤害。',
+            name: '阴阳玉',
+            desc: '每 10 秒产生一枚阴阳玉，存在 3 秒；绕机公转可挡敌弹，对接触敌人造成持续伤害（约 50% 等效攻击力）。',
             apply: () => {}
         },
-        { id: 'spread_big_p', icon: '💠', group: 'spread', name: '道具F', desc: '该攻击杀死敌人概率生成大P点', apply: () => {} },
-        { id: 'spread_crit', icon: '💥', group: 'spread', name: '道具G', desc: '该攻击的暴击概率上升', apply: () => {} },
-        { id: 'spread_big_energy', icon: '⚡', group: 'spread', name: '道具H', desc: '该攻击杀死敌人概率生成大能量点', apply: () => {} },
+        { id: 'spread_big_p', icon: '💠', group: 'spread', name: '大福点', desc: '该攻击击杀敌人有概率掉落大 P 点（经验）。', apply: () => {} },
+        {
+            id: 'spread_rof',
+            icon: '⚡',
+            group: 'spread',
+            name: '扩散射速',
+            desc: '仅普通模式（不按 Shift）：博丽御符射击间隔缩短。',
+            apply: () => {}
+        },
+        {
+            id: 'spread_might',
+            icon: '🔥',
+            group: 'spread',
+            name: '扩散威力',
+            desc: '仅普通模式：博丽御符单发/齐射伤害提高。',
+            apply: () => {}
+        },
+        {
+            id: 'spread_kill_haste',
+            icon: '🩸',
+            group: 'spread',
+            name: '连杀激射',
+            desc: '普通模式击杀敌人叠层，短时提高射速；层数随时间衰减。',
+            apply: () => {}
+        },
+        { id: 'spread_big_energy', icon: '✨', group: 'spread', name: '大充能', desc: '该攻击击杀敌人有概率掉落大充能点。', apply: () => {} },
         // —— 集中攻击 · 水晶 道具I–L ——
         {
             id: 'focus_crystal_base',
             icon: '💎',
             group: 'focus_crystal',
-            name: '道具I',
-            desc: '攻击每命中30次，就能向前方发射6枚水晶',
+            name: '水晶齐射',
+            desc: '伏魔针每命中 30 次，向前方发射多枚水晶（数量与伤害可在「局内构筑道具」中调水晶齐射参数）。',
             apply: () => {}
         },
-        { id: 'focus_crystal_atk', icon: '⚔️', group: 'focus_crystal', name: '道具J', desc: '水晶攻击力上升', requires: 'focus_crystal_base', apply: () => {} },
-        { id: 'focus_crystal_count', icon: '🔢', group: 'focus_crystal', name: '道具K', desc: '水晶数量增多', requires: 'focus_crystal_base', apply: () => {} },
-        { id: 'focus_crystal_pierce', icon: '➡️', group: 'focus_crystal', name: '道具L', desc: '水晶能够穿透', requires: 'focus_crystal_base', apply: () => {} },
-        // —— 集中攻击 · 狂怒 道具M–P ——
-        { id: 'focus_rage_core', icon: '😤', group: 'focus_rage', name: '道具M', desc: '慢速模式下杀死5个敌人后，叠加一层【狂怒】状态，【狂怒】状态下射速和弹速增加，持续5秒，最多叠加3层', apply: () => {} },
-        { id: 'focus_rage_cap', icon: '📊', group: 'focus_rage', name: '道具N', desc: '【狂怒】叠加层数上限增加3层', requires: 'focus_rage_core', apply: () => {} },
-        { id: 'focus_rage_dur', icon: '⏱️', group: 'focus_rage', name: '道具O', desc: '【狂怒】效果持续时间增加5秒', requires: 'focus_rage_core', apply: () => {} },
-        { id: 'focus_rage_weak', icon: '🧪', group: 'focus_rage', name: '道具P', desc: '叠满5层的敌人，获得“虚弱”状态，受到的伤害增加20%', requires: 'focus_rage_core', apply: () => {} },
-        /** 大招：试做型封魔阵为局内默认自带（按 X），不在下列随机池；仅 Q–S / T–V 为升级三选一 */
-        // —— 大招 · 封魔阵分支强化 道具Q–S（与《新玩法--STG模式》一致）——
+        {
+            id: 'focus_bullet_spd',
+            icon: '💨',
+            group: 'focus_misc',
+            name: '集中弹速',
+            desc: '慢速模式（按住 Shift）下伏魔针弹速提高。',
+            apply: () => {}
+        },
+        {
+            id: 'focus_shikigami',
+            icon: '🎎',
+            group: 'focus_misc',
+            name: '式神援护',
+            desc: '慢速模式下周期从侧翼发射援护弹，伤害参照伏魔针。',
+            apply: () => {}
+        },
+        {
+            id: 'focus_stationary_ramp',
+            icon: '🧘',
+            group: 'focus_misc',
+            name: '站桩蓄能',
+            desc: '慢速下几乎不移动时，封魔针伤害随站立时间提高。',
+            apply: () => {}
+        },
+        {
+            id: 'focus_graze_snipe',
+            icon: '🎯',
+            group: 'focus_misc',
+            name: '擦弹反击',
+            desc: '擦弹成功时追加一发追踪伏魔针。',
+            apply: () => {}
+        },
+        {
+            id: 'focus_needle_slow',
+            icon: '⏸️',
+            group: 'focus_misc',
+            name: '针芒迟滞',
+            desc: '伏魔针命中的敌人有小概率短暂眩晕。',
+            apply: () => {}
+        },
+        /** 大招：试做型封魔阵为局内默认自带（按 X），不在下列随机池 */
+        // —— 大招 · 封魔阵分支强化（仅策划案列出的两项）——
         {
             id: 'ult_seal_size',
             icon: '⭕',
             group: 'ult_seal',
-            name: '道具Q',
-            desc: '强化封魔阵：封魔阵范围增大、持续时间增加',
-            apply: () => {}
-        },
-        {
-            id: 'ult_seal_economy',
-            icon: '💠',
-            group: 'ult_seal',
-            name: '道具R',
-            desc: '封魔阵转化的 P 点价值增加；持续时间内增加自机移速',
-            requires: 'ult_seal_size',
+            name: '阵界扩续',
+            desc: '试做型封魔阵：范围增大、持续时间延长。',
             apply: () => {}
         },
         {
             id: 'ult_seal_heal',
             icon: '💚',
             group: 'ult_seal',
-            name: '道具S',
-            desc: '封魔阵可以恢复生命，并短暂强化攻击',
+            name: '阵疗愈攻',
+            desc: '阵内持续回复生命；阵结束后短时间内攻击伤害提高。',
             requires: 'ult_seal_size',
             apply: () => {}
         },
@@ -1500,16 +1701,16 @@
             id: 'ult_dream_base',
             icon: '🔮',
             group: 'ult_dream',
-            name: '道具T',
-            desc: '封魔阵改编为梦想妙珠：向前方发射 3 枚妙珠，造成大量范围伤害',
+            name: '妙珠改式',
+            desc: '将大招改为「梦想妙珠」：向前发射多枚妙珠，造成范围伤害（与封魔阵分支互斥）。',
             apply: () => {}
         },
         {
             id: 'ult_dream_count',
             icon: '✨',
             group: 'ult_dream',
-            name: '道具U',
-            desc: '增加妙珠数量',
+            name: '妙珠数量',
+            desc: '梦想妙珠数量增加。',
             requires: 'ult_dream_base',
             apply: () => {}
         },
@@ -1517,41 +1718,15 @@
             id: 'ult_dream_stun',
             icon: '💫',
             group: 'ult_dream',
-            name: '道具V',
-            desc: '妙珠可以短暂眩晕敌人',
+            name: '妙珠眩晕',
+            desc: '妙珠可对敌人造成短暂眩晕。',
             requires: 'ult_dream_base',
             apply: () => {}
-        },
-        // —— 基础属性强化（仅此类修改右侧「属性加成」列表）——
-        {
-            id: 'stat_hp',
-            icon: '❤️',
-            group: 'stat',
-            name: '基础道具1',
-            desc: '增加1格生命和生命上限',
-            apply: () => applyStgStatPickup('stat_hp')
-        },
-        { id: 'stat_regen', icon: '💗', group: 'stat', name: '基础道具2', desc: '生命恢复增加', apply: () => applyStgStatPickup('stat_regen') },
-        { id: 'stat_atk_all', icon: '🗡️', group: 'stat', name: '基础道具3', desc: '全攻击力增加', apply: () => applyStgStatPickup('stat_atk_all') },
-        {
-            id: 'stat_graze',
-            icon: '✨',
-            group: 'stat',
-            name: '基础道具10',
-            desc: '擦弹收益增加',
-            apply: () => applyStgStatPickup('stat_graze')
-        },
-        { id: 'stat_fire', icon: '🏹', group: 'stat', name: '基础道具4', desc: '射速增加', apply: () => applyStgStatPickup('stat_fire') },
-        { id: 'stat_bullet_spd', icon: '💨', group: 'stat', name: '基础道具5', desc: '弹速增加', apply: () => applyStgStatPickup('stat_bullet_spd') },
-        { id: 'stat_move_spread', icon: '👟', group: 'stat', name: '基础道具6', desc: '普通模式移速增加', apply: () => applyStgStatPickup('stat_move_spread') },
-        { id: 'stat_exp', icon: '📈', group: 'stat', name: '基础道具7', desc: 'P点价值增加', apply: () => applyStgStatPickup('stat_exp') },
-        { id: 'stat_ult_charge', icon: '🌟', group: 'stat', name: '基础道具9', desc: '充能点价值增加', apply: () => applyStgStatPickup('stat_ult_charge') }
+        }
     ];
 
     function isStgUpgradeEligible(u) {
         if (!u || stgTakenUpgradeIds.has(u.id)) return false;
-        if (u.group === 'focus_crystal' && stgFocusBranch === 'rage') return false;
-        if (u.group === 'focus_rage' && stgFocusBranch === 'crystal') return false;
         if (u.group === 'ult_seal' && stgUltBranch === 'dream') return false;
         if (u.group === 'ult_dream' && stgUltBranch === 'seal') return false;
         /** 分支内：须先拿到 requires 所指的基础强化，本条才参与随机 */
@@ -1568,7 +1743,6 @@
         }
         stgTakenUpgradeIds.add(u.id);
         if (u.group === 'focus_crystal') stgFocusBranch = 'crystal';
-        if (u.group === 'focus_rage') stgFocusBranch = 'rage';
         if (u.group === 'ult_seal') stgUltBranch = 'seal';
         if (u.group === 'ult_dream') stgUltBranch = 'dream';
     }
@@ -1607,13 +1781,8 @@
 
     /** 水晶/狂怒、封魔阵/妙珠 不可同时持有（与局内互斥一致） */
     function validateStgBuildGrantMutEx(set) {
-        const crystalIds = ['focus_crystal_base', 'focus_crystal_atk', 'focus_crystal_count', 'focus_crystal_pierce'];
-        const rageIds = ['focus_rage_core', 'focus_rage_cap', 'focus_rage_dur', 'focus_rage_weak'];
-        const sealIds = ['ult_seal_size', 'ult_seal_economy', 'ult_seal_heal'];
+        const sealIds = ['ult_seal_size', 'ult_seal_heal'];
         const dreamIds = ['ult_dream_base', 'ult_dream_count', 'ult_dream_stun'];
-        const hasCrystal = crystalIds.some((id) => set.has(id));
-        const hasRage = rageIds.some((id) => set.has(id));
-        if (hasCrystal && hasRage) return false;
         const hasSeal = sealIds.some((id) => set.has(id));
         const hasDream = dreamIds.some((id) => set.has(id));
         if (hasSeal && hasDream) return false;
@@ -1641,7 +1810,7 @@
         const filtered = arr.filter((id) => typeof id === 'string');
         let set = expandStgBuildGrantRequires(filtered);
         if (!validateStgBuildGrantMutEx(set)) {
-            console.warn('[STG] 局内道具预设互斥（水晶/狂怒或封魔/妙珠），已跳过本局应用');
+            console.warn('[STG] 局内道具预设互斥（封魔阵强化与梦想妙珠不可同时勾选），已跳过本局应用');
             return;
         }
         const ordered = sortStgBuildGrantIdsByPoolOrder(set);
@@ -1699,6 +1868,8 @@
             this.stgSpawnEdge = 'top';
             /** 曾与画布区域有重叠：未成立前不因「在生成侧外」而剔除，避免上/左/右出生点首帧被误判离场 */
             this.stgHasEnteredPlayfield = false;
+            /** 生成时刻（用于屏外超时兜底；缺省由首帧补齐） */
+            this.stgSpawnClockMs = performance.now();
             this.typeId = typeId || 'normal';
             this.stgInstanceId = ++stgEnemyInstanceSeq;
             /** 击杀额外掉落充能点（仅大招蓄能）；怪物编辑器勾选 */
@@ -1753,6 +1924,18 @@
             this.lockTargetY = ch * Math.max(0.04, Math.min(0.96, lockNy));
             this.lockTargetX = cw * Math.max(0.04, Math.min(0.96, lockNx));
             this.moveIdle = false;
+            /** 多段移动：路径速率曲线、各信标停留(ms)，与怪物编辑器一致 */
+            this.stgWaypointSpeedCurve = normalizeStgWaypointSpeedCurve(typeDef.stgWaypointSpeedCurve);
+            this.stgWaypointDwellMs = parseStgWaypointDwellMsFromDef(typeDef);
+            /** 当前段起点、段内参数 u、信标停留结束时刻（局内由 updateStgEnemyPosition 维护） */
+            this.stgWaypointSegPx = x;
+            this.stgWaypointSegPy = y;
+            this.stgWaypointSegU = 0;
+            this.stgWaypointDwellUntilMs = null;
+            /** 阵型格键 `edge|col|row`（仅扩展棋盘出兵）；多段移动队列分组用 */
+            this.stgFormationCellKey = null;
+            /** 相邻同队多段移动共享同一 id；null=不参与队列同步 */
+            this.stgWaypointQueueId = null;
             /** 阵型摆放列（主棋盘列号），与 flatten 的 col 一致；弧线入场用 */
             this.stgFormationMainCol =
                 formationMainCol != null && Number.isFinite(Number(formationMainCol))
@@ -1829,11 +2012,258 @@
             m === 'horizontal_left' ||
             m === 'horizontal_right' ||
             m === 'lock_y' ||
-            m === 'lock_x'
+            m === 'lock_x' ||
+            m === 'waypoint_a' ||
+            m === 'waypoint_b'
         ) {
             return m;
         }
         return 'homing_legacy';
+    }
+
+    /** 多段路径：直线匀速 / 两端缓动(慢进慢出) / 缓入 / 缓出（沿直线弦上的参数映射） */
+    function normalizeStgWaypointSpeedCurve(raw) {
+        const v = raw != null ? String(raw) : 'linear';
+        if (v === 'smooth' || v === 'ease_in' || v === 'ease_out' || v === 'linear') return v;
+        return 'linear';
+    }
+
+    /** 每信标 1～4 停留毫秒；支持数组或逗号分隔字符串 */
+    function parseStgWaypointDwellMsFromDef(def) {
+        const raw = def && def.stgWaypointDwellMs;
+        const clampMs = (n) => Math.max(0, Math.min(120000, Math.round(Number(n)) || 0));
+        if (Array.isArray(raw)) {
+            return [0, 1, 2, 3].map((i) => clampMs(raw[i]));
+        }
+        if (raw != null && typeof raw === 'string') {
+            const parts = String(raw)
+                .split(/[,，;；\s]+/)
+                .map((s) => parseInt(String(s).trim(), 10))
+                .filter((n) => Number.isFinite(n));
+            return [0, 1, 2, 3].map((i) => clampMs(parts[i]));
+        }
+        return [0, 0, 0, 0];
+    }
+
+    /**
+     * u∈[0,1] 为时间归一化进度；返回值仍为 [0,1]，用于直线插值系数（非匀速时两端导数小）
+     */
+    function applyStgWaypointCurveT(u, curve) {
+        const t = Math.max(0, Math.min(1, u));
+        const c = curve || 'linear';
+        if (c === 'smooth') return t * t * (3 - 2 * t);
+        if (c === 'ease_in') return t * t;
+        if (c === 'ease_out') {
+            const o = 1 - t;
+            return 1 - o * o;
+        }
+        return t;
+    }
+
+    /** 多段移动敌机：圆形机体互斥，防止重叠（每帧两遍迭代，位移对半分摊） */
+    function resolveStgWaypointEnemySeparation(enemyArr) {
+        if (!enemyArr || enemyArr.length < 2) return;
+        const isWp = (e) =>
+            e &&
+            e.alive &&
+            (e.stgMoveMode === 'waypoint_a' || e.stgMoveMode === 'waypoint_b');
+        const passes = 2;
+        for (let pass = 0; pass < passes; pass++) {
+            for (let i = 0; i < enemyArr.length; i++) {
+                const a = enemyArr[i];
+                if (!isWp(a)) continue;
+                const ra = a.radius != null ? a.radius : 14;
+                for (let j = i + 1; j < enemyArr.length; j++) {
+                    const b = enemyArr[j];
+                    if (!isWp(b)) continue;
+                    /** 同阵型队列会信标拉齐到同一点，再推挤会产生异常侧移；同 id 不互斥 */
+                    const qa = a.stgWaypointQueueId;
+                    if (qa != null && qa === b.stgWaypointQueueId) continue;
+                    const rb = b.radius != null ? b.radius : 14;
+                    const dx = b.x - a.x;
+                    const dy = b.y - a.y;
+                    const dist = Math.hypot(dx, dy);
+                    const minD = ra + rb + 0.5;
+                    if (dist >= minD || dist < 1e-6) continue;
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+                    const push = (minD - dist) * 0.5;
+                    a.x -= nx * push;
+                    a.y -= ny * push;
+                    b.x += nx * push;
+                    b.y += ny * push;
+                }
+            }
+        }
+    }
+
+    /**
+     * 阵型编辑器扩展棋盘：同一 board 内四邻接格键（与 flatten 的 edge/col/row 一致）。
+     * @returns {string[]}
+     */
+    function getStgFormationNeighborCellKeys(edge, col, row) {
+        const out = [];
+        const c0 = col | 0;
+        const r0 = row | 0;
+        const dirs = [
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1]
+        ];
+        for (let d = 0; d < dirs.length; d++) {
+            const nc = c0 + dirs[d][0];
+            const nr = r0 + dirs[d][1];
+            if (nc >= 0 && nc < GRID_COLS && nr >= 0 && nr < GRID_ROWS) {
+                out.push(String(edge) + '|' + nc + '|' + nr);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 本波阵型同时生成后：按「相邻格 + 同多段组(A/B)」建并查集，写入 stgWaypointQueueId。
+     * @param {Array<StgEnemy>} spawned
+     */
+    function assignStgWaypointFormationQueues(spawned) {
+        if (!spawned || spawned.length === 0) return;
+
+        function assignOneMode(mode) {
+            /** @type {Map<string, StgEnemy[]>} */
+            const cellsToEnemies = new Map();
+            for (let i = 0; i < spawned.length; i++) {
+                const e = spawned[i];
+                if (!e || e.alive === false) continue;
+                if (e.stgMoveMode !== mode) continue;
+                if (!e.stgFormationCellKey) continue;
+                if (!e.stgWaypointWorld || e.stgWaypointWorld.length === 0) continue;
+                const k = e.stgFormationCellKey;
+                if (!cellsToEnemies.has(k)) cellsToEnemies.set(k, []);
+                cellsToEnemies.get(k).push(e);
+            }
+            const keys = Array.from(cellsToEnemies.keys());
+            if (keys.length === 0) return;
+            /** @type {Map<string, string>} */
+            const parent = new Map();
+            function find(k) {
+                if (!parent.has(k)) parent.set(k, k);
+                let p = parent.get(k);
+                if (p !== k) {
+                    p = find(p);
+                    parent.set(k, p);
+                }
+                return p;
+            }
+            function union(ka, kb) {
+                const ra = find(ka);
+                const rb = find(kb);
+                if (ra !== rb) parent.set(ra, rb);
+            }
+            for (let i = 0; i < keys.length; i++) find(keys[i]);
+            for (let i = 0; i < keys.length; i++) {
+                const k = keys[i];
+                const parts = String(k).split('|');
+                const edge = parts[0];
+                const col = parseInt(parts[1], 10) || 0;
+                const row = parseInt(parts[2], 10) || 0;
+                const neigh = getStgFormationNeighborCellKeys(edge, col, row);
+                for (let n = 0; n < neigh.length; n++) {
+                    if (cellsToEnemies.has(neigh[n])) union(k, neigh[n]);
+                }
+            }
+            /** @type {Map<string, number>} */
+            const rootToId = new Map();
+            for (let i = 0; i < keys.length; i++) {
+                const r = find(keys[i]);
+                if (!rootToId.has(r)) {
+                    rootToId.set(r, stgNextWaypointQueueId++);
+                }
+                const id = rootToId.get(r);
+                const arr = cellsToEnemies.get(keys[i]);
+                for (let j = 0; j < arr.length; j++) {
+                    arr[j].stgWaypointQueueId = id;
+                }
+            }
+        }
+
+        assignOneMode('waypoint_a');
+        assignOneMode('waypoint_b');
+    }
+
+    /**
+     * 是否已「抵达当前目标信标」（用于队列同步：仅信标到达拉齐，不比较段内 u 快慢）。
+     * @returns {0|1|2} 0=仍在飞向当前信标；1=已落点（停留或本段走完）；2=路径已结束 moveIdle
+     */
+    function stgWaypointBeaconArrivalSub(e) {
+        if (!e) return 0;
+        if (e.moveIdle) return 2;
+        const wps = e.stgWaypointWorld;
+        if (!wps || !wps.length) return 0;
+        const idx = e.stgWaypointIndex != null ? e.stgWaypointIndex | 0 : 0;
+        if (idx >= wps.length) return 2;
+        if (e.stgWaypointDwellUntilMs != null) return 1;
+        const u = e.stgWaypointSegU != null ? e.stgWaypointSegU : 0;
+        if (u >= 1 - 1e-8) return 1;
+        return 0;
+    }
+
+    /** @returns {number} 正数表示 a 比 b 沿路径更靠前 */
+    function cmpStgWaypointQueueProgress(a, b) {
+        if (!a || !b) return 0;
+        if (a.stgWaypointWorld !== b.stgWaypointWorld) return 0;
+        if (a.moveIdle && !b.moveIdle) return 1;
+        if (!a.moveIdle && b.moveIdle) return -1;
+        const wps = a.stgWaypointWorld;
+        if (!wps || !wps.length) return 0;
+        const ia = a.stgWaypointIndex != null ? a.stgWaypointIndex | 0 : 0;
+        const ib = b.stgWaypointIndex != null ? b.stgWaypointIndex | 0 : 0;
+        if (ia !== ib) return ia - ib;
+        return stgWaypointBeaconArrivalSub(a) - stgWaypointBeaconArrivalSub(b);
+    }
+
+    function copyStgWaypointStateFromLeader(leader, follower) {
+        follower.x = leader.x;
+        follower.y = leader.y;
+        follower.stgWaypointIndex = leader.stgWaypointIndex;
+        follower.stgWaypointSegPx = leader.stgWaypointSegPx;
+        follower.stgWaypointSegPy = leader.stgWaypointSegPy;
+        follower.stgWaypointSegU = leader.stgWaypointSegU;
+        follower.stgWaypointDwellUntilMs = leader.stgWaypointDwellUntilMs;
+        follower._stgWpReachedIdx = leader._stgWpReachedIdx;
+        follower.moveIdle = leader.moveIdle;
+    }
+
+    /**
+     * 每帧在全体位移更新之后：同一队列内取路径最前者，把尚未到达同信标者拉齐（视为同时到达）。
+     */
+    function applyStgWaypointQueueBeaconSync(enemyArr) {
+        if (!enemyArr || enemyArr.length < 2) return;
+        /** @type {Map<string, StgEnemy[]>} */
+        const groups = new Map();
+        for (let i = 0; i < enemyArr.length; i++) {
+            const e = enemyArr[i];
+            if (!e || !e.alive) continue;
+            const qid = e.stgWaypointQueueId;
+            if (qid == null) continue;
+            if (e.stgMoveMode !== 'waypoint_a' && e.stgMoveMode !== 'waypoint_b') continue;
+            const key = String(qid) + '|' + e.stgMoveMode;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(e);
+        }
+        groups.forEach((list) => {
+            if (list.length < 2) return;
+            let leader = list[0];
+            for (let j = 1; j < list.length; j++) {
+                if (cmpStgWaypointQueueProgress(list[j], leader) > 0) leader = list[j];
+            }
+            for (let j = 0; j < list.length; j++) {
+                const f = list[j];
+                if (f === leader) continue;
+                if (cmpStgWaypointQueueProgress(leader, f) > 0) {
+                    copyStgWaypointStateFromLeader(leader, f);
+                }
+            }
+        });
     }
 
     function clampStgMainCol(v) {
@@ -1960,11 +2390,71 @@
     }
 
     /**
+     * BOSS「移动」模块目标点（px）：可选本波阵型信标格心，否则为归一化坐标 × 画布。
+     */
+    function resolveBossModuleMoveTargetPx(mv, cw, ch) {
+        const kind = mv && mv.moveTargetKind === 'beacon' ? 'beacon' : 'norm';
+        const rawKey = mv && mv.moveBeaconId != null ? String(mv.moveBeaconId).replace(/^__beacon_/, '') : '';
+        const key = /^[ab][1-4]$/.test(rawKey) ? rawKey : '';
+        if (kind === 'beacon' && key) {
+            const map = stgCurrentWaveBeaconMap;
+            const slot = map && map[key] != null ? map[key] : null;
+            const p = slot && stgBeaconSlotToWorld(slot);
+            if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+                return { tx: p.x, ty: p.y };
+            }
+        }
+        const txN = mv && mv.targetXNorm != null ? Number(mv.targetXNorm) : 0.5;
+        const tyN = mv && mv.targetYNorm != null ? Number(mv.targetYNorm) : 0.4;
+        return {
+            tx: cw * Math.max(0.02, Math.min(0.98, txN)),
+            ty: ch * Math.max(0.02, Math.min(0.98, tyN))
+        };
+    }
+
+    /**
      * STG 敌人位置更新（与怪物编辑器 stgMoveMode 一致）
      */
     function updateStgEnemyPosition(e, player, cw, ch, dtSec) {
         const nowSt = performance.now();
         if (e.stgStunUntil != null && nowSt < e.stgStunUntil) return;
+        /** BOSS 模块栈：idle/attack 不主动位移；move 朝当前模块目标点 */
+        if (e.stgBossConfigSnapshot && e._stgBossFsm) {
+            const boss = normalizeStgBossModulesForRuntime(e.stgBossConfigSnapshot);
+            const mods = boss.modules || [];
+            if (mods.length === 0) {
+                return;
+            }
+            const ii = Math.min(Math.max(0, e._stgBossFsm.moduleIndex | 0), mods.length - 1);
+            const mod = mods[ii];
+            if (!mod) {
+                return;
+            }
+            const typ = mod.type === 'move' ? 'move' : mod.type === 'attack' ? 'attack' : 'idle';
+            if (typ === 'idle' || typ === 'attack') {
+                return;
+            }
+            if (typ === 'move') {
+                const mv = mod;
+                const { tx, ty } = resolveBossModuleMoveTargetPx(mv, cw, ch);
+                const spdPx =
+                    mv && mv.speedPx != null && Number.isFinite(Number(mv.speedPx))
+                        ? Math.max(0, Number(mv.speedPx))
+                        : e.speed;
+                const step = spdPx * dtSec;
+                const dx = tx - e.x;
+                const dy = ty - e.y;
+                const dist = Math.hypot(dx, dy) || 1;
+                if (dist <= Math.max(2, step)) {
+                    e.x = tx;
+                    e.y = ty;
+                } else {
+                    e.x += (dx / dist) * step;
+                    e.y += (dy / dist) * step;
+                }
+                return;
+            }
+        }
         const sp = e.speed * dtSec;
         const mode = e.stgMoveMode || 'homing_legacy';
 
@@ -1974,6 +2464,95 @@
             const dist = Math.hypot(dx, dy) || 1;
             e.x += (dx / dist) * sp * 0.35;
             e.y += sp * 0.75;
+            return;
+        }
+        /** 多段移动：沿直线弦按速率曲线插值；信标处可停留；段末再走向下一信标 */
+        if (mode === 'waypoint_a' || mode === 'waypoint_b') {
+            if (e.moveIdle) return;
+            const wps = e.stgWaypointWorld;
+            if (!wps || wps.length === 0) {
+                e.moveIdle = true;
+                return;
+            }
+            /** 停留在信标：不位移，等计时结束后再切下一段 */
+            if (e.stgWaypointDwellUntilMs != null) {
+                if (nowSt < e.stgWaypointDwellUntilMs) return;
+                e.stgWaypointDwellUntilMs = null;
+                const finishedAt =
+                    e._stgWpReachedIdx != null ? e._stgWpReachedIdx | 0 : e.stgWaypointIndex != null ? e.stgWaypointIndex | 0 : 0;
+                e._stgWpReachedIdx = undefined;
+                const nextIdx = finishedAt + 1;
+                e.stgWaypointIndex = nextIdx;
+                if (nextIdx >= wps.length) {
+                    e.moveIdle = true;
+                    return;
+                }
+                e.stgWaypointSegPx = e.x;
+                e.stgWaypointSegPy = e.y;
+                e.stgWaypointSegU = 0;
+            }
+
+            let idx = e.stgWaypointIndex != null ? e.stgWaypointIndex | 0 : 0;
+            if (idx >= wps.length) {
+                e.moveIdle = true;
+                return;
+            }
+            const bx = wps[idx].x;
+            const by = wps[idx].y;
+            const ax = e.stgWaypointSegPx != null ? e.stgWaypointSegPx : e.x;
+            const ay = e.stgWaypointSegPy != null ? e.stgWaypointSegPy : e.y;
+            const sdx = bx - ax;
+            const sdy = by - ay;
+            const segLen = Math.hypot(sdx, sdy);
+            const curve = e.stgWaypointSpeedCurve || 'linear';
+
+            if (segLen < 0.5) {
+                e.x = bx;
+                e.y = by;
+                const dms = (e.stgWaypointDwellMs && e.stgWaypointDwellMs[idx]) || 0;
+                if (dms > 0) {
+                    e.stgWaypointDwellUntilMs = nowSt + dms;
+                    e._stgWpReachedIdx = idx;
+                } else {
+                    e.stgWaypointIndex = idx + 1;
+                    if (e.stgWaypointIndex >= wps.length) {
+                        e.moveIdle = true;
+                        return;
+                    }
+                    e.stgWaypointSegPx = e.x;
+                    e.stgWaypointSegPy = e.y;
+                    e.stgWaypointSegU = 0;
+                }
+                return;
+            }
+
+            let u = e.stgWaypointSegU != null ? e.stgWaypointSegU : 0;
+            /** sp 已是 speed*dtSec（本帧位移），此处不得再乘 dtSec，否则 u 推进过慢、难以到达首段信标 */
+            u += sp / segLen;
+            if (u >= 1) {
+                e.x = bx;
+                e.y = by;
+                e.stgWaypointSegU = 1;
+                const dms = (e.stgWaypointDwellMs && e.stgWaypointDwellMs[idx]) || 0;
+                if (dms > 0) {
+                    e.stgWaypointDwellUntilMs = nowSt + dms;
+                    e._stgWpReachedIdx = idx;
+                } else {
+                    e.stgWaypointIndex = idx + 1;
+                    if (e.stgWaypointIndex >= wps.length) {
+                        e.moveIdle = true;
+                        return;
+                    }
+                    e.stgWaypointSegPx = e.x;
+                    e.stgWaypointSegPy = e.y;
+                    e.stgWaypointSegU = 0;
+                }
+                return;
+            }
+            const te = applyStgWaypointCurveT(u, curve);
+            e.x = ax + sdx * te;
+            e.y = ay + sdy * te;
+            e.stgWaypointSegU = u;
             return;
         }
         if (mode === 'straight') {
@@ -2133,8 +2712,12 @@
             sprite: o.sprite != null && String(o.sprite).trim() !== '' ? sanitizeStgEnemyBulletSpriteName(String(o.sprite)) : '',
             /** 绘制时若 sprite 丢失可回退到 getEnemyTypeMap()[typeId].stgEnemyBulletSprite */
             typeId: o.typeId != null && String(o.typeId).trim() !== '' ? String(o.typeId) : 'normal',
-            /** 每颗敌弹仅可触发一次擦弹 */
-            _stgGrazed: false
+            /** 敌弹擦弹状态：支持多次触发（按冷却） */
+            _stgGrazed: false,
+            /** 该弹上次擦弹时刻（毫秒），用于多次擦弹冷却 */
+            _stgGrazeLastMs: -1e9,
+            /** 擦弹后短暂高亮时刻（毫秒） */
+            _stgGrazeHighlightUntil: 0
         });
     }
 
@@ -2174,7 +2757,11 @@
     function emitStgEnemyAttackVolley(e, player, volleyIdx, totalVolleys) {
         const style = e.stgEmitStyle || 'single';
         const spdMult = getEnemyBurstSpeedMult(e, volleyIdx, totalVolleys);
-        const bsp = e.enemyBulletSpeed * spdMult;
+        const rawBulletSpd =
+            e.stgEnemyBulletSpeed != null && Number.isFinite(Number(e.stgEnemyBulletSpeed))
+                ? Math.max(40, Number(e.stgEnemyBulletSpeed))
+                : e.enemyBulletSpeed;
+        const bsp = rawBulletSpd * spdMult;
         const px = player.x;
         const py = player.y;
         const ex = e.x;
@@ -2197,11 +2784,15 @@
         /** 贴图以种类表为准（与实例字段双保险），避免存档/旧实例上 stgEnemyBulletSprite 未带上 */
         const typesMapEmit = getEnemyTypeMap();
         const tidEmit = e.typeId != null && String(e.typeId).trim() !== '' ? String(e.typeId) : 'normal';
-        const defEmit = typesMapEmit[tidEmit] || typesMapEmit.normal;
-        const spFromMap =
-            defEmit && defEmit.stgEnemyBulletSprite != null && String(defEmit.stgEnemyBulletSprite).trim() !== ''
-                ? String(defEmit.stgEnemyBulletSprite)
-                : '';
+        /** BOSS token 不在种类表里：若用 normal 的贴图会误套小怪图，仅采用实例上弹幕方案写入的贴图 */
+        let spFromMap = '';
+        if (tidEmit.indexOf('__boss_') !== 0) {
+            const defEmit = typesMapEmit[tidEmit] || typesMapEmit.normal;
+            spFromMap =
+                defEmit && defEmit.stgEnemyBulletSprite != null && String(defEmit.stgEnemyBulletSprite).trim() !== ''
+                    ? String(defEmit.stgEnemyBulletSprite)
+                    : '';
+        }
         const spFromInst = e.stgEnemyBulletSprite != null && String(e.stgEnemyBulletSprite).trim() !== '' ? String(e.stgEnemyBulletSprite) : '';
         const spMerged = spFromMap || spFromInst;
         const bulletExtra = { radius: bulletR, shape: bulletShape, typeId: tidEmit };
@@ -2340,11 +2931,33 @@
             e._stgBurstTotal = burstTotal;
         } else {
             e._stgBurstRemain = 0;
+            if (!deathOnce) {
+                notifyBossFirePatternCycleComplete(e);
+            }
         }
     }
 
     function getUltChargeMeterThreshold() {
         return STG_ULT_CHARGE_METER_BASE / Math.max(0.25, bonusUltChargeMult);
+    }
+
+    /** 每充满一大招格追加 1 秒提示；同帧多格则时长累加 */
+    function pushStgUltReadyHintOneSecond() {
+        const now = performance.now();
+        const base =
+            stgUltReadyHintUntilMs != null && stgUltReadyHintUntilMs > now ? stgUltReadyHintUntilMs : now;
+        stgUltReadyHintUntilMs = base + 1000;
+    }
+
+    /** 在已向 stgUltChargeMeter 加量之后调用：按阈值折算整格并触发飘字 */
+    function applyStgUltChargeMeterOverflowAndHints() {
+        const th = getUltChargeMeterThreshold();
+        while (stgUltChargeMeter >= th && stgUltCharges < STG_ULT_CHARGE_MAX) {
+            stgUltCharges++;
+            stgUltChargeMeter -= th;
+            pushStgUltReadyHintOneSecond();
+        }
+        if (stgUltCharges >= STG_ULT_CHARGE_MAX) stgUltChargeMeter = 0;
     }
 
     /**
@@ -2491,6 +3104,223 @@
         if (h.chapterTransition) {
             h.chapterTransition.classList.add('hidden');
         }
+    }
+
+    function loadStgBossConfigsDoc() {
+        try {
+            const raw = localStorage.getItem(STG_BOSS_CONFIG_KEY);
+            if (!raw) return null;
+            const o = JSON.parse(raw);
+            return o && typeof o === 'object' && o.bosses && typeof o.bosses === 'object' ? o : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /**
+     * 波次阵型格子 token `__boss_<bossId>`：用 BOSS 编辑器中的血量与「发射弹幕」首条方案的 stg* 字段覆盖；
+     * 机体模板优先取自 tank，便于默认高血与大体型。
+     * @returns {{ def: object, boss: object|null } | null} 非 BOSS token 时返回 null
+     */
+    function getStgBossSpawnDef(typeId, typesMap) {
+        const prefix = '__boss_';
+        if (!typeId || String(typeId).indexOf(prefix) !== 0) return null;
+        const bossId = String(typeId).slice(prefix.length);
+        const doc = loadStgBossConfigsDoc();
+        const boss = doc && doc.bosses ? doc.bosses[bossId] : null;
+        const baseKey = typesMap && typesMap.tank ? 'tank' : 'normal';
+        const baseSrc = typesMap && typesMap[baseKey] ? typesMap[baseKey] : typesMap.normal;
+        const def = { ...baseSrc };
+        if (!boss) {
+            console.warn('[STG] 未找到 BOSS 配置，bossId=', bossId);
+            def.name = 'BOSS(?)';
+            def.icon = '🐉';
+            return { def, boss: null };
+        }
+        def.name = boss.name != null ? String(boss.name) : bossId;
+        def.icon = '🐉';
+        const hp =
+            boss.hp != null && Number.isFinite(Number(boss.hp)) ? Math.max(1, Math.round(Number(boss.hp))) : def.defaultHealth;
+        def.defaultHealth = hp;
+        const nb = normalizeStgBossModulesForRuntime(boss);
+        let p0 = null;
+        if (nb.modules && nb.modules.length) {
+            for (let mi = 0; mi < nb.modules.length; mi++) {
+                const m = nb.modules[mi];
+                if (m && m.type === 'attack' && Array.isArray(m.patterns) && m.patterns.length > 0) {
+                    p0 = m.patterns[0];
+                    break;
+                }
+            }
+        }
+        if (!p0 && boss.states && boss.states.fire && Array.isArray(boss.states.fire.patterns) && boss.states.fire.patterns[0]) {
+            p0 = boss.states.fire.patterns[0];
+        }
+        if (p0 && typeof p0 === 'object') {
+            Object.keys(p0).forEach((k) => {
+                if (k === 'patternId' || k === 'label') return;
+                if (k.indexOf('stg') === 0) def[k] = p0[k];
+            });
+        }
+        return { def, boss };
+    }
+
+    /**
+     * 旧版三态 states → modules[]；已在内存中归一化，不写回磁盘。
+     */
+    function normalizeStgBossModulesForRuntime(boss) {
+        if (!boss || typeof boss !== 'object') return { modules: [] };
+        if (Array.isArray(boss.modules) && boss.modules.length > 0) return boss;
+        if (boss.states && typeof boss.states === 'object') {
+            const st = boss.states;
+            const modules = [];
+            if (st.idle && typeof st.idle === 'object') {
+                modules.push({
+                    type: 'idle',
+                    moduleId: 'legacy_idle',
+                    durationMs: Math.max(0, parseInt(st.idle.durationMs, 10) || 0)
+                });
+            }
+            if (st.move && typeof st.move === 'object') {
+                const m = st.move;
+                modules.push({
+                    type: 'move',
+                    moduleId: 'legacy_move',
+                    durationMs: Math.max(0, parseInt(m.durationMs, 10) || 0),
+                    speedPx: m.speedPx != null ? Number(m.speedPx) : 90,
+                    moveTargetKind: 'norm',
+                    moveBeaconId: 'a1',
+                    targetXNorm: m.targetXNorm != null ? Number(m.targetXNorm) : 0.5,
+                    targetYNorm: m.targetYNorm != null ? Number(m.targetYNorm) : 0.38
+                });
+            }
+            if (st.fire && typeof st.fire === 'object') {
+                const f = st.fire;
+                modules.push({
+                    type: 'attack',
+                    moduleId: 'legacy_attack',
+                    durationMs: Math.max(0, parseInt(f.durationMs, 10) || 0),
+                    patternPick: f.patternPick === 'random' ? 'random' : 'sequence',
+                    patterns: Array.isArray(f.patterns) ? f.patterns : []
+                });
+            }
+            if (modules.length > 0) return { ...boss, modules };
+        }
+        return { ...boss, modules: [{ type: 'idle', moduleId: 'fallback', durationMs: 1000 }] };
+    }
+
+    /**
+     * 将 BOSS 弹幕方案中的 stg* 字段写入敌机实例，并同步 e.pattern（与 resolveStgBulletPattern 一致）
+     */
+    function applyBossPatternSnapshotToEnemy(e, p) {
+        if (!e || !p || typeof p !== 'object') return;
+        Object.keys(p).forEach((k) => {
+            if (k === 'patternId' || k === 'label') return;
+            if (k.indexOf('stg') !== 0) return;
+            e[k] = p[k];
+        });
+        /** 发射逻辑读 enemyBulletSpeed；仅写 stgEnemyBulletSpeed 时弹速不变 */
+        if (p.stgEnemyBulletSpeed != null && Number.isFinite(Number(p.stgEnemyBulletSpeed))) {
+            e.enemyBulletSpeed = Math.max(40, Number(p.stgEnemyBulletSpeed));
+        }
+        e.pattern = resolveStgBulletPattern({ stgBulletPattern: p.stgBulletPattern });
+    }
+
+    function notifyBossFirePatternCycleComplete(e) {
+        if (!e._stgBossFsm || !e.stgBossConfigSnapshot) return;
+        const boss = normalizeStgBossModulesForRuntime(e.stgBossConfigSnapshot);
+        const mods = boss.modules || [];
+        if (mods.length === 0) return;
+        const i = Math.min(Math.max(0, e._stgBossFsm.moduleIndex | 0), mods.length - 1);
+        const mod = mods[i];
+        if (!mod || mod.type !== 'attack') return;
+        const patterns = Array.isArray(mod.patterns) ? mod.patterns : [];
+        if (patterns.length <= 1) return;
+        const pick = mod.patternPick === 'random' ? 'random' : 'sequence';
+        let idx;
+        if (pick === 'random') {
+            idx = Math.floor(Math.random() * patterns.length);
+        } else {
+            idx = ((e._stgBossFsm.firePatternIdx | 0) + 1) % patterns.length;
+        }
+        e._stgBossFsm.firePatternIdx = idx;
+        applyBossPatternSnapshotToEnemy(e, patterns[idx]);
+    }
+
+    function onStgBossModuleEnter(e, mod) {
+        e._stgBurstRemain = 0;
+        e._stgBurstNextMs = 0;
+        if (!mod || !e._stgBossFsm) return;
+        if (mod.type === 'attack') {
+            const patterns = Array.isArray(mod.patterns) ? mod.patterns : [];
+            if (patterns.length === 0) {
+                e.pattern = 'none';
+                return;
+            }
+            const pick = mod.patternPick === 'random' ? 'random' : 'sequence';
+            let idx = 0;
+            if (pick === 'random') {
+                idx = Math.floor(Math.random() * patterns.length);
+            }
+            e._stgBossFsm.firePatternIdx = idx;
+            e._stgBossFsm.firePatternPick = pick;
+            applyBossPatternSnapshotToEnemy(e, patterns[idx]);
+        } else {
+            e.pattern = 'none';
+        }
+    }
+
+    function initStgBossFsmOnEnemy(e) {
+        const boss = normalizeStgBossModulesForRuntime(e.stgBossConfigSnapshot);
+        if (!boss || !boss.modules || boss.modules.length === 0) return;
+        e._stgBossFsm = {
+            moduleIndex: 0,
+            enterMs: performance.now(),
+            firePatternIdx: 0,
+            firePatternPick: 'sequence'
+        };
+        e.stgMoveMode = 'homing_legacy';
+        e.moveIdle = false;
+        onStgBossModuleEnter(e, boss.modules[0]);
+    }
+
+    /**
+     * BOSS 模块栈：按顺序执行 modules[]，每条 durationMs 后进入下一条，最后一条后回到第一条。
+     */
+    function tickStgBossFsm(e, nowT) {
+        const boss = normalizeStgBossModulesForRuntime(e.stgBossConfigSnapshot);
+        if (!boss.modules || boss.modules.length === 0) return;
+        let fsm = e._stgBossFsm;
+        if (!fsm) {
+            initStgBossFsmOnEnemy(e);
+            fsm = e._stgBossFsm;
+        }
+        if (!fsm) return;
+        const mods = boss.modules;
+        const n = mods.length;
+        let guard = 0;
+        while (guard++ < 32) {
+            const i = Math.min(Math.max(0, fsm.moduleIndex | 0), n - 1);
+            const mod = mods[i];
+            if (!mod) break;
+            const rawDur = mod.durationMs != null ? Number(mod.durationMs) : 3000;
+            const dur = Number.isFinite(rawDur) ? Math.max(0, rawDur) : 3000;
+            const elapsed = nowT - fsm.enterMs;
+            if (elapsed < dur) break;
+            fsm.moduleIndex = (i + 1) % n;
+            fsm.enterMs = nowT;
+            onStgBossModuleEnter(e, mods[fsm.moduleIndex]);
+            if (dur > 0) break;
+        }
+    }
+
+    function isStgBossInAttackModule(e) {
+        if (!e._stgBossFsm || !e.stgBossConfigSnapshot) return false;
+        const boss = normalizeStgBossModulesForRuntime(e.stgBossConfigSnapshot);
+        const mods = boss.modules || [];
+        if (mods.length === 0) return false;
+        const i = Math.min(Math.max(0, e._stgBossFsm.moduleIndex | 0), mods.length - 1);
+        return !!(mods[i] && mods[i].type === 'attack');
     }
 
     /**
@@ -2681,7 +3511,9 @@
                     s.stgMoveMode === 'horizontal_left' ||
                     s.stgMoveMode === 'horizontal_right' ||
                     s.stgMoveMode === 'lock_y' ||
-                    s.stgMoveMode === 'lock_x'
+                    s.stgMoveMode === 'lock_x' ||
+                    s.stgMoveMode === 'waypoint_a' ||
+                    s.stgMoveMode === 'waypoint_b'
                         ? s.stgMoveMode
                         : b.stgMoveMode,
                 stgMoveStraightAngleDeg:
@@ -2733,7 +3565,14 @@
                     s.stgChargeDropMult != null && Number.isFinite(Number(s.stgChargeDropMult))
                         ? Math.max(0.25, Math.min(4, Number(s.stgChargeDropMult)))
                         : 1,
-                stgContactDamagePlayer: s.stgContactDamagePlayer === false ? false : true
+                stgContactDamagePlayer: s.stgContactDamagePlayer === false ? false : true,
+                stgWaypointSpeedCurve: normalizeStgWaypointSpeedCurve(
+                    s.stgWaypointSpeedCurve != null ? s.stgWaypointSpeedCurve : b.stgWaypointSpeedCurve
+                ),
+                stgWaypointDwellMs: (() => {
+                    if (s.stgWaypointDwellMs != null) return parseStgWaypointDwellMsFromDef(s);
+                    return parseStgWaypointDwellMsFromDef(b);
+                })()
             };
         });
         return out;
@@ -3010,6 +3849,120 @@
         });
     }
 
+    /** 阵型格内「移动信标」占位前缀：与波次编辑器笔刷一致，不参与出兵 */
+    const STG_FORMATION_BEACON_PREFIX = '__beacon_';
+
+    function isStgFormationBeaconToken(s) {
+        return s != null && String(s).startsWith(STG_FORMATION_BEACON_PREFIX);
+    }
+
+    /**
+     * 从三块阵型格解析 a1–a4、b1–b4 信标位置（后者覆盖前者）；未放置为 null。
+     * @param {object} f stgFormation
+     * @returns {Record<string, { edge: string, col: number, row: number }|null>}
+     */
+    function extractStgFormationBeacons(f) {
+        const map = {
+            a1: null,
+            a2: null,
+            a3: null,
+            a4: null,
+            b1: null,
+            b2: null,
+            b3: null,
+            b4: null
+        };
+        const valid = new Set(Object.keys(map));
+        function visitCell(cell, edge, col, row) {
+            if (cell == null || String(cell).trim() === '') return;
+            const parts = String(cell)
+                .split('|')
+                .map((s) => s.trim())
+                .filter(Boolean);
+            parts.forEach((p) => {
+                if (!isStgFormationBeaconToken(p)) return;
+                const key = String(p).slice(STG_FORMATION_BEACON_PREFIX.length);
+                if (valid.has(key)) {
+                    map[key] = { edge, col, row };
+                }
+            });
+        }
+        if (!f || typeof f !== 'object') return map;
+        const topGrid = f.top;
+        if (topGrid && Array.isArray(topGrid)) {
+            for (let r = 0; r < GRID_ROWS; r++) {
+                const row = topGrid[r];
+                if (!row || !Array.isArray(row)) continue;
+                for (let c = 0; c < GRID_COLS; c++) {
+                    visitCell(row[c], 'top', c, r);
+                }
+            }
+        }
+        const leftGrid = f.left;
+        if (leftGrid && Array.isArray(leftGrid)) {
+            for (let r = 0; r < GRID_ROWS; r++) {
+                const row = leftGrid[r];
+                if (!row || !Array.isArray(row)) continue;
+                for (let c = 0; c < GRID_COLS; c++) {
+                    visitCell(row[c], 'left', c, r);
+                }
+            }
+        }
+        const rightGrid = f.right;
+        if (rightGrid && Array.isArray(rightGrid)) {
+            for (let r = 0; r < GRID_ROWS; r++) {
+                const row = rightGrid[r];
+                if (!row || !Array.isArray(row)) continue;
+                for (let c = 0; c < GRID_COLS; c++) {
+                    visitCell(row[c], 'right', c, r);
+                }
+            }
+        }
+        /** 主棋盘信标最后写入：若同一信标 id 在扩展格与主棋盘均出现，以主棋盘格为准 */
+        const mainGrid = f.main;
+        if (mainGrid && Array.isArray(mainGrid)) {
+            for (let r = 0; r < GRID_ROWS; r++) {
+                const row = mainGrid[r];
+                if (!row || !Array.isArray(row)) continue;
+                for (let c = 0; c < GRID_COLS; c++) {
+                    visitCell(row[c], 'main', c, r);
+                }
+            }
+        }
+        return map;
+    }
+
+    /**
+     * 信标占位：扩展棋盘用 getExtendedGridCellCenter；主棋盘用 getMainGridCellCenter
+     * @param {{ edge: string, col: number, row: number }} slot
+     */
+    function stgBeaconSlotToWorld(slot) {
+        if (!slot || slot.edge == null) return null;
+        if (slot.edge === 'main') {
+            return getMainGridCellCenter(slot.col, slot.row);
+        }
+        return getExtendedGridCellCenter(slot.edge, slot.col, slot.row);
+    }
+
+    /**
+     * @param {Record<string, { edge: string, col: number, row: number }|null>} beaconMap
+     * @param {'A'|'B'} group
+     * @returns {Array<{x:number,y:number}>}
+     */
+    function buildStgWaypointWorldListFromBeacons(beaconMap, group) {
+        const order = group === 'A' ? ['a1', 'a2', 'a3', 'a4'] : ['b1', 'b2', 'b3', 'b4'];
+        const out = [];
+        if (!beaconMap) return out;
+        for (let i = 0; i < order.length; i++) {
+            const slot = beaconMap[order[i]];
+            if (slot && slot.edge) {
+                const p = stgBeaconSlotToWorld(slot);
+                if (p) out.push({ x: p.x, y: p.y });
+            }
+        }
+        return out;
+    }
+
     /**
      * 将三块阵型棋盘展平为列表（与顺序无关：阵型波次同一帧全部生成）。
      * 棋盘与主战场同格数，上/左/右 为三个方向的延伸，见 getExtendedGridCellCenter。
@@ -3025,6 +3978,7 @@
                 .map((s) => s.trim())
                 .filter(Boolean);
             parts.forEach((typeId) => {
+                if (isStgFormationBeaconToken(typeId)) return;
                 list.push({ typeId, edge, col: c, row: r });
             });
         }
@@ -3131,14 +4085,25 @@
      */
     function spawnFormationEntriesImmediate(entries, typesMap) {
         if (!entries || entries.length === 0) return;
+        const spawned = [];
         for (let i = 0; i < entries.length; i++) {
             spawnEnemyFromRaw(entries[i], typesMap, { fromFormation: true });
+            spawned.push(enemies[enemies.length - 1]);
         }
+        assignStgWaypointFormationQueues(spawned);
         console.log('[STG] 阵型已同时生成', entries.length, '只（扩展棋盘格心）');
     }
 
-    function applyWaveFlattenResult(fr) {
+    /**
+     * @param {{ list: Array }} fr
+     * @param {object} [wave] 当前波次对象（取 stgFormation 解析信标）；缺省则清空信标表
+     */
+    function applyWaveFlattenResult(fr, wave) {
         spawnQueueLegacy = [];
+        stgCurrentWaveBeaconMap =
+            wave && wave.stgFormation && typeof wave.stgFormation === 'object'
+                ? extractStgFormationBeacons(wave.stgFormation)
+                : null;
         const n = fr && fr.list ? fr.list.length : 0;
         stgWaveSpawnTotal = n;
         stgWaveResolvedCount = 0;
@@ -3318,7 +4283,7 @@
         }
         spawnIntervalMs = nw.spawnInterval != null ? nw.spawnInterval : 400;
         spawnSlotUsage.clear();
-        applyWaveFlattenResult(flattenWaveToQueue(nw));
+        applyWaveFlattenResult(flattenWaveToQueue(nw), nw);
         if (getSpawnPendingCount() === 0) {
             console.warn('[STG] 该波阵型格子为空，本波无敌人');
         }
@@ -3404,7 +4369,7 @@
         const w0 = waveData.waves && waveData.waves[0];
         if (w0) {
             spawnIntervalMs = w0.spawnInterval != null ? w0.spawnInterval : 400;
-            applyWaveFlattenResult(flattenWaveToQueue(w0));
+            applyWaveFlattenResult(flattenWaveToQueue(w0), w0);
         } else {
             spawnIntervalMs = 400;
         }
@@ -3422,6 +4387,10 @@
      * @returns {boolean}
      */
     function tryStgAutoStartNextWave() {
+        /** 通关/死亡/章节过渡中不再尝试衔接波次，避免与升级时刻逻辑打架 */
+        if (phase === 'win' || phase === 'dead' || phase === 'chapter_transition') {
+            return false;
+        }
         const waves = waveData.waves || [];
         if (getSpawnPendingCount() > 0) {
             console.log('[STG] 上一波仍在按间隔出兵，延后自动下一波');
@@ -3442,12 +4411,16 @@
         const moments = getStgUpgradeMomentsAfterWaveNormalized();
         if (moments.indexOf(completedWave1Based) >= 0) {
             interWaveCountEnd = null;
-            const rounds = stgLevelUpsBanked;
+            const rounds = Math.max(0, stgLevelUpsBanked | 0);
             stgLevelUpsBanked = 0;
-            stgUpgradeMomentRoundTotal = Math.max(0, rounds);
-            stgUpgradeMomentRoundsLeft = Math.max(0, rounds);
+            stgUpgradeMomentRoundTotal = rounds;
+            stgUpgradeMomentRoundsLeft = rounds;
+            /** 经验银行无可用升级次数：不弹四选一，直接衔接下一波/章节，避免卡死 */
             if (rounds <= 0) {
-                return tryStgAdvanceWaveOrFinishChapter();
+                console.log('[STG] 升级时刻：经验银行次数为 0，跳过四选一，直接衔接波次');
+                tryStgAdvanceWaveOrFinishChapter();
+                /** 返回 true，避免倒计时重试在「最后一波衔接章节」时反复 try */
+                return true;
             }
             stgPendingWaveAdvanceAfterUpgradeMoment = true;
             prepareLevelUpChoices4();
@@ -3457,6 +4430,33 @@
             return true;
         }
         return tryStgAdvanceWaveOrFinishChapter();
+    }
+
+    /**
+     * 升级时刻全部轮次结束（或无法弹出 UI）：关弹层、按配置延迟后出下一波；与 finalizeStgUpgradePick 最后一轮共用。
+     */
+    function finalizeStgUpgradeMomentSessionComplete() {
+        const h = getHudElements();
+        if (h.upgrade) {
+            h.upgrade.classList.add('hidden');
+            h.upgrade.setAttribute('aria-hidden', 'true');
+        }
+        stgUpgradePickOpen = false;
+        const hintBtn = document.getElementById('stgLevelUpHint');
+        if (hintBtn) hintBtn.classList.add('hidden');
+        const subEl = document.getElementById('stgUpgradeSubHint');
+        if (subEl) subEl.innerHTML = '';
+        if (stgPendingWaveAdvanceAfterUpgradeMoment) {
+            stgPendingWaveAdvanceAfterUpgradeMoment = false;
+            const sec = getStgPostUpgradeSpawnDelaySec();
+            stgPostUpgradeAdvanceAtMs = performance.now() + sec * 1000;
+        }
+        if (phase === 'levelup' || phase === 'upgrade_announce') {
+            phase = 'playing';
+        }
+        lastFrameTime = performance.now();
+        refreshStgAttackBuildPanel();
+        refreshStgReimuBonusAside();
     }
 
     /**
@@ -3626,20 +4626,42 @@
         };
     }
 
-    /** 道具D：追踪分支伤害乘区、转向强度（与 homingStr 挂钩） */
+    /** 道具D：追踪分支伤害乘区、转向强度（与 homingStr 挂钩）；默认 0.5=伤害减半 */
     function getStgSpreadHomingOverride() {
         const o = getStgBuildOverride('spread_homing');
         return {
-            damageMult: clampOverrideNum(o.homingDamageMult, 0.05, 1, 0.6),
+            damageMult: clampOverrideNum(o.homingDamageMult, 0.05, 1, 0.5),
             homingStr: Math.round(clampOverrideNum(o.homingStr, 10, 200, 72))
         };
     }
 
-    /** 道具G：扩散暴击额外概率 */
-    function getStgSpreadCritOverride() {
-        const o = getStgBuildOverride('spread_crit');
+    /** 原「道具 G·暴击」拆为射速/威力：仅普通模式博丽御符 */
+    function getStgSpreadRofOverride() {
+        const o = getStgBuildOverride('spread_rof');
         return {
-            critBonus: clampOverrideNum(o.critBonus, 0, 0.5, 0.12)
+            /** 乘在射击间隔上，<1 更快 */
+            intervalMult: clampOverrideNum(o.spreadRofIntervalMult, 0.65, 1, 0.9)
+        };
+    }
+    function getStgSpreadMightOverride() {
+        const o = getStgBuildOverride('spread_might');
+        return {
+            damageMult: clampOverrideNum(o.spreadMightDamageMult, 1, 1.85, 1.12)
+        };
+    }
+    /** 集中弹速（慢速伏魔针） */
+    function getStgFocusBulletSpdOverride() {
+        const o = getStgBuildOverride('focus_bullet_spd');
+        return {
+            mult: clampOverrideNum(o.focusBulletSpdMult, 1, 1.4, 1.1)
+        };
+    }
+    /** 式神援护：与炮台类似，仅在慢速下开火 */
+    function getStgShikigamiOverride() {
+        const o = getStgBuildOverride('focus_shikigami');
+        return {
+            dmgMult: clampOverrideNum(o.shikigamiDmgMult, 0.25, 2, 0.58),
+            fireIntervalMs: Math.round(clampOverrideNum(o.shikigamiFireIntervalMs, 200, 2000, 620))
         };
     }
 
@@ -3868,6 +4890,13 @@
         if (fanOv) {
             volleyDmg *= fanOv.damageMult;
         }
+        if (spreadMode && stgTakenUpgradeIds.has('spread_might')) {
+            volleyDmg *= getStgSpreadMightOverride().damageMult;
+        }
+        if (useFocusMain && stgTakenUpgradeIds.has('focus_stationary_ramp') && player) {
+            const sec = Math.floor((player._stgFocusStandStillMs | 0) / 1000);
+            volleyDmg *= 1 + Math.min(0.42, sec * 0.065);
+        }
 
         /** 道具M：狂怒下弹速随层数增加（主武器扩散 / 慢速均生效；大招弹幕不走本段；可局内构筑覆盖每层加成） */
         let rageBulletSpdMult = 1;
@@ -3878,7 +4907,11 @@
                 rageBulletSpdMult = 1 + rex.bulletSpdPerStack * stgRageStacks;
             }
         }
-        const spd = spdBase * bonusBulletSpeed * rageBulletSpdMult;
+        let focusSpdMult = 1;
+        if (useFocusMain && stgTakenUpgradeIds.has('focus_bullet_spd')) {
+            focusSpdMult = getStgFocusBulletSpdOverride().mult;
+        }
+        const spd = spdBase * bonusBulletSpeed * rageBulletSpdMult * focusSpdMult;
         const px = p.x;
         const py = p.y - p.radius;
 
@@ -3927,7 +4960,7 @@
                     homingStrUse = spreadHomingStr;
                 }
             }
-            const critB = spreadMode && stgTakenUpgradeIds.has('spread_crit') ? getStgSpreadCritOverride().critBonus : 0;
+            const critB = 0;
             const pl = ex.pierceOverride != null ? ex.pierceOverride : pierceHitsMax;
             const needSet = pl > 1;
             playerBullets.push({
@@ -4030,6 +5063,45 @@
             pushBullet(px, py, Math.cos(a) * spd, Math.sin(a) * spd, {});
         }
         trySpreadExtraAndYinyang();
+    }
+
+    /**
+     * 擦弹反击：慢速 + 习得 focus_graze_snipe 时补一发追踪伏魔针
+     */
+    function emitFocusGrazeCounterShot() {
+        if (!player) return;
+        const p = player;
+        const spdBase = p.focusBulletSpeed != null ? p.focusBulletSpeed : p.bulletSpeed;
+        let focusSpdMult = stgTakenUpgradeIds.has('focus_bullet_spd') ? getStgFocusBulletSpdOverride().mult : 1;
+        const spd = spdBase * bonusBulletSpeed * focusSpdMult;
+        const baseAtk = p.focusWeaponAttack != null ? p.focusWeaponAttack : 10;
+        const dmg = applyStgWeaponBaseAttackBonuses(baseAtk) * bonusDamage * getStgUltAtkDamageMult() * 0.82;
+        const br =
+            p.focusBulletRadius != null ? p.focusBulletRadius : p.bulletRadius != null ? p.bulletRadius : 4;
+        const px = p.x;
+        const py = p.y - p.radius;
+        const visShape = normalizePlayerBulletVisualShape(
+            p.focusBulletVisualShape != null ? p.focusBulletVisualShape : p.bulletVisualShape
+        );
+        playerBullets.push({
+            x: px,
+            y: py,
+            vx: 0,
+            vy: -spd,
+            dmg,
+            alive: true,
+            radius: br,
+            shape: visShape,
+            pierceHitsLeft: 1,
+            pierceHitEnemyIds: null,
+            homing: true,
+            homingStr: 80,
+            spreadCritBonus: 0,
+            fromSpread: false,
+            fromFocusMain: true,
+            isCrystal: false,
+            allowCrystalAcc: false
+        });
     }
 
     /**
@@ -4348,11 +5420,15 @@
         stgGrazeRangeFlashes = [];
         stgYinYangOrbs = [];
         stgYinYangNextSpawnWallMs = null;
+        stgCurrentWaveBeaconMap = null;
         stgCrystalFocusHitAcc = 0;
         stgRageStacks = 0;
         stgRageEndMs = 0;
         stgRageKillAcc = 0;
         stgSideTurretLastFireMs = 0;
+        stgShikigamiLastFireMs = 0;
+        stgSpreadKillHasteStacks = 0;
+        stgSpreadKillHasteEndMs = 0;
         stgPlayerFxParticles = [];
         stgPlayerHitFlashMs = 0;
         stgLaserFxAccMs = 0;
@@ -4383,9 +5459,11 @@
         invalidateScenePropsCache();
         resetBonuses();
         player = buildPlayerFromHero();
+        if (player) player._stgFocusStandStillMs = 0;
         applyStgSavedBuildGrants();
         stgUltChargeMeter = 0;
         stgUltCharges = 0;
+        stgUltReadyHintUntilMs = null;
         if (player && player.ultInitialCharges != null) {
             stgUltCharges = Math.max(0, Math.min(STG_ULT_CHARGE_MAX, Math.floor(player.ultInitialCharges)));
         }
@@ -4395,7 +5473,7 @@
         spawnSlotUsage.clear();
         if (w) {
             spawnIntervalMs = w.spawnInterval != null ? w.spawnInterval : 400;
-            applyWaveFlattenResult(flattenWaveToQueue(w));
+            applyWaveFlattenResult(flattenWaveToQueue(w), w);
         }
         if (getSpawnPendingCount() === 0) {
             console.warn('[STG] 第一波阵型为空，无敌人（请在「波次阵型编辑器」摆放）');
@@ -4483,7 +5561,13 @@
         } else {
             typeId = 'normal';
         }
-        const def = typesMap[typeId] || typesMap.normal;
+        let def = typesMap[typeId] || typesMap.normal;
+        let bossSnap = null;
+        const bs = getStgBossSpawnDef(typeId, typesMap);
+        if (bs) {
+            def = bs.def;
+            bossSnap = bs.boss;
+        }
         const pattern = resolveStgBulletPattern(def);
         let x;
         let y;
@@ -4516,12 +5600,38 @@
         x += ox;
         y += oy;
         const en = new StgEnemy(x, y, def, pattern, typeId, col);
+        if (bossSnap) {
+            en.stgBossConfigSnapshot = bossSnap;
+            initStgBossFsmOnEnemy(en);
+        }
+        if (fromFormation && raw && typeof raw === 'object' && (raw.edge === 'left' || raw.edge === 'right' || raw.edge === 'top')) {
+            en.stgFormationCellKey = String(raw.edge) + '|' + (raw.col | 0) + '|' + (raw.row | 0);
+        }
         en.stgSpawnWaveIndex = waveIndex | 0;
         en.stgSpawnEdge = edge === 'left' || edge === 'right' || edge === 'top' ? edge : 'top';
         /** 波次阵型：按当前波配置的 enemyHpMult 抬血（waveIndex 从 0 起，第 1 波为 0） */
         const hpMult = getStgEnemyHpMultiplierForWaveIndex(waveIndex);
         en.maxHp = Math.max(1, Math.round(en.maxHp * hpMult));
         en.hp = en.maxHp;
+        /** 多段移动：按本波阵型中信标 a1→… 或 b1→… 途经格心（无信标则回退追踪） */
+        if (en.stgMoveMode === 'waypoint_a' || en.stgMoveMode === 'waypoint_b') {
+            const grp = en.stgMoveMode === 'waypoint_a' ? 'A' : 'B';
+            const wps = buildStgWaypointWorldListFromBeacons(stgCurrentWaveBeaconMap, grp);
+            if (wps.length > 0) {
+                en.stgWaypointWorld = wps;
+                en.stgWaypointIndex = 0;
+                en.moveIdle = false;
+                /** 出生点已含抖动，段起点必须与当前世界坐标一致 */
+                en.stgWaypointSegPx = en.x;
+                en.stgWaypointSegPy = en.y;
+                en.stgWaypointSegU = 0;
+                en.stgWaypointDwellUntilMs = null;
+                en._stgWpReachedIdx = undefined;
+            } else {
+                console.warn('[STG] 多段移动未放置对应信标或路径为空，已回退为 homing_legacy', typeId);
+                en.stgMoveMode = 'homing_legacy';
+            }
+        }
         enemies.push(en);
     }
 
@@ -4538,7 +5648,14 @@
         if (phase === 'upgrade_announce') {
             if (stgUpgradeMomentAnnounceEndMs != null && performance.now() >= stgUpgradeMomentAnnounceEndMs) {
                 stgUpgradeMomentAnnounceEndMs = null;
-                openStgUpgradeModal();
+                const opened = openStgUpgradeModal();
+                /** 四选一无法弹出（DOM 缺失、选项为空等）时仍须衔接波次，否则会永久卡在 upgrade_announce */
+                if (!opened) {
+                    console.warn('[STG] 升级时刻：无法打开四选一 UI，跳过并衔接波次');
+                    stgUpgradeMomentRoundsLeft = 0;
+                    stgUpgradeMomentRoundTotal = 0;
+                    finalizeStgUpgradeMomentSessionComplete();
+                }
             }
             return;
         }
@@ -4557,6 +5674,8 @@
         const nowT = performance.now();
         /** 受伤后拉回出生点期间：不能移动、不能开火（与 hitSpawnHoldMs 一致） */
         const inHitHold = player._stgHitHoldUntil != null && nowT < player._stgHitHoldUntil;
+        const playerX0 = player.x;
+        const playerY0 = player.y;
 
         /** --- 玩家移动 --- */
         let mvx = 0;
@@ -4568,6 +5687,15 @@
         /** Shift：慢速移动 + 可选独立「集中」主武器参数（与武器编辑器一致） */
         const shiftHeld = keys.ShiftLeft || keys.ShiftRight;
         const nowWall = performance.now();
+        if (shiftHeld && !stgFocusHeldPrevFrame) {
+            /** 每次进入慢速重新累计 */
+            stgFocusGrazeEnergyCount = 0;
+        } else if (!shiftHeld && stgFocusHeldPrevFrame) {
+            /** 退出慢速后发射累计能量弹，并清零 */
+            emitStgFocusGrazeEnergyBurst(stgFocusGrazeEnergyCount);
+            stgFocusGrazeEnergyCount = 0;
+        }
+        stgFocusHeldPrevFrame = shiftHeld;
         /** 道具M：非狂怒分支清空；狂怒到期先减一层（最高层先掉），若仍有层则新开一段同长度 CD；叠层时整段 CD 在击杀逻辑里刷新 */
         if (stgFocusBranch !== 'rage') {
             stgRageStacks = 0;
@@ -4596,9 +5724,16 @@
             }
             player.x = Math.max(player.radius, Math.min(cw - player.radius, player.x));
             player.y = Math.max(player.radius, Math.min(ch - player.radius, player.y));
+            /** 站桩蓄能（focus_stationary_ramp）：仅慢速且无方向输入时累计站立毫秒 */
+            if (shiftHeld && mvx === 0 && mvy === 0) {
+                player._stgFocusStandStillMs = (player._stgFocusStandStillMs | 0) + dt;
+            } else {
+                player._stgFocusStandStillMs = 0;
+            }
         } else {
             snapStgPlayerToSpawn();
         }
+        player._stgFrameMovePx = Math.hypot(player.x - playerX0, player.y - playerY0);
 
         /** 生命恢复：局外 health_regen_bonus × 局内基础道具2；若局外为 0，基础道具2 仍给少量按生命百分比回复 */
         if (
@@ -4662,6 +5797,18 @@
                 const rex = getStgRageEffectOverride();
                 fireIv *= Math.pow(rex.fireIvMultPerStack, stgRageStacks);
             }
+            /** 扩散射速：仅普通模式 */
+            if (!shiftHeld && stgTakenUpgradeIds.has('spread_rof')) {
+                fireIv *= getStgSpreadRofOverride().intervalMult;
+            }
+            /** 连杀激射：普通模式击杀叠层 */
+            if (!shiftHeld && stgTakenUpgradeIds.has('spread_kill_haste')) {
+                if (nowT >= stgSpreadKillHasteEndMs) {
+                    stgSpreadKillHasteStacks = 0;
+                } else if (stgSpreadKillHasteStacks > 0) {
+                    fireIv *= 1 / (1 + stgSpreadKillHasteStacks * STG_SPREAD_KILL_HASTE_ROF_PER_STACK);
+                }
+            }
             if (keys.KeyZ && nowT - player._lastFireMs >= fireIv) {
                 player._lastFireMs = nowT;
                 emitPlayerVolley(false, shiftHeld);
@@ -4720,6 +5867,72 @@
                     isCrystal: false,
                     allowCrystalAcc: false,
                     isTurret: true
+                });
+            }
+            /** 伏魔针·式神援护：慢速 + Z 按住时周期发射低威力伏魔针（类炮台，仅 Shift） */
+            const shOv = stgTakenUpgradeIds.has('focus_shikigami') ? getStgShikigamiOverride() : null;
+            if (
+                keys.KeyZ &&
+                shOv &&
+                shiftHeld &&
+                nowT - stgShikigamiLastFireMs >= shOv.fireIntervalMs
+            ) {
+                stgShikigamiLastFireMs = nowT;
+                const mainAtkF = player.focusWeaponAttack != null ? player.focusWeaponAttack : 10;
+                let sdmg =
+                    applyStgWeaponBaseAttackBonuses(mainAtkF) * bonusDamage * getStgUltAtkDamageMult() * shOv.dmgMult;
+                const prS = player.radius != null ? player.radius : 16;
+                const sx = player.x - prS * 2.0;
+                const sy = player.y - prS * 0.35;
+                let svx = 0;
+                let svy = -1;
+                let bestS = null;
+                let bdS = 1e9;
+                for (let sei = 0; sei < enemies.length; sei++) {
+                    const en = enemies[sei];
+                    if (!en.alive) continue;
+                    const d = Math.hypot(en.x - sx, en.y - sy);
+                    if (d < bdS) {
+                        bdS = d;
+                        bestS = en;
+                    }
+                }
+                if (bestS) {
+                    const ang = Math.atan2(bestS.y - sy, bestS.x - sx);
+                    svx = Math.cos(ang);
+                    svy = Math.sin(ang);
+                }
+                let fspdMult = 1;
+                if (stgTakenUpgradeIds.has('focus_bullet_spd')) {
+                    fspdMult = getStgFocusBulletSpdOverride().mult;
+                }
+                const spdF = (player.focusBulletSpeed != null ? player.focusBulletSpeed : player.bulletSpeed) *
+                    bonusBulletSpeed *
+                    fspdMult;
+                const brF =
+                    player.focusBulletRadius != null ? player.focusBulletRadius : player.bulletRadius != null ? player.bulletRadius : 4;
+                const visF = normalizePlayerBulletVisualShape(
+                    player.focusBulletVisualShape != null ? player.focusBulletVisualShape : player.bulletVisualShape
+                );
+                playerBullets.push({
+                    x: sx,
+                    y: sy,
+                    vx: svx * spdF,
+                    vy: svy * spdF,
+                    dmg: sdmg * getStgWeakDamageMult(),
+                    alive: true,
+                    radius: Math.max(3, brF * 0.92),
+                    shape: visF,
+                    pierceHitsLeft: 1,
+                    pierceHitEnemyIds: null,
+                    homing: false,
+                    homingStr: 0,
+                    spreadCritBonus: 0,
+                    fromSpread: false,
+                    fromFocusMain: true,
+                    isCrystal: false,
+                    allowCrystalAcc: false,
+                    isShikigami: true
                 });
             }
             if (!player._lastSkillFireMs) player._lastSkillFireMs = 0;
@@ -4787,12 +6000,31 @@
                 enemies.splice(i, 1);
                 continue;
             }
+            if (e.stgBossConfigSnapshot) {
+                tickStgBossFsm(e, nowT);
+            }
             updateStgEnemyPosition(e, player, cw, ch, dtSec);
 
             const er = e.radius != null ? e.radius : 14;
+            if (e.stgSpawnClockMs == null) e.stgSpawnClockMs = nowT;
             /** 与画布 [0,cw]×[0,ch] 有任意重叠则视为已入场，之后才允许「完全离场」剔除 */
             const overlapsCanvas = !(e.x + er < 0 || e.x - er > cw || e.y + er < 0 || e.y - er > ch);
             if (overlapsCanvas) e.stgHasEnteredPlayfield = true;
+
+            /**
+             * 从未入场且长期完全在屏外：lock_y/anchor 等只沿单轴移到「目标」后 moveIdle，若 X 或 Y 整段留在扩展格侧，
+             * overlapsCanvas 永为假 → 无法走下方「先入场再离场」分支，波次永远无法清空。
+             */
+            if (
+                !e.stgHasEnteredPlayfield &&
+                isStgEnemyFullyOutsideCanvas(e, cw, ch) &&
+                nowT - e.stgSpawnClockMs >= STG_ENEMY_OFFSCREEN_NO_ENTRY_STUCK_MS
+            ) {
+                markStgWaveEnemyResolved(e);
+                e.alive = false;
+                console.warn('[STG] 敌机长期未进入主画布且仍在屏外，已强制清除以免卡波', e.typeId || '');
+                continue;
+            }
 
             /**
              * 身体完全离开画布：仅当曾进入过画面后才判定（否则上/左/右扩展出生点在画布外首帧会被当成从生成边离场而秒删）。
@@ -4814,6 +6046,8 @@
             /** 战斗弹幕：须先进入棋盘；可选停火线（中心 Y≥线则停，含连射余弹）；死后弹幕不走此分支 */
             const canFireByLine = fireStopY == null || e.y < fireStopY;
             const canFireNormal = e.stgHasEnteredPlayfield && canFireByLine;
+            /** BOSS：仅「攻击」模块允许战斗弹幕 */
+            const bossFsmBlocks = e.stgBossConfigSnapshot && !isStgBossInAttackModule(e);
 
             /** none=无弹幕；死后弹幕仅在阵亡时发射，不在此循环；眩晕中不发弹 */
             const stunNow = performance.now();
@@ -4823,6 +6057,7 @@
             } else if (!canFireNormal) {
                 e._stgBurstRemain = 0;
             } else if (
+                !bossFsmBlocks &&
                 e.pattern !== 'none' &&
                 e.stgEmitWhen !== 'on_death' &&
                 e._stgBurstRemain > 0 &&
@@ -4839,11 +6074,13 @@
                     e._stgBurstNextMs = performance.now() + iv;
                 } else {
                     e._stgBurstRemain = 0;
+                    notifyBossFirePatternCycleComplete(e);
                 }
             }
             if (
                 canFireNormal &&
                 !stunned &&
+                !bossFsmBlocks &&
                 e.pattern !== 'none' &&
                 e.stgEmitWhen !== 'on_death' &&
                 performance.now() - e.lastShootTime >= e.shootCooldownMs
@@ -4852,6 +6089,12 @@
                 emitStgEnemyAttack(e, player);
             }
         }
+
+        /** 多段移动：相邻阵型格同队 — 任一人到达信标则本帧末将队友拉齐到同一路径状态 */
+        applyStgWaypointQueueBeaconSync(enemies);
+
+        /** 多段移动：同类路径敌机圆形机体互斥（位移与自机碰撞之间推挤分离） */
+        resolveStgWaypointEnemySeparation(enemies);
 
         /** 敌机身体 vs 自机判定点：可每种类在怪物编辑器关闭；伤害规则与敌弹一致（半格/整格） */
         if (phase === 'playing' && player) {
@@ -4966,6 +6209,14 @@
                             }
                             markStgWaveEnemyResolved(en);
                             en.alive = false;
+                            /** 连杀激射：阴阳玉 DoT 击杀仍算「扩散模式」击杀 */
+                            if (!shiftHeld && stgTakenUpgradeIds.has('spread_kill_haste')) {
+                                stgSpreadKillHasteStacks = Math.min(
+                                    STG_SPREAD_KILL_HASTE_MAX,
+                                    stgSpreadKillHasteStacks + 1
+                                );
+                                stgSpreadKillHasteEndMs = performance.now() + STG_SPREAD_KILL_HASTE_MS;
+                            }
                             const pExp = Math.max(5, Math.floor(12 * bonusExpMult));
                             pickups.push(createPickupAtKill(en.x, en.y, pExp));
                             pushStgChargePickupOnEnemyKillIfConfigured(en);
@@ -5033,6 +6284,11 @@
             }
             b.x += b.vx * dtSec;
             b.y += b.vy * dtSec;
+            const movedPx = Math.hypot(b.x - bx0, b.y - by0);
+            /** 先判擦弹再消弹：否则阴阳玉先抹掉敌弹，本帧永远来不及擦弹 */
+            if (phase === 'playing' && player && movedPx > 0) {
+                tryStgGrazeEnemyBullet(b, bx0, by0, movedPx, nowT, shiftHeld);
+            }
             /** 道具E：阴阳玉圆形范围与敌弹重叠则消弹（阻挡弹幕） */
             if (
                 phase === 'playing' &&
@@ -5050,10 +6306,6 @@
                         break;
                     }
                 }
-            }
-            const movedPx = Math.hypot(b.x - bx0, b.y - by0);
-            if (phase === 'playing' && player && movedPx > 0) {
-                tryStgGrazeEnemyBullet(b, movedPx);
             }
             if (b.y > ch + 30 || b.x < -30 || b.x > cw + 30) {
                 b.alive = false;
@@ -5144,6 +6396,16 @@
                         if (critP > 0 && Math.random() < critP) hitDmg *= 2;
                     }
                     e.hp -= hitDmg;
+                    /** 针芒迟滞：伏魔针命中后小概率短暂眩晕 */
+                    if (
+                        b.fromFocusMain &&
+                        stgTakenUpgradeIds.has('focus_needle_slow') &&
+                        e.hp > 0 &&
+                        Math.random() < 0.14
+                    ) {
+                        const stunNow = performance.now();
+                        e.stgStunUntil = stunNow + 320;
+                    }
                     if (b.allowCrystalAcc && stgTakenUpgradeIds.has('focus_crystal_base')) {
                         stgCrystalFocusHitAcc++;
                         if (stgCrystalFocusHitAcc >= STG_CRYSTAL_FOCUS_HITS_NEEDED) {
@@ -5169,6 +6431,14 @@
                         }
                         markStgWaveEnemyResolved(e);
                         e.alive = false;
+                        /** 连杀激射：非慢速（扩散）模式下击杀叠层，提高短时射速 */
+                        if (!shiftHeld && stgTakenUpgradeIds.has('spread_kill_haste')) {
+                            stgSpreadKillHasteStacks = Math.min(
+                                STG_SPREAD_KILL_HASTE_MAX,
+                                stgSpreadKillHasteStacks + 1
+                            );
+                            stgSpreadKillHasteEndMs = performance.now() + STG_SPREAD_KILL_HASTE_MS;
+                        }
                         /** 道具M：慢速+狂怒分支，每击杀 5 敌叠狂怒层 */
                         if (shiftHeld && stgFocusBranch === 'rage' && stgTakenUpgradeIds.has('focus_rage_core')) {
                             stgRageKillAcc++;
@@ -5238,8 +6508,24 @@
         }
 
         /** --- P点（直线 或 弧线上抛后下落；弧线可匀速 / 多种曲线速率） --- */
+        const nowPickup = performance.now();
+        const sealPullActive =
+            stgSealField && player && nowPickup < stgSealField.endMs;
         for (let i = pickups.length - 1; i >= 0; i--) {
             const p = pickups[i];
+            /** 试做型封魔阵：持续期间将屏上可拾取物向自机牵引（含经验 P 点与充能点） */
+            if (sealPullActive) {
+                const dx = player.x - p.x;
+                const dy = player.y - p.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist > 2) {
+                    const pullSpd = 340;
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+                    p.x += nx * pullSpd * dtSec;
+                    p.y += ny * pullSpd * dtSec;
+                }
+            }
             if (p.mode === 'arc' && p.peakY != null && p.fallVy != null) {
                 /** 旧版 P 点无 arcUpMode：仍按 vy 正负分段（兼容已落地存档） */
                 if (p.arcUpMode == null && p.arcUpDone == null) {
@@ -5313,18 +6599,44 @@
             } else {
                 p.y += p.vy * dtSec;
             }
+            /** 玩家属性：判定点周围圆形区域内将经验类 P 点（含大福/大充能）拉向自机；充能点不走此条，避免与封魔阵牵引叠乘语义混淆时可单独调 */
+            const attractR =
+                player && player.pPickupAttractRadius != null && Number.isFinite(Number(player.pPickupAttractRadius))
+                    ? Math.max(0, Math.min(1200, Number(player.pPickupAttractRadius)))
+                    : 0;
+            if (player && p.pickupKind !== 'charge') {
+                const dx = player.x - p.x;
+                const dy = player.y - p.y;
+                const dist = Math.hypot(dx, dy);
+                let inAttractRange = attractR > 0 && dist <= attractR;
+                /** 慢速模式：经验点吸取范围扩大为与擦弹外椭圆一致 */
+                if (!inAttractRange && shiftHeld) {
+                    const gcfg = getStgGrazeRuntimeParams();
+                    if (gcfg.enabled && gcfg.extra > 0) {
+                        const hitR = getStgPlayerHitRadius();
+                        const { rx, ry } = getStgGrazeOuterEllipseRadii(hitR, gcfg);
+                        if (rx > 0 && ry > 0) {
+                            const nx = (p.x - player.x) / rx;
+                            const ny = (p.y - player.y) / ry;
+                            inAttractRange = nx * nx + ny * ny <= 1;
+                        }
+                    }
+                }
+                if (inAttractRange && dist > 1.5) {
+                    const pullSpd = 340;
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+                    p.x += nx * pullSpd * dtSec;
+                    p.y += ny * pullSpd * dtSec;
+                }
+            }
             const baseR = p.pickupRadius != null && Number.isFinite(p.pickupRadius) ? p.pickupRadius : 10;
             const pr = baseR * bonusPickupRadius;
             if (Math.hypot(p.x - player.x, p.y - player.y) < pr + player.radius) {
                 if (p.pickupKind === 'charge') {
                     const cv = Math.max(1, p.chargeValue != null ? p.chargeValue : 1);
                     stgUltChargeMeter += cv * bonusUltChargeMult;
-                    const th = getUltChargeMeterThreshold();
-                    while (stgUltChargeMeter >= th && stgUltCharges < STG_ULT_CHARGE_MAX) {
-                        stgUltCharges++;
-                        stgUltChargeMeter -= th;
-                    }
-                    if (stgUltCharges >= STG_ULT_CHARGE_MAX) stgUltChargeMeter = 0;
+                    applyStgUltChargeMeterOverflowAndHints();
                     pickups.splice(i, 1);
                     console.log('[STG] 拾取充能点，蓄能值', cv);
                 } else {
@@ -5384,30 +6696,7 @@
             return;
         }
 
-        const h = getHudElements();
-        if (h.upgrade) {
-            h.upgrade.classList.add('hidden');
-            h.upgrade.setAttribute('aria-hidden', 'true');
-        }
-        stgUpgradePickOpen = false;
-        const hintBtn = document.getElementById('stgLevelUpHint');
-        if (hintBtn) hintBtn.classList.add('hidden');
-        const subEl = document.getElementById('stgUpgradeSubHint');
-        if (subEl) subEl.innerHTML = '';
-
-        if (stgPendingWaveAdvanceAfterUpgradeMoment) {
-            stgPendingWaveAdvanceAfterUpgradeMoment = false;
-            /** 选完后延迟再刷下一波怪（秒数见波次配置 postUpgradeSpawnDelaySec，默认 2） */
-            const sec = getStgPostUpgradeSpawnDelaySec();
-            stgPostUpgradeAdvanceAtMs = performance.now() + sec * 1000;
-        }
-        /** 升级弹层关闭后恢复游玩；若已切到章节过渡或通关则勿覆盖 */
-        if (phase === 'levelup') {
-            phase = 'playing';
-        }
-        lastFrameTime = performance.now();
-        refreshStgAttackBuildPanel();
-        refreshStgReimuBonusAside();
+        finalizeStgUpgradeMomentSessionComplete();
     }
 
     /**
@@ -5478,10 +6767,11 @@
     }
 
     /** 全屏居中四选一，phase=levelup，局内 update 暂停（由波次衔接或连续轮次调用） */
+    /** @returns {boolean} 是否成功打开（失败时调用方应衔接波次，避免卡死） */
     function openStgUpgradeModal() {
-        if (upgradeChoices.length === 0 || stgUpgradePickOpen) return;
+        if (upgradeChoices.length === 0 || stgUpgradePickOpen) return false;
         const h = getHudElements();
-        if (!h.upgrade || !h.upgradeCards) return;
+        if (!h.upgrade || !h.upgradeCards) return false;
         h.upgradeCards.innerHTML = '';
         upgradeChoices.forEach((u, idx) => {
             h.upgradeCards.appendChild(createStgUpgradeChoiceButton(u, idx));
@@ -5504,6 +6794,7 @@
         stgUpgradePickOpen = true;
         phase = 'levelup';
         lastFrameTime = performance.now();
+        return true;
     }
 
     function showResult(win) {
@@ -5600,6 +6891,7 @@
         if (g === 'spread') return 'stg-attack-up-icon--spread';
         if (g === 'focus_crystal') return 'stg-attack-up-icon--focus-crystal';
         if (g === 'focus_rage') return 'stg-attack-up-icon--focus-rage';
+        if (g === 'focus_misc') return 'stg-attack-up-icon--focus-misc';
         if (g === 'ult_seal') return 'stg-attack-up-icon--ult-seal';
         if (g === 'ult_dream') return 'stg-attack-up-icon--ult-dream';
         if (g === 'stat') return 'stg-attack-up-icon--stat';
@@ -5958,12 +7250,7 @@
         fillStgAttackUpgradeIcons(divSpreadUp, getTakenStgUpgrades((u) => u.group === 'spread'));
         fillStgAttackUpgradeIcons(
             divFoUp,
-            getTakenStgUpgrades((u) => {
-                if (u.group !== 'focus_crystal' && u.group !== 'focus_rage') return false;
-                if (stgFocusBranch === 'crystal') return u.group === 'focus_crystal';
-                if (stgFocusBranch === 'rage') return u.group === 'focus_rage';
-                return true;
-            })
+            getTakenStgUpgrades((u) => u.group === 'focus_misc' || u.group === 'focus_crystal')
         );
         fillStgAttackUpgradeIcons(
             divUltUp,
@@ -6068,12 +7355,15 @@
         if (!ctx) return;
         const r = b.radius != null ? b.radius : 5;
         const gz = spGrazeA != null && Number.isFinite(spGrazeA) ? Math.max(0.05, Math.min(0.98, spGrazeA)) : 0.38;
+        const nowMs = performance.now();
+        const highlighted = b && b._stgGrazeHighlightUntil != null && nowMs < b._stgGrazeHighlightUntil;
         let spriteKey = null;
         /** 种类表 stgEnemyBulletSprite 显式写空串时：不套默认 jpg，仅矢量 */
         let skipDefaultSprite = false;
+        const isBossEnemyBullet = b.typeId != null && String(b.typeId).indexOf('__boss_') === 0;
         if (!stgEnemyBulletTextureGloballyDisabled) {
             spriteKey = b.sprite;
-            if (!spriteKey && b.typeId) {
+            if (!spriteKey && b.typeId && !isBossEnemyBullet) {
                 const tm = typesMapOpt || getEnemyTypeMap();
                 const d = tm[b.typeId] || tm.normal;
                 if (d && d.stgEnemyBulletSprite != null) {
@@ -6086,7 +7376,10 @@
                     }
                 }
             }
-            /** 最后兜底：内置默认文件名（未显式关闭贴图时） */
+            if (isBossEnemyBullet && !spriteKey) {
+                skipDefaultSprite = true;
+            }
+            /** 最后兜底：内置默认文件名（未显式关闭贴图时）；BOSS 未选贴图时不套小怪默认图 */
             if (!spriteKey && !skipDefaultSprite) {
                 spriteKey = 'enemy_round_red.jpg';
             }
@@ -6095,7 +7388,7 @@
             const img = getStgEnemyBulletSpriteImage(spriteKey);
             if (img && img.complete) {
                 ctx.save();
-                ctx.globalAlpha = b._stgGrazed ? gz : 1;
+                ctx.globalAlpha = highlighted ? gz : 1;
                 ctx.imageSmoothingEnabled = true;
                 const w = Math.max(2, r * 2);
                 try {
@@ -6552,7 +7845,8 @@
         enemyBullets.forEach((b) => {
             if (!b.alive) return;
             /** 已擦弹敌弹透明度由场景道具编辑器配置；位图敌弹用 globalAlpha */
-            ctx.fillStyle = b._stgGrazed ? `rgba(231, 76, 60, ${spGrazeA})` : '#e74c3c';
+            const highlighted = b._stgGrazeHighlightUntil != null && performance.now() < b._stgGrazeHighlightUntil;
+            ctx.fillStyle = highlighted ? `rgba(231, 76, 60, ${spGrazeA})` : '#e74c3c';
             drawStgEnemyBulletFill(b, spGrazeA, stgTypesForEnemyBullets);
         });
 
@@ -6686,6 +7980,19 @@
             /** 慢速模式：受击圆 + 判定点（不绘制擦弹外椭圆范围，避免画面干扰；擦弹判定仍按椭圆逻辑） */
             if (phase === 'playing' && focus) {
                 const hitR = getStgPlayerHitRadius();
+                const gcfg = getStgGrazeRuntimeParams();
+                if (gcfg.enabled && gcfg.extra > 0) {
+                    const { rx, ry } = getStgGrazeOuterEllipseRadii(hitR, gcfg);
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.ellipse(px, py, rx, ry, 0, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(120, 220, 255, 0.68)';
+                    ctx.lineWidth = 1.8;
+                    ctx.setLineDash([6, 4]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.restore();
+                }
                 ctx.beginPath();
                 ctx.arc(px, py, hitR, 0, Math.PI * 2);
                 ctx.strokeStyle = 'rgba(255, 65, 85, 0.96)';
@@ -6697,6 +8004,31 @@
                 ctx.beginPath();
                 ctx.arc(px, py, 3, 0, Math.PI * 2);
                 ctx.fill();
+            }
+
+            /** 每充满一大招格：自机下缘下方小字「大招就绪」，跟随移动，持续由 pushStgUltReadyHintOneSecond 累加 */
+            const nowUltHint = performance.now();
+            if (
+                phase === 'playing' &&
+                stgUltReadyHintUntilMs != null &&
+                nowUltHint < stgUltReadyHintUntilMs
+            ) {
+                ctx.save();
+                const fs = Math.max(10, Math.floor(r * 0.38));
+                ctx.font = `${fs}px "Microsoft YaHei","Segoe UI",sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                const ty = py + r + Math.max(6, r * 0.42);
+                const txt = stgUiT('hud.ultReadyBelow') || '大招就绪';
+                ctx.shadowColor = 'rgba(0,0,0,0.85)';
+                ctx.shadowBlur = 3;
+                ctx.lineWidth = Math.max(2, fs * 0.12);
+                ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+                ctx.strokeText(txt, px, ty);
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(255, 245, 220, 0.96)';
+                ctx.fillText(txt, px, ty);
+                ctx.restore();
             }
         }
 
@@ -6943,6 +8275,11 @@
         /** 棋盘列/行数（与阵型编辑器一致） */
         getGridDimensions() {
             return { cols: GRID_COLS, rows: GRID_ROWS };
+        },
+
+        /** 波次格子内容是否为移动信标（不出兵、局内不绘制） */
+        isFormationBeaconToken(s) {
+            return isStgFormationBeaconToken(s);
         },
 
         /** 与 StgUiI18n.applyAll 联动：切换中/英后刷新 HUD、三选一、结算文案 */

@@ -4,6 +4,7 @@
  */
 (function () {
     const STORAGE_KEY = 'tower_defense_enemy_types';
+    const BOSS_BULLET_TEXTURE_POOL_KEY = 'stg_boss_bullet_texture_pool';
     const BUILTIN_TYPE_IDS = ['normal', 'fast', 'tank'];
 
     let panelEl = null;
@@ -161,6 +162,16 @@
                     : false;
             globalCb.checked = !!g;
         }
+        const poolTa = document.getElementById('stgBossBulletTexturePoolTa');
+        if (poolTa) {
+            try {
+                const raw = localStorage.getItem(BOSS_BULLET_TEXTURE_POOL_KEY);
+                const arr = raw ? JSON.parse(raw) : [];
+                poolTa.value = Array.isArray(arr) ? arr.join('\n') : '';
+            } catch (e) {
+                poolTa.value = '';
+            }
+        }
     }
 
     function applyFromDom() {
@@ -182,6 +193,28 @@
         } catch (e) {
             window.alert('保存失败：' + (e && e.message ? e.message : String(e)));
             return;
+        }
+        const poolTa = document.getElementById('stgBossBulletTexturePoolTa');
+        if (poolTa) {
+            const lines = String(poolTa.value || '')
+                .split(/\r?\n/)
+                .map((s) => s.trim())
+                .filter(Boolean);
+            const pool = [];
+            const seen = new Set();
+            lines.forEach((line) => {
+                const sn = sanitizeFilename(line);
+                if (sn && !seen.has(sn)) {
+                    seen.add(sn);
+                    pool.push(sn);
+                }
+            });
+            try {
+                localStorage.setItem(BOSS_BULLET_TEXTURE_POOL_KEY, JSON.stringify(pool));
+            } catch (e2) {
+                window.alert('BOSS 贴图列表保存失败：' + (e2 && e2.message ? e2.message : String(e2)));
+                return;
+            }
         }
         if (globalCb) {
             const on = !!globalCb.checked;

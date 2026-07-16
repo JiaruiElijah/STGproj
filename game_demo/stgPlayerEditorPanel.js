@@ -74,7 +74,9 @@
         /** 受伤后持续清空场上敌弹的时长（毫秒）；0=仅受伤当帧清一次 */
         hitBulletClearMs: 1200,
         /** 受伤后拉回开局位置并禁止移动/开火的时长（毫秒）；0=关闭 */
-        hitSpawnHoldMs: 1000
+        hitSpawnHoldMs: 1000,
+        /** 判定点为圆心，半径内将经验 P 点（含大福/大充能）拉向自机；0=关闭；局内不绘制圆 */
+        pPickupAttractRadius: 0
     };
 
     function load() {
@@ -212,6 +214,7 @@
         setNum('stgPlayerEditExpBase', Math.round(val(cfg, 'expBase', DEFAULTS.expBase)));
         setNum('stgPlayerEditExpLinear', Math.round(val(cfg, 'expLinearPerLevel', DEFAULTS.expLinearPerLevel)));
         setNum('stgPlayerEditExpAccel', val(cfg, 'expAccelPerLevelSq', DEFAULTS.expAccelPerLevelSq));
+        setNum('stgPlayerEditPPickupAttractRadius', Math.round(val(cfg, 'pPickupAttractRadius', DEFAULTS.pPickupAttractRadius)));
 
         let mainAtk = val(cfg, 'mainWeaponAttack', NaN);
         if (!Number.isFinite(mainAtk)) {
@@ -405,6 +408,7 @@
             expBase: gi('stgPlayerEditExpBase', 1, 500000, DEFAULTS.expBase),
             expLinearPerLevel: gi('stgPlayerEditExpLinear', 0, 50000, DEFAULTS.expLinearPerLevel),
             expAccelPerLevelSq: gf('stgPlayerEditExpAccel', 0, 5000, DEFAULTS.expAccelPerLevelSq),
+            pPickupAttractRadius: gi('stgPlayerEditPPickupAttractRadius', 0, 1200, DEFAULTS.pPickupAttractRadius),
             mainWeaponAttack: gWeaponAtk('stgPlayerEditMainAttack', DEFAULTS.mainWeaponAttack),
             bulletRadius: gi('stgPlayerEditBulletRadius', 2, 24, DEFAULTS.bulletRadius),
             bulletVisualShape: gShape('stgPlayerEditBulletVisual'),

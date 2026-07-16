@@ -8,7 +8,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <title>STG 纵版射击</title>
     <!-- ?v= 用于破坏浏览器缓存；修改 JS/CSS 后请改版本号否则可能一直用旧文件。若界面未更新请 Ctrl+F5 强刷。 -->
-    <link rel="stylesheet" href="styles.css?v=20260402a">
+    <link rel="stylesheet" href="styles.css?v=20260404j">
 </head>
 <body>
     <!-- STG 纵版射击（默认首页） -->
@@ -18,6 +18,7 @@
                 <button type="button" class="open-shop-btn" id="stgOpenChapterEditorBtn" title="设置总章节数">📑 章节设置</button>
                 <button type="button" class="open-shop-btn" id="stgOpenWaveFormationBtn" title="波次与阵型（唯一配置入口）">📋 波次阵型</button>
                 <button type="button" class="open-shop-btn" id="stgOpenMonsterEditorBtn" title="编辑敌人种类与 STG 弹幕">👹 怪物编辑器</button>
+                <button type="button" class="open-shop-btn" id="stgOpenBossEditorBtn" title="BOSS 血量、模块栈（待机/移动/攻击可重复）">🐉 BOSS 编辑器</button>
                 <button type="button" class="open-shop-btn" id="stgOpenTextureEditorBtn" title="敌弹位图文件名与全局开关">🖼 敌弹贴图</button>
                 <button type="button" class="open-shop-btn" id="stgOpenHeroEditorBtn" title="英雄属性与物品栏数量">🦸 英雄编辑器</button>
                 <button type="button" class="open-shop-btn" id="stgOpenStgBuildInventoryBtn" title="勾选本局开局持有的局内升级（与三选一池同源）">🧰 局内构筑道具</button>
@@ -26,9 +27,69 @@
                 <button type="button" class="open-shop-btn stg-primary-btn" id="stgStartBtn">▶ 开始游戏</button>
                 <button type="button" class="open-shop-btn hidden" id="stgRestartBtn">🔄 重新开始</button>
                 <button type="button" class="open-shop-btn" id="stgLangToggleBtn" title="切换界面语言 / UI language">English</button>
+                <button type="button" class="open-shop-btn" id="stgExportAllBundledBtn" title="导出全部本地存档；支持选文件夹或下载 JSON，详见说明">📦 全部导出（分享用）</button>
             </div>
             <div class="stg-body-row">
-                <aside class="stg-left-column" id="stgLeftColumn" aria-label="核心数值与攻击构筑">
+                <aside id="stgPlayerAside" class="stg-player-aside" aria-label="博丽灵梦 STG 属性加成（仅基础道具）">
+                    <div class="stg-aside-main">
+                        <div class="stg-aside-header-row">
+                            <h3 id="stgAsideTitle" class="stg-aside-title">博丽灵梦 · 属性加成</h3>
+                            <button type="button" id="stgAsideHideBtn" class="stg-aside-hide-btn open-shop-btn" title="隐藏">隐藏</button>
+                        </div>
+                        <div id="stgPlayerStatsList" class="player-stats-list stg-reimu-stats-list"></div>
+                    </div>
+                    <button type="button" id="stgAsideShowBtn" class="stg-aside-show-btn open-shop-btn" title="显示属性">显示属性</button>
+                </aside>
+                <div class="stg-center-column">
+                    <div class="stg-main">
+                        <!-- 棋盘区单独一层：宽度仅由 canvas 决定，与下方 HUD 文案换行无关 -->
+                        <div class="stg-board-slot">
+                            <div class="stg-canvas-wrap">
+                                <canvas id="stgCanvas" width="720" height="945"></canvas>
+                                <button
+                                    type="button"
+                                    id="stgLevelUpHint"
+                                    class="stg-level-up-hint hidden"
+                                    aria-label="打开升级三选一"
+                                    title="按 E 打开升级（三选一）"
+                                >
+                                    <span class="stg-level-up-hint-icon" aria-hidden="true">⬆</span>
+                                    <span class="stg-level-up-hint-text">升级</span>
+                                    <kbd class="stg-level-up-hint-key">E</kbd>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- 升级时刻四选一：全屏居中遮罩，波次衔接时打开；局内暂停 -->
+                        <div
+                            id="stgUpgradeModalRoot"
+                            class="stg-upgrade-modal-root hidden"
+                            aria-hidden="true"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="stgUpgradeTitle"
+                        >
+                            <div class="stg-upgrade-modal-backdrop" aria-hidden="true"></div>
+                            <div id="stgUpgradeOverlay" class="stg-upgrade-panel-dialog" aria-label="升级四选一">
+                                <div class="stg-upgrade-panel-inner">
+                                    <div class="stg-upgrade-headline">
+                                        <h3 id="stgUpgradeTitle" class="stg-upgrade-panel-title">升级时刻 — 四选一（博丽灵梦 · 构筑）</h3>
+                                        <p id="stgUpgradeSubHint" class="stg-upgrade-subhint" aria-live="polite"></p>
+                                    </div>
+                                    <div id="stgUpgradeCards" class="stg-upgrade-cards"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="stg-meta-panel">
+                            <div id="stgHudBar" class="stg-hud-bar">
+                                <span id="stgWaveText" class="stg-hud-item">波次 —</span>
+                                <span id="stgNextWaveText" class="stg-hud-item">下一波 —</span>
+                                <span id="stgTimeText" class="stg-hud-item">时间 —</span>
+                            </div>
+                            <p id="stgHintBar" class="stg-hint-bar">方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（五格充能，<strong>充能点</strong>与<strong>擦弹</strong>小白球蓄能）默认「试做型封魔阵」；升级可抽 Q–V 分支强化（选 T 后改为梦想妙珠） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · <strong>波次阵型</strong>可配置「升级时刻」：在指定波结束后四选一（<strong>1～4</strong>，暂停）</p>
+                        </div>
+                    </div>
+                </div>
+                <aside class="stg-right-column" id="stgRightColumn" aria-label="核心数值与攻击构筑">
                     <div id="stgPriorityHud" class="stg-priority-hud">
                         <div class="stg-priority-row">
                             <span class="stg-priority-label" id="stgPriorityHpLabel">生命</span>
@@ -83,65 +144,6 @@
                         <div id="stgAttackUltUpgrades" class="stg-attack-upgrade-icons" role="list"></div>
                     </div>
                     </div>
-                </aside>
-                <div class="stg-center-column">
-                    <div class="stg-main">
-                        <!-- 棋盘区单独一层：宽度仅由 canvas 决定，与下方 HUD 文案换行无关 -->
-                        <div class="stg-board-slot">
-                            <div class="stg-canvas-wrap">
-                                <canvas id="stgCanvas" width="720" height="945"></canvas>
-                                <button
-                                    type="button"
-                                    id="stgLevelUpHint"
-                                    class="stg-level-up-hint hidden"
-                                    aria-label="打开升级三选一"
-                                    title="按 E 打开升级（三选一）"
-                                >
-                                    <span class="stg-level-up-hint-icon" aria-hidden="true">⬆</span>
-                                    <span class="stg-level-up-hint-text">升级</span>
-                                    <kbd class="stg-level-up-hint-key">E</kbd>
-                                </button>
-                            </div>
-                        </div>
-                        <!-- 升级时刻四选一：全屏居中遮罩，波次衔接时打开；局内暂停 -->
-                        <div
-                            id="stgUpgradeModalRoot"
-                            class="stg-upgrade-modal-root hidden"
-                            aria-hidden="true"
-                            role="dialog"
-                            aria-modal="true"
-                            aria-labelledby="stgUpgradeTitle"
-                        >
-                            <div class="stg-upgrade-modal-backdrop" aria-hidden="true"></div>
-                            <div id="stgUpgradeOverlay" class="stg-upgrade-panel-dialog" aria-label="升级四选一">
-                                <div class="stg-upgrade-panel-inner">
-                                    <div class="stg-upgrade-headline">
-                                        <h3 id="stgUpgradeTitle" class="stg-upgrade-panel-title">升级时刻 — 四选一（博丽灵梦 · 构筑）</h3>
-                                        <p id="stgUpgradeSubHint" class="stg-upgrade-subhint" aria-live="polite"></p>
-                                    </div>
-                                    <div id="stgUpgradeCards" class="stg-upgrade-cards"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="stg-meta-panel">
-                            <div id="stgHudBar" class="stg-hud-bar">
-                                <span id="stgWaveText" class="stg-hud-item">波次 —</span>
-                                <span id="stgNextWaveText" class="stg-hud-item">下一波 —</span>
-                                <span id="stgTimeText" class="stg-hud-item">时间 —</span>
-                            </div>
-                            <p id="stgHintBar" class="stg-hint-bar">方向键移动 · <strong>Z</strong> 主武器连射 · <strong>X</strong> 大招（五格充能，<strong>充能点</strong>与<strong>擦弹</strong>小白球蓄能）默认「试做型封魔阵」；升级可抽 Q–V 分支强化（选 T 后改为梦想妙珠） · <strong>Shift</strong> 慢速并显示判定点 · 击杀掉落 <strong>P</strong> 点 · <strong>波次阵型</strong>可配置「升级时刻」：在指定波结束后四选一（<strong>1～4</strong>，暂停）</p>
-                        </div>
-                    </div>
-                </div>
-                <aside id="stgPlayerAside" class="stg-player-aside" aria-label="博丽灵梦 STG 属性加成（仅基础道具）">
-                    <div class="stg-aside-main">
-                        <div class="stg-aside-header-row">
-                            <h3 id="stgAsideTitle" class="stg-aside-title">博丽灵梦 · 属性加成</h3>
-                            <button type="button" id="stgAsideHideBtn" class="stg-aside-hide-btn open-shop-btn" title="隐藏">隐藏</button>
-                        </div>
-                        <div id="stgPlayerStatsList" class="player-stats-list stg-reimu-stats-list"></div>
-                    </div>
-                    <button type="button" id="stgAsideShowBtn" class="stg-aside-show-btn open-shop-btn" title="显示属性">显示属性</button>
                 </aside>
             </div>
         </div>
@@ -204,6 +206,7 @@
                             <label class="stg-player-editor-label">基础经验（Lv1→Lv2 的槽长，1–500000）<input type="number" id="stgPlayerEditExpBase" min="1" max="500000" step="1" value="100" /></label>
                             <label class="stg-player-editor-label">每级线性增量（0–50000，每升一级在基础上多出的固定部分）<input type="number" id="stgPlayerEditExpLinear" min="0" max="50000" step="1" value="40" /></label>
                             <label class="stg-player-editor-label">加速系数（按等级平方，0–5000；&gt;0 时后期每级增长越来越快）<input type="number" id="stgPlayerEditExpAccel" min="0" max="5000" step="0.1" value="0" /></label>
+                            <label class="stg-player-editor-label">P 点吸引范围（px，0=关闭；以判定点为圆心，圆内牵引经验 P 点/大福/大充能，不显示圆圈）<input type="number" id="stgPlayerEditPPickupAttractRadius" min="0" max="1200" step="10" value="0" title="充能点不受此项吸引，仍靠拾取碰撞；与封魔阵牵引可叠加" /></label>
                         </div>
                     </div>
                 </details>
@@ -488,7 +491,7 @@
                 <h3>局内构筑道具</h3>
                 <button type="button" id="stgBuildInventoryCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
             </div>
-            <p class="wave-config-hint">勾选<strong>本局开局</strong>即持有的升级（与 <code>stgMode.js</code> 中 <code>STG_UPGRADE_POOL</code> 一致）。未选前置卡时不会在三选一里出现后续卡；此处勾选子卡会自动隐含前置（如 R→含 Q）。水晶/狂怒、封魔阵线/妙珠线<strong>互斥</strong>。保存后<strong>重新开始</strong>或<strong>开始游戏</strong>时生效。与「玩家强化物品栏」（局外 meta）无关。</p>
+            <p class="wave-config-hint">勾选<strong>本局开局</strong>即持有的升级（与 <code>stgMode.js</code> 中 <code>STG_UPGRADE_POOL</code> 一致，并与策划《新模式玩法开发/道具列表》对齐）。未选前置卡时不会在四选一中出现后续卡；此处勾选子卡会自动隐含前置（如疗愈攻需先阵界扩续）。封魔阵强化与梦想妙珠线<strong>互斥</strong>。保存后<strong>重新开始</strong>或<strong>开始游戏</strong>时生效。与「玩家强化物品栏」（局外 meta）无关。</p>
             <div id="stgBuildInventoryList" class="wave-config-list stg-build-inv-list"></div>
             <div class="wave-config-actions">
                 <button type="button" id="stgBuildInventoryApplyBtn" class="open-shop-btn stg-primary-btn">保存并关闭</button>
@@ -531,6 +534,11 @@
                 <input type="checkbox" id="stgTextureGlobalDisableCb" />
                 <span>全局暂时不使用敌弹位图（全部敌弹仅矢量，便于调试）</span>
             </label>
+            <div class="stg-boss-bullet-pool-block">
+                <label class="stg-boss-bullet-pool-label" for="stgBossBulletTexturePoolTa">BOSS 弹幕可用贴图（每行一个文件名，须与 <code>art_assets/bullets/</code> 下文件一致）</label>
+                <textarea id="stgBossBulletTexturePoolTa" class="stg-boss-bullet-pool-ta" rows="5" spellcheck="false" placeholder="boss_bullet_a.png&#10;boss_bullet_b.png"></textarea>
+                <p class="wave-config-hint stg-boss-bullet-pool-hint">保存后，<strong>BOSS 编辑器</strong>里弹幕方案的「敌弹贴图」仅能从上述列表中选择；不选则 BOSS 敌弹为<strong>矢量</strong>（不会自动用小怪默认红圆图）。</p>
+            </div>
             <div id="stgTextureEditorList" class="wave-config-list stg-texture-editor-list"></div>
             <div class="wave-config-actions">
                 <button type="button" id="stgTextureEditorApplyBtn" class="open-shop-btn stg-primary-btn">应用并保存</button>
@@ -578,6 +586,27 @@
         </div>
     </div>
 
+    <!-- BOSS 编辑器：血量 + 顺序模块栈 -->
+    <div id="bossEditorPanel" class="wave-config-panel hidden" aria-label="BOSS 编辑器">
+        <div class="wave-config-panel-inner boss-editor-inner">
+            <div class="wave-config-header">
+                <h3>BOSS 编辑器</h3>
+                <button type="button" id="bossEditorCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
+            </div>
+            <p class="wave-config-hint">编辑每个 BOSS 的<strong>血量</strong>与<strong>按顺序执行的模块栈</strong>：可添加多个<strong>待机 / 移动 / 攻击</strong>模块，每条独立设置时长与参数（多个移动可到不同坐标；多个攻击可配不同弹幕方案）。跑完最后一条后<strong>从第一条再循环</strong>。旧版三态存档打开时会自动迁移。保存键名 <code>stg_boss_configs</code>（schemaVersion 2）；「全部导出」会一并打包。</p>
+            <div class="monster-editor-add-bar">
+                <label class="monster-editor-add-label" for="bossEditorNewIdInput">新 BOSS ID</label>
+                <input type="text" id="bossEditorNewIdInput" class="monster-editor-new-id-input" maxlength="32" placeholder="英文/数字/下划线，如 boss_stage1" autocomplete="off" />
+                <button type="button" id="bossEditorAddBtn" class="open-shop-btn">＋ 添加 BOSS</button>
+            </div>
+            <div id="bossEditorList" class="wave-config-list boss-editor-list"></div>
+            <div class="wave-config-actions">
+                <button type="button" id="bossEditorApplyBtn" class="open-shop-btn stg-primary-btn">应用并保存</button>
+                <button type="button" id="bossEditorExportJsonBtn" class="open-shop-btn" title="下载 stgBossConfigs.json，便于放进工程或发给别人">导出 BOSS JSON</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 波次阵型编辑器：唯一波次配置（取代旧「波次配置」弹窗） -->
     <div id="stgWaveFormationPanel" class="wave-config-panel hidden" aria-label="波次阵型编辑器">
         <div class="wave-config-panel-inner stg-formation-inner">
@@ -585,7 +614,7 @@
                 <h3>波次阵型编辑器</h3>
                 <button type="button" id="stgWaveFormationCloseBtn" class="wave-config-close-btn" title="关闭">✕</button>
             </div>
-            <p class="wave-config-hint"><strong>种类与数量仅由下方格子决定</strong>。先选<strong>章节</strong>再编辑该章内的波次；多块棋盘为主战场上/左/右延伸；<strong>左键按住拖动</strong>可连续摆放；<strong>右键</strong>擦除一格。同一格多只怪可写 <code>type1|type2</code>（需分次填入或导入）。用<strong>「在此波前/后插入」</strong>可在任意两波之间加入新波并自动选中新波编辑；选最后一波再点「之后插入」即末尾追加。「出兵间隔 / 灵力 / 下一波 / <strong>本波血量倍率</strong>」随当前波次变化；出怪顺序与格子遍历顺序一致（同类型合并为连续组）。旧存档仅有种类+数量时，会尝试摆到上棋盘以便编辑。</p>
+            <p class="wave-config-hint"><strong>敌人由扩展棋盘（上/左/右）决定；移动信标可摆在上 / 左 / 右 / 主 四块棋盘上</strong>。先选<strong>章节</strong>与<strong>波次</strong>；切换「摆放：敌人 / 信标」后选笔刷，再<strong>左键拖动</strong>涂抹对应棋盘；<strong>右键</strong>整格擦除。笔刷下拉中 <strong>BOSS（BOSS 编辑器）</strong>分组需在 BOSS 编辑器里先配置并保存；格内 token 为 <code>__boss_&lt;id&gt;</code>，与杂兵可同格用 <code>|</code> 混写。扩展格同一格多只怪可写 <code>type1|type2</code>，可与信标混用如 <code>种类|__beacon_a1</code>。主棋盘与 STG 战场格一一对应，信标<strong>局内不显示</strong>；多段移动敌机按 a1→a2… 或 b1→b2… 途经所摆信标。用「在此波前/后插入」插入新波。「出兵间隔 / 灵力 / 下一波 / 本波血量倍率」随当前波次变化。旧存档仅有种类+数量时，会尝试摆到上棋盘。</p>
             <div class="stg-formation-hp-scale-block">
                 <div class="stg-formation-hp-scale-title">怪物血量倍率（按当前波次）</div>
                 <p class="stg-formation-hp-scale-hint">以<strong>怪物编辑器</strong>中该种类的血量为基准，在下方「当前波次」一行中设置<strong>本波敌人血量倍率</strong>（每一波可单独填写）。<strong>全局随波次自动增长公式已暂时禁用</strong>；旧档里若仍含「基础/线性/加速」系数，仅用于<strong>首次打开面板时</strong>把未写倍率的波次换算成数值，保存后即写入各波的 <code>enemyHpMult</code>。</p>
@@ -635,24 +664,46 @@
                     <input type="number" id="stgFormationWaveEnemyHpMult" class="stg-formation-num" min="0.05" max="500" step="0.05" value="1" title="该波所有敌人 maxHp 先乘此倍率再取整" />
                 </label>
             </div>
-            <div class="stg-formation-toolbar">
-                <label class="stg-formation-label">笔刷（种类）
-                    <select id="stgFormationBrushSelect" class="stg-formation-select"></select>
-                </label>
-                <button type="button" id="stgFormationClearBoardBtn" class="open-shop-btn">清空本波三棋盘</button>
+            <div class="stg-formation-toolbar stg-formation-placement-row">
+                <span class="stg-formation-placement-label">摆放</span>
+                <label class="stg-formation-radio-label"><input type="radio" name="stgFormationPlacement" id="stgFormationPlacementEnemy" value="enemy" checked /> 敌人（上/左/右扩展格）</label>
+                <label class="stg-formation-radio-label"><input type="radio" name="stgFormationPlacement" id="stgFormationPlacementBeacon" value="beacon" /> 信标（四棋盘）</label>
+            </div>
+            <p class="wave-config-hint" style="margin:0.35rem 0 0.5rem">扩展棋盘上<strong>四向相邻</strong>的格子视为同一「队列」。若种类为<strong>多段移动（A/B 组）</strong>，队列中<strong>任意一人到达某信标</strong>，其余同队敌人即<strong>视为同时到达</strong>该信标（路径进度拉齐）。</p>
+            <div class="stg-formation-toolbar stg-formation-brush-legend-row">
+                <div class="stg-formation-brush-actions">
+                    <label class="stg-formation-label">笔刷 <span id="stgFormationBrushHint" class="stg-formation-brush-hint">（敌人种类）</span>
+                        <select id="stgFormationBrushSelect" class="stg-formation-select"></select>
+                    </label>
+                    <button type="button" id="stgFormationClearEnemyGridsBtn" class="open-shop-btn" title="清空上/左/右扩展棋盘上的敌人（各格内信标保留）">清空扩展棋盘</button>
+                    <button type="button" id="stgFormationClearMainBtn" class="open-shop-btn" title="清空上/左/右/主四块棋盘上的移动信标（扩展格上的敌人种类保留）">清空全部信标</button>
+                </div>
+                <div id="stgFormationWaveLegendWrap" class="stg-formation-wave-legend-wrap stg-formation-wave-legend-wrap--inline" aria-live="polite">
+                    <div class="stg-formation-wave-legend-title">本波种类图例</div>
+                    <p class="stg-formation-wave-legend-hint">与出怪顺序一致；图标与全称来自怪物编辑器。</p>
+                    <div id="stgFormationWaveLegend" class="stg-formation-wave-legend"></div>
+                </div>
             </div>
             <div class="stg-formation-boards-wrap">
-                <div class="stg-formation-board-block">
-                    <div class="stg-formation-board-title">上（主棋盘上方；最下一行与主棋盘第 0 行相邻）</div>
-                    <div id="stgFormationGridTop" class="stg-formation-grid" role="grid"></div>
+                <div class="stg-formation-board-row stg-formation-board-row--top">
+                    <div class="stg-formation-board-block" data-stg-formation-board="top">
+                        <div class="stg-formation-board-title">上（主棋盘上方；最下一行与主棋盘第 0 行相邻）</div>
+                        <div id="stgFormationGridTop" class="stg-formation-grid" role="grid"></div>
+                    </div>
                 </div>
-                <div class="stg-formation-board-block">
-                    <div class="stg-formation-board-title">左（主棋盘左侧；最右列与主棋盘第 0 列相邻）</div>
-                    <div id="stgFormationGridLeft" class="stg-formation-grid" role="grid"></div>
-                </div>
-                <div class="stg-formation-board-block">
-                    <div class="stg-formation-board-title">右（主棋盘右侧；最左列与主棋盘最右列相邻）</div>
-                    <div id="stgFormationGridRight" class="stg-formation-grid" role="grid"></div>
+                <div class="stg-formation-board-row stg-formation-board-row--lmr">
+                    <div class="stg-formation-board-block" data-stg-formation-board="left">
+                        <div class="stg-formation-board-title">左（主棋盘左侧；最右列与主棋盘第 0 列相邻）</div>
+                        <div id="stgFormationGridLeft" class="stg-formation-grid" role="grid"></div>
+                    </div>
+                    <div class="stg-formation-board-block stg-formation-board-block--main" data-stg-formation-board="main">
+                        <div class="stg-formation-board-title">主棋盘（与 STG 战场重合；可摆移动信标，局内不显示信标）</div>
+                        <div id="stgFormationGridMain" class="stg-formation-grid stg-formation-grid--main" role="grid"></div>
+                    </div>
+                    <div class="stg-formation-board-block" data-stg-formation-board="right">
+                        <div class="stg-formation-board-title">右（主棋盘右侧；最左列与主棋盘最右列相邻）</div>
+                        <div id="stgFormationGridRight" class="stg-formation-grid" role="grid"></div>
+                    </div>
                 </div>
             </div>
             <div class="wave-config-actions">
@@ -662,17 +713,19 @@
         </div>
     </div>
 
+    <script src="stgBundledStorage.js?v=20260403c"></script>
     <script src="pageManager.js?v=20260329z"></script>
-    <script src="stgUiI18n.js?v=20260327b"></script>
-    <script src="stgMode.js?v=20260403a"></script>
-    <script src="stgBuildInventoryPanel.js?v=20260331o"></script>
-    <script src="stgPlayerEditorPanel.js?v=20260402b"></script>
+    <script src="stgUiI18n.js?v=20260403i"></script>
+    <script src="stgMode.js?v=20260404j"></script>
+    <script src="stgBuildInventoryPanel.js?v=20260327d"></script>
+    <script src="stgPlayerEditorPanel.js?v=20260327e"></script>
     <script src="stgScenePropsEditorPanel.js?v=20260329z"></script>
-    <script src="stgWaveFormationPanel.js?v=20260403a"></script>
-    <script src="stgTextureEditorPanel.js?v=20260402d"></script>
-    <script src="monsterEditorPanel.js?v=20260403a"></script>
+    <script src="stgWaveFormationPanel.js?v=20260404b"></script>
+    <script src="stgTextureEditorPanel.js?v=20260404j"></script>
+    <script src="monsterEditorPanel.js?v=20260327c"></script>
+    <script src="bossEditorPanel.js?v=20260404j"></script>
     <script src="heroEditorPanel.js?v=20260329z"></script>
-    <script src="game.js?v=20260402c"></script>
+    <script src="game.js?v=20260403b"></script>
     <!-- Debug 工具栏：固定定位，不参与文档流，不影响游戏布局 -->
     <div id="debugToolbar" class="debug-toolbar">
         <span class="debug-toolbar-label">Debug</span>

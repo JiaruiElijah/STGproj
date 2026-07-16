@@ -1653,7 +1653,12 @@ class UIManager {
 // 初始化游戏
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('游戏初始化开始...');
-    
+
+    /** 若 game_demo 下存在 stgBundledLocalStorage.json，先于物品池/英雄覆盖写入 localStorage */
+    if (typeof window.applyStgBundledLocalStorageFromFetch === 'function') {
+        await window.applyStgBundledLocalStorageFromFetch();
+    }
+
     // 初始化页面管理器（PageManager会在构造函数中自动初始化）
     window.pageManager = new PageManager();
     console.log('页面管理器实例已创建');
@@ -1742,7 +1747,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (window.MonsterEditorPanel && typeof window.MonsterEditorPanel.init === 'function') {
         window.MonsterEditorPanel.init(null);
     }
-    
+    if (window.BossEditorPanel && typeof window.BossEditorPanel.init === 'function') {
+        window.BossEditorPanel.init();
+    }
+
     // 绑定 Debug 工具栏：增加指定数量金币
     const debugCoinsInput = document.getElementById('debugCoinsInput');
     const debugAddCoinsBtn = document.getElementById('debugAddCoinsBtn');
@@ -1947,6 +1955,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         stgMonBtn.addEventListener('click', () => {
             if (window.MonsterEditorPanel && typeof window.MonsterEditorPanel.open === 'function') {
                 window.MonsterEditorPanel.open();
+            }
+        });
+    }
+    const stgBossBtn = document.getElementById('stgOpenBossEditorBtn');
+    if (stgBossBtn) {
+        stgBossBtn.addEventListener('click', () => {
+            if (window.BossEditorPanel && typeof window.BossEditorPanel.open === 'function') {
+                window.BossEditorPanel.open();
             }
         });
     }

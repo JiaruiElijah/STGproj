@@ -1,15 +1,14 @@
 /**
  * STG 局内构筑道具：勾选本局开局自动持有的升级（与三选一池同源，存本地；下局 resetRun 时应用）
- * 支持按条目展开编辑数值；扩散 A–H、道具 I（水晶）、M（狂怒）有专用表单，其余显示占位说明。
+ * 支持按条目展开编辑数值；扩散 A–H、道具 I（水晶齐射）等有专用表单，其余显示占位说明（与《新模式玩法开发/道具列表》池一致）。
  */
 (function () {
     'use strict';
 
     const STORAGE_KEY = 'stg_build_inventory_granted';
 
-    const FOCUS_CRYSTAL_IDS = ['focus_crystal_base', 'focus_crystal_atk', 'focus_crystal_count', 'focus_crystal_pierce'];
-    const FOCUS_RAGE_IDS = ['focus_rage_core', 'focus_rage_cap', 'focus_rage_dur', 'focus_rage_weak'];
-    const ULT_SEAL_IDS = ['ult_seal_size', 'ult_seal_economy', 'ult_seal_heal'];
+    const FOCUS_CRYSTAL_IDS = ['focus_crystal_base'];
+    const ULT_SEAL_IDS = ['ult_seal_size', 'ult_seal_heal'];
     const ULT_DREAM_IDS = ['ult_dream_base', 'ult_dream_count', 'ult_dream_stun'];
 
     function getCatalog() {
@@ -64,8 +63,6 @@
         }
 
         if (checked) {
-            if (FOCUS_CRYSTAL_IDS.indexOf(id) >= 0) setGroupOff(FOCUS_RAGE_IDS, id);
-            if (FOCUS_RAGE_IDS.indexOf(id) >= 0) setGroupOff(FOCUS_CRYSTAL_IDS, id);
             if (ULT_SEAL_IDS.indexOf(id) >= 0) setGroupOff(ULT_DREAM_IDS, id);
             if (ULT_DREAM_IDS.indexOf(id) >= 0) setGroupOff(ULT_SEAL_IDS, id);
         }
@@ -88,7 +85,7 @@
             return (
                 '<div class="stg-build-inv-detail-inner">' +
                 '<div class="stg-build-inv-detail-title">道具 I · 水晶齐射</div>' +
-                '<div class="stg-build-inv-detail-subtitle">数值（在道具 J 的 1.28 倍之后再乘伤害倍率）</div>' +
+                '<div class="stg-build-inv-detail-subtitle">数值（水晶伤害与枚数）</div>' +
                 '<label class="stg-build-inv-field">每颗伤害倍率（0.1～5）' +
                 '<input type="number" step="0.05" min="0.1" max="5" data-ov-key="focus_crystal_base" data-ov-field="crystalDamageMult" value="' +
                 dm +
@@ -101,7 +98,7 @@
                 '<input type="number" step="1" min="2" max="28" data-ov-key="focus_crystal_base" data-ov-field="crystalCountBase" value="' +
                 cb +
                 '" /></label>' +
-                '<label class="stg-build-inv-field">有道具 K 时额外枚数（0～20）' +
+                '<label class="stg-build-inv-field">额外枚数（0～20）' +
                 '<input type="number" step="1" min="0" max="20" data-ov-key="focus_crystal_base" data-ov-field="crystalCountExtraWithK" value="' +
                 ck +
                 '" /></label>' +
@@ -119,36 +116,7 @@
                 '<input type="number" step="0.05" min="0.35" max="3" data-ov-key="focus_crystal_base" data-ov-field="crystalRadiusScale" value="' +
                 rsVal +
                 '" /></label>' +
-                '<p class="stg-build-inv-detail-hint">保存后列表与三选一卡牌的道具 I 描述会按「命中次数」与「枚数」自动更新；局内仍受 J/L 等影响。</p>' +
-                '</div>'
-            );
-        }
-        if (id === 'focus_rage_core') {
-            const r = ov.focus_rage_core || {};
-            const d0 = r.rageDurationBaseMs != null ? Number(r.rageDurationBaseMs) : 5000;
-            const d1 = r.rageDurationExtraMs != null ? Number(r.rageDurationExtraMs) : 5000;
-            const bs = r.rageBulletSpdPerStack != null ? Number(r.rageBulletSpdPerStack) : 0.065;
-            const fm = r.rageFireIvMultPerStack != null ? Number(r.rageFireIvMultPerStack) : 0.9;
-            return (
-                '<div class="stg-build-inv-detail-inner">' +
-                '<div class="stg-build-inv-detail-title">道具 M · 狂怒效果</div>' +
-                '<label class="stg-build-inv-field">基础持续（毫秒）' +
-                '<input type="number" step="100" min="500" max="120000" data-ov-key="focus_rage_core" data-ov-field="rageDurationBaseMs" value="' +
-                (Number.isFinite(d0) ? d0 : 5000) +
-                '" /></label>' +
-                '<label class="stg-build-inv-field">道具 O 追加（毫秒）' +
-                '<input type="number" step="100" min="0" max="120000" data-ov-key="focus_rage_core" data-ov-field="rageDurationExtraMs" value="' +
-                (Number.isFinite(d1) ? d1 : 5000) +
-                '" /></label>' +
-                '<label class="stg-build-inv-field">每层弹速加成（0～0.25）' +
-                '<input type="number" step="0.005" min="0" max="0.25" data-ov-key="focus_rage_core" data-ov-field="rageBulletSpdPerStack" value="' +
-                (Number.isFinite(bs) ? bs : 0.065) +
-                '" /></label>' +
-                '<label class="stg-build-inv-field">每层射击间隔乘数（0.5～0.999）' +
-                '<input type="number" step="0.01" min="0.5" max="0.999" data-ov-key="focus_rage_core" data-ov-field="rageFireIvMultPerStack" value="' +
-                (Number.isFinite(fm) ? fm : 0.9) +
-                '" /></label>' +
-                '<p class="stg-build-inv-detail-hint">叠层上限、虚弱等仍由 N/O/P 卡决定；此处为每层对射速/弹速/持续的基础公式。</p>' +
+                '<p class="stg-build-inv-detail-hint">保存后列表与四选一卡牌的道具 I 描述会按「命中次数」与「枚数」自动更新。</p>' +
                 '</div>'
             );
         }
@@ -237,12 +205,12 @@
         }
         if (id === 'spread_homing') {
             const x = ov.spread_homing || {};
-            const dm = x.homingDamageMult != null && Number.isFinite(Number(x.homingDamageMult)) ? Number(x.homingDamageMult) : 0.6;
+            const dm = x.homingDamageMult != null && Number.isFinite(Number(x.homingDamageMult)) ? Number(x.homingDamageMult) : 0.5;
             const hs = x.homingStr != null && Number.isFinite(Number(x.homingStr)) ? Number(x.homingStr) : 72;
             return (
                 '<div class="stg-build-inv-detail-inner">' +
                 '<div class="stg-build-inv-detail-title">道具 D · 追踪弹</div>' +
-                '<label class="stg-build-inv-field">伤害乘区（0.05～1，默认 0.6）' +
+                '<label class="stg-build-inv-field">伤害乘区（0.05～1，默认 0.5）' +
                 '<input type="number" step="0.02" min="0.05" max="1" data-ov-key="spread_homing" data-ov-field="homingDamageMult" value="' +
                 dm +
                 '" /></label>' +
@@ -309,15 +277,74 @@
                 '</div>'
             );
         }
-        if (id === 'spread_crit') {
-            const x = ov.spread_crit || {};
-            const cb = x.critBonus != null && Number.isFinite(Number(x.critBonus)) ? Number(x.critBonus) : 0.12;
+        if (id === 'spread_rof') {
+            const x = ov.spread_rof || {};
+            const im =
+                x.spreadRofIntervalMult != null && Number.isFinite(Number(x.spreadRofIntervalMult))
+                    ? Number(x.spreadRofIntervalMult)
+                    : 0.9;
             return (
                 '<div class="stg-build-inv-detail-inner">' +
-                '<div class="stg-build-inv-detail-title">道具 G · 扩散暴击</div>' +
-                '<label class="stg-build-inv-field">额外暴击概率（0～0.5）' +
-                '<input type="number" step="0.01" min="0" max="0.5" data-ov-key="spread_crit" data-ov-field="critBonus" value="' +
-                cb +
+                '<div class="stg-build-inv-detail-title">扩散射速（原 G 拆项）</div>' +
+                '<label class="stg-build-inv-field">射击间隔乘数（0.65～1，越小越快）' +
+                '<input type="number" step="0.01" min="0.65" max="1" data-ov-key="spread_rof" data-ov-field="spreadRofIntervalMult" value="' +
+                im +
+                '" /></label>' +
+                '</div>'
+            );
+        }
+        if (id === 'spread_might') {
+            const x = ov.spread_might || {};
+            const dm =
+                x.spreadMightDamageMult != null && Number.isFinite(Number(x.spreadMightDamageMult))
+                    ? Number(x.spreadMightDamageMult)
+                    : 1.12;
+            return (
+                '<div class="stg-build-inv-detail-inner">' +
+                '<div class="stg-build-inv-detail-title">扩散威力（原 G 拆项）</div>' +
+                '<label class="stg-build-inv-field">伤害乘数（1～1.85）' +
+                '<input type="number" step="0.05" min="1" max="1.85" data-ov-key="spread_might" data-ov-field="spreadMightDamageMult" value="' +
+                dm +
+                '" /></label>' +
+                '</div>'
+            );
+        }
+        if (id === 'focus_bullet_spd') {
+            const x = ov.focus_bullet_spd || {};
+            const fm =
+                x.focusBulletSpdMult != null && Number.isFinite(Number(x.focusBulletSpdMult))
+                    ? Number(x.focusBulletSpdMult)
+                    : 1.1;
+            return (
+                '<div class="stg-build-inv-detail-inner">' +
+                '<div class="stg-build-inv-detail-title">伏魔针 · 弹速</div>' +
+                '<label class="stg-build-inv-field">伏魔针弹速乘数（1～1.4）' +
+                '<input type="number" step="0.02" min="1" max="1.4" data-ov-key="focus_bullet_spd" data-ov-field="focusBulletSpdMult" value="' +
+                fm +
+                '" /></label>' +
+                '</div>'
+            );
+        }
+        if (id === 'focus_shikigami') {
+            const x = ov.focus_shikigami || {};
+            const dm =
+                x.shikigamiDmgMult != null && Number.isFinite(Number(x.shikigamiDmgMult))
+                    ? Number(x.shikigamiDmgMult)
+                    : 0.58;
+            const iv =
+                x.shikigamiFireIntervalMs != null && Number.isFinite(Number(x.shikigamiFireIntervalMs))
+                    ? Number(x.shikigamiFireIntervalMs)
+                    : 620;
+            return (
+                '<div class="stg-build-inv-detail-inner">' +
+                '<div class="stg-build-inv-detail-title">伏魔针 · 式神援护</div>' +
+                '<label class="stg-build-inv-field">相对主武器单发伤害倍率（0.25～2）' +
+                '<input type="number" step="0.02" min="0.25" max="2" data-ov-key="focus_shikigami" data-ov-field="shikigamiDmgMult" value="' +
+                dm +
+                '" /></label>' +
+                '<label class="stg-build-inv-field">开火间隔（毫秒，200～2000）' +
+                '<input type="number" step="10" min="200" max="2000" data-ov-key="focus_shikigami" data-ov-field="shikigamiFireIntervalMs" value="' +
+                iv +
                 '" /></label>' +
                 '</div>'
             );
@@ -363,11 +390,10 @@
 
         const groups = [
             { title: '扩散（A–H）', pred: (g) => g === 'spread' },
-            { title: '伏魔针 · 水晶（I–L）', pred: (g) => g === 'focus_crystal' },
-            { title: '伏魔针 · 狂怒（M–P）', pred: (g) => g === 'focus_rage' },
-            { title: '大招 · 强化封魔阵（Q–S）', pred: (g) => g === 'ult_seal' },
-            { title: '大招 · 梦想妙珠（T–V）', pred: (g) => g === 'ult_dream' },
-            { title: '基础属性', pred: (g) => g === 'stat' }
+            { title: '伏魔针 · 水晶（I）', pred: (g) => g === 'focus_crystal' },
+            { title: '伏魔针 · 通用', pred: (g) => g === 'focus_misc' },
+            { title: '大招 · 强化封魔阵', pred: (g) => g === 'ult_seal' },
+            { title: '大招 · 梦想妙珠', pred: (g) => g === 'ult_dream' }
         ];
 
         groups.forEach((section) => {

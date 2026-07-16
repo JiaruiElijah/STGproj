@@ -39,6 +39,8 @@
     let enemyFireStopRowBuffer = null;
 
     let panelEl = null;
+    /** @type {HTMLElement|null} */
+    let waveLegendEl = null;
     /** 内存中的完整文档（含多章），与 localStorage 结构一致 */
     let fullDoc = null;
     /** 当前编辑的章节下标（0 起） */
@@ -46,6 +48,8 @@
     let chapterSelectEl = null;
     let waveSelectEl = null;
     let brushSelectEl = null;
+    /** 摆放敌人：仅上/左/右（主棋盘不出怪）；摆放信标：上/左/右/主 四块均可 */
+    let placementMode = 'enemy';
     let spawnIntervalInp = null;
     let spiritRewardInp = null;
     let nextDelayInp = null;
@@ -241,7 +245,37 @@
             }
             return g;
         };
-        return { top: mk(), left: mk(), right: mk() };
+        return { top: mk(), left: mk(), right: mk(), main: mk() };
+    }
+
+    /** 主棋盘单格：仅允许单个信标 id 或空 */
+    function normalizeMainCell(raw) {
+        if (raw == null || String(raw).trim() === '') return '';
+        const t = String(raw).trim();
+        if (window.StgMode && typeof window.StgMode.isFormationBeaconToken === 'function') {
+            if (window.StgMode.isFormationBeaconToken(t)) return t;
+        } else if (t.startsWith('__beacon_')) {
+            return t;
+        }
+        return '';
+    }
+
+    /** 扩展格混合格：拆成「非信标」与「信标」两段，供合并笔刷与清空按钮使用 */
+    function splitExtensionCellParts(raw) {
+        const parts = String(raw || '')
+            .split('|')
+            .map((x) => x.trim())
+            .filter(Boolean);
+        const beacons = parts.filter((p) => isFormationBeaconTokenPart(p));
+        const enemies = parts.filter((p) => !isFormationBeaconTokenPart(p));
+        return { enemies, beacons };
+    }
+
+    function isFormationBeaconTokenPart(s) {
+        if (window.StgMode && typeof window.StgMode.isFormationBeaconToken === 'function') {
+            return window.StgMode.isFormationBeaconToken(s);
+        }
+        return s != null && String(s).startsWith('__beacon_');
     }
 
     /** 新插入波次的默认节奏与血量倍率（空三棋盘，由用户再摆怪） */
@@ -252,6 +286,7 @@
     function normalizeFormation(f) {
         const out = createEmptyFormation();
         if (!f || typeof f !== 'object') return out;
+        /** 扩展格：可与主棋盘一样放置信标；支持 type|type 或 type|__beacon_a1 等混合格（出兵仍只读非信标段） */
         ['top', 'left', 'right'].forEach((k) => {
             const src = f[k];
             if (!src || !Array.isArray(src)) return;
@@ -259,10 +294,22 @@
                 if (!src[r] || !Array.isArray(src[r])) continue;
                 for (let c = 0; c < cols; c++) {
                     const v = src[r][c];
-                    if (v != null && String(v).trim() !== '') out[k][r][c] = String(v).trim();
+                    if (v != null && String(v).trim() !== '') {
+                        out[k][r][c] = String(v).trim();
+                    }
                 }
             }
         });
+        const srcM = f.main;
+        if (srcM && Array.isArray(srcM)) {
+            for (let r = 0; r < rows; r++) {
+                if (!srcM[r] || !Array.isArray(srcM[r])) continue;
+                for (let c = 0; c < cols; c++) {
+                    const v = srcM[r][c];
+                    out.main[r][c] = normalizeMainCell(v);
+                }
+            }
+        }
         return out;
     }
 
@@ -271,6 +318,13 @@
         const list = [];
         if (!f || typeof f !== 'object') return list;
 
+        function isBeaconToken(id) {
+            if (window.StgMode && typeof window.StgMode.isFormationBeaconToken === 'function') {
+                return window.StgMode.isFormationBeaconToken(id);
+            }
+            return id != null && String(id).startsWith('__beacon_');
+        }
+
         function pushParts(cell, edge, c, r) {
             if (cell == null || String(cell).trim() === '') return;
             const parts = String(cell)
@@ -278,6 +332,7 @@
                 .map((s) => s.trim())
                 .filter(Boolean);
             parts.forEach((typeId) => {
+                if (isBeaconToken(typeId)) return;
                 list.push({ typeId, edge, col: c, row: r });
             });
         }
@@ -335,7 +390,17 @@
 
     function hasAnyFormationCell(f) {
         if (!f) return false;
-        return flattenFormationToSpawnList(f).length > 0;
+        if (flattenFormationToSpawnList(f).length > 0) return true;
+        if (f.main && Array.isArray(f.main)) {
+            for (let r = 0; r < f.main.length; r++) {
+                const row = f.main[r];
+                if (!row) continue;
+                for (let c = 0; c < row.length; c++) {
+                    if (row[c] != null && String(row[c]).trim() !== '') return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** 旧存档仅有 enemies 无阵型时：自上棋盘底行左起顺排，便于迁移 */
@@ -379,46 +444,246 @@
         }
     }
 
-    function getEnemyTypeOptions() {
-        const labels = { normal: '普通', fast: '快速', tank: '坦克' };
+    /**
+     * 与怪物编辑器 tower_defense_enemy_types 同步：显示名称 + 图示 emoji（格子内简称仍用 id 前 2 字）
+     * @returns {Record<string, { name: string, icon: string }>}
+     */
+    function getEnemyTypeMetaMap() {
+        const map = {
+            normal: { name: '普通', icon: '👹' },
+            fast: { name: '快速', icon: '⚡' },
+            tank: { name: '坦克', icon: '🛡️' }
+        };
         try {
             const raw = localStorage.getItem('tower_defense_enemy_types');
             if (raw) {
                 const o = JSON.parse(raw);
                 if (o && typeof o === 'object') {
                     Object.keys(o).forEach((id) => {
-                        labels[id] = o[id] && o[id].name ? o[id].name : id;
+                        const d = o[id];
+                        const name = d && d.name ? String(d.name) : id;
+                        const icon = d && d.icon != null && String(d.icon).trim() !== '' ? String(d.icon).replace(/</g, '') : '👹';
+                        map[id] = { name, icon };
                     });
                 }
             }
         } catch (e) {
             /* ignore */
         }
+        try {
+            const br = localStorage.getItem('stg_boss_configs');
+            if (br) {
+                const doc = JSON.parse(br);
+                if (doc && doc.bosses && typeof doc.bosses === 'object') {
+                    Object.keys(doc.bosses).forEach((bid) => {
+                        const b = doc.bosses[bid];
+                        const nm = b && b.name ? String(b.name) : bid;
+                        map['__boss_' + bid] = { name: 'BOSS · ' + nm, icon: '🐉' };
+                    });
+                }
+            }
+        } catch (e2) {
+            /* ignore */
+        }
+        return map;
+    }
+
+    function getEnemyTypeOptions() {
+        const map = getEnemyTypeMetaMap();
         const order = ['normal', 'fast', 'tank'];
-        const keys = Object.keys(labels);
-        const rest = keys.filter((id) => order.indexOf(id) < 0).sort();
+        const keys = Object.keys(map);
+        const rest = keys.filter((id) => order.indexOf(id) < 0 && String(id).indexOf('__boss_') !== 0).sort();
         const out = [];
         order.forEach((id) => {
-            if (labels[id] != null) out.push({ id, name: labels[id] });
+            if (map[id] != null) out.push({ id, name: map[id].name });
         });
-        rest.forEach((id) => out.push({ id, name: labels[id] }));
+        rest.forEach((id) => out.push({ id, name: map[id].name }));
+        return { regular: out };
+    }
+
+    /**
+     * BOSS 编辑器存档中的条目，用于笔刷 optgroup（token：__boss_<id>）
+     */
+    function getBossBrushOptions() {
+        const out = [];
+        try {
+            const raw = localStorage.getItem('stg_boss_configs');
+            if (!raw) return out;
+            const doc = JSON.parse(raw);
+            if (!doc || !doc.bosses || typeof doc.bosses !== 'object') return out;
+            Object.keys(doc.bosses)
+                .sort()
+                .forEach((bid) => {
+                    const b = doc.bosses[bid];
+                    const nm = b && b.name ? String(b.name) : bid;
+                    const token = '__boss_' + bid;
+                    out.push({ id: token, label: '🐉 ' + nm + ' (' + bid + ')' });
+                });
+        } catch (e) {
+            /* ignore */
+        }
         return out;
     }
 
+    /**
+     * 按 flatten 出怪顺序，首次出现的种类 id 去重（用于本波图例顺序）
+     * @param {{ top: string[][], left: string[][], right: string[][] }} buf
+     * @returns {string[]}
+     */
+    function collectUniqueTypeIdsInWaveOrder(buf) {
+        const flat = flattenFormationToSpawnList(buf);
+        const seen = new Set();
+        const order = [];
+        for (let i = 0; i < flat.length; i++) {
+            const id = (flat[i].typeId && String(flat[i].typeId).trim()) || 'normal';
+            if (window.StgMode && typeof window.StgMode.isFormationBeaconToken === 'function') {
+                if (window.StgMode.isFormationBeaconToken(id)) continue;
+            } else if (String(id).startsWith('__beacon_')) {
+                continue;
+            }
+            if (!seen.has(id)) {
+                seen.add(id);
+                order.push(id);
+            }
+        }
+        return order;
+    }
+
+    /** 刷新「本波种类图例」：全称 + 图标，随当前波与棋盘变化更新 */
+    function refreshWaveLegend() {
+        if (!waveLegendEl) return;
+        const buf = formationBuffers[currentWaveIndex];
+        waveLegendEl.innerHTML = '';
+        if (!buf) {
+            waveLegendEl.appendChild(document.createTextNode('（无当前波数据）'));
+            return;
+        }
+        const ids = collectUniqueTypeIdsInWaveOrder(buf);
+        const meta = getEnemyTypeMetaMap();
+        if (ids.length === 0) {
+            const p = document.createElement('p');
+            p.className = 'stg-formation-wave-legend-empty';
+            p.textContent = '本波三棋盘尚未放置任何敌人。';
+            waveLegendEl.appendChild(p);
+            return;
+        }
+        ids.forEach((typeId) => {
+            const m = meta[typeId] || { name: typeId, icon: '👹' };
+            const item = document.createElement('div');
+            item.className = 'stg-formation-legend-item';
+            item.title = '种类 id：' + typeId;
+            const ic = document.createElement('span');
+            ic.className = 'stg-formation-legend-icon';
+            ic.setAttribute('aria-hidden', 'true');
+            ic.textContent = m.icon || '👹';
+            const text = document.createElement('span');
+            text.className = 'stg-formation-legend-text';
+            const nameEl = document.createElement('span');
+            nameEl.className = 'stg-formation-legend-name';
+            nameEl.textContent = m.name || typeId;
+            const idEl = document.createElement('span');
+            idEl.className = 'stg-formation-legend-id';
+            idEl.textContent = typeId;
+            text.appendChild(nameEl);
+            text.appendChild(document.createTextNode(' '));
+            text.appendChild(idEl);
+            item.appendChild(ic);
+            item.appendChild(text);
+            waveLegendEl.appendChild(item);
+        });
+    }
+
+    /** 与 stgMode STG_FORMATION_BEACON_PREFIX 一致：四块棋盘均可摆 */
+    const BEACON_BRUSH_VALUES = [
+        '__beacon_a1',
+        '__beacon_a2',
+        '__beacon_a3',
+        '__beacon_a4',
+        '__beacon_b1',
+        '__beacon_b2',
+        '__beacon_b3',
+        '__beacon_b4'
+    ];
+
     function buildBrushOptions() {
         if (!brushSelectEl) return;
-        const opts = getEnemyTypeOptions();
+        if (placementMode === 'beacon') {
+            let html = '<option value="">（擦除）</option>';
+            BEACON_BRUSH_VALUES.forEach((bid) => {
+                const short = bid.replace('__beacon_', '');
+                html += `<option value="${bid}">信标 ${short}</option>`;
+            });
+            brushSelectEl.innerHTML = html;
+            return;
+        }
+        const pack = getEnemyTypeOptions();
+        const opts = pack.regular || [];
+        const bossOpts = getBossBrushOptions();
         let html = '<option value="">（擦除）</option>';
         opts.forEach((o) => {
-            html += `<option value="${o.id.replace(/"/g, '')}">${o.name}</option>`;
+            const safeId = String(o.id).replace(/"/g, '&quot;');
+            html += `<option value="${safeId}">${o.name}</option>`;
         });
+        if (bossOpts.length > 0) {
+            html += '<optgroup label="BOSS（BOSS 编辑器）">';
+            bossOpts.forEach((o) => {
+                const safeId = String(o.id).replace(/"/g, '&quot;');
+                const lab = String(o.label).replace(/</g, '');
+                html += `<option value="${safeId}">${lab}</option>`;
+            });
+            html += '</optgroup>';
+        }
         brushSelectEl.innerHTML = html;
     }
 
-    function paintCell(edge, col, row, typeId) {
+    function syncFormationBoardInactiveState() {
+        document.querySelectorAll('[data-stg-formation-board]').forEach((el) => {
+            const k = el.getAttribute('data-stg-formation-board');
+            /** 仅「摆放敌人」时主棋盘不可点（主棋盘不出怪）；「摆放信标」时四块棋盘均可编辑 */
+            const inactive = placementMode === 'enemy' && k === 'main';
+            el.classList.toggle('stg-formation-board-block--inactive', inactive);
+        });
+    }
+
+    /**
+     * @param {{ fullErase?: boolean }} [opts] 右键擦除一格时为 true：扩展格整格清空（含怪与信标）
+     */
+    function paintCell(edge, col, row, typeId, opts) {
         const buf = formationBuffers[currentWaveIndex];
         if (!buf) return;
-        buf[edge][row][col] = typeId || '';
+        const fullErase = opts && opts.fullErase;
+        if (edge === 'main') {
+            buf.main[row][col] = typeId || '';
+            return;
+        }
+        const ext = buf[edge];
+        if (!ext || !ext[row]) return;
+
+        if (fullErase && !typeId) {
+            ext[row][col] = '';
+            return;
+        }
+
+        const cur = ext[row][col] || '';
+        const { enemies, beacons } = splitExtensionCellParts(cur);
+
+        if (placementMode === 'enemy') {
+            if (!typeId) {
+                ext[row][col] = '';
+                return;
+            }
+            ext[row][col] = beacons.length ? typeId + '|' + beacons.join('|') : typeId;
+            return;
+        }
+        if (placementMode === 'beacon') {
+            if (!typeId) {
+                ext[row][col] = enemies.join('|');
+                return;
+            }
+            ext[row][col] = enemies.length ? enemies.join('|') + '|' + typeId : typeId;
+            return;
+        }
+        ext[row][col] = typeId || '';
     }
 
     function cellKey(edge, col, row) {
@@ -431,6 +696,7 @@
         const c = parseInt(cell.dataset.col, 10);
         const r = parseInt(cell.dataset.row, 10);
         if (!edge || Number.isNaN(c) || Number.isNaN(r)) return;
+        if (placementMode === 'enemy' && edge === 'main') return;
         paintCell(edge, c, r, dragBrush);
     }
 
@@ -476,7 +742,8 @@
         const edge = cell.dataset.edge;
         const c = parseInt(cell.dataset.col, 10);
         const r = parseInt(cell.dataset.row, 10);
-        paintCell(edge, c, r, '');
+        if (placementMode === 'enemy' && edge === 'main') return;
+        paintCell(edge, c, r, '', { fullErase: true });
         refreshAllGrids();
     }
 
@@ -485,8 +752,32 @@
         container.addEventListener('pointerdown', onGridPointerDown);
     }
 
+    /** 格子悬停：列出种类全称（与图例同源），多只用分号分隔 */
+    function formatFormationCellTitle(raw, col, row, meta) {
+        const m0 = meta || getEnemyTypeMetaMap();
+        if (raw == null || String(raw).trim() === '') return '空 (' + col + ',' + row + ')';
+        const parts = String(raw)
+            .split('|')
+            .map((s) => s.trim())
+            .filter(Boolean);
+        if (parts.length === 0) return '空 (' + col + ',' + row + ')';
+        const bits = parts.map((pid) => {
+            if (window.StgMode && typeof window.StgMode.isFormationBeaconToken === 'function') {
+                if (window.StgMode.isFormationBeaconToken(pid)) {
+                    return '移动信标 ' + String(pid).replace('__beacon_', '') + '（局内不显示）';
+                }
+            } else if (String(pid).startsWith('__beacon_')) {
+                return '移动信标 ' + String(pid).replace('__beacon_', '') + '（局内不显示）';
+            }
+            const m = m0[pid];
+            return m ? m.name + '（' + pid + '）' : pid;
+        });
+        return bits.join('；') + ' @ (' + col + ',' + row + ')';
+    }
+
     function renderGrid(container, edgeKey) {
         if (!container) return;
+        const metaMap = getEnemyTypeMetaMap();
         container.innerHTML = '';
         container.style.gridTemplateColumns = `repeat(${cols}, var(--stg-form-cell, 14px))`;
         container.style.gridTemplateRows = `repeat(${rows}, var(--stg-form-cell, 14px))`;
@@ -502,9 +793,28 @@
                 cell.dataset.col = String(c);
                 cell.dataset.row = String(r);
                 const v = grid[r][c];
-                cell.textContent = v ? (v.length > 2 ? v.slice(0, 2) : v) : '';
-                cell.title = v ? `${v} @ (${c},${r})` : `空 (${c},${r})`;
+                if (v) {
+                    if (String(v).indexOf('|') >= 0) {
+                        cell.textContent = v.length > 2 ? v.slice(0, 2) : v;
+                    } else if (
+                        window.StgMode &&
+                        typeof window.StgMode.isFormationBeaconToken === 'function' &&
+                        window.StgMode.isFormationBeaconToken(v)
+                    ) {
+                        cell.textContent = String(v).replace('__beacon_', '');
+                    } else if (String(v).startsWith('__beacon_')) {
+                        cell.textContent = String(v).replace('__beacon_', '');
+                    } else if (String(v).startsWith('__boss_')) {
+                        cell.textContent = '🐉';
+                    } else {
+                        cell.textContent = v.length > 2 ? v.slice(0, 2) : v;
+                    }
+                } else {
+                    cell.textContent = '';
+                }
+                cell.title = formatFormationCellTitle(v, c, r, metaMap);
                 if (v) cell.classList.add('has-type');
+                if (edgeKey === 'main' && v) cell.classList.add('stg-formation-cell--beacon');
                 cell.addEventListener('contextmenu', onCellContextMenu);
                 container.appendChild(cell);
             }
@@ -515,6 +825,9 @@
         if (grids.top) renderGrid(grids.top, 'top');
         if (grids.left) renderGrid(grids.left, 'left');
         if (grids.right) renderGrid(grids.right, 'right');
+        if (grids.main) renderGrid(grids.main, 'main');
+        syncFormationBoardInactiveState();
+        refreshWaveLegend();
     }
 
     function syncMetaInputsFromBuffer() {
@@ -733,6 +1046,13 @@
         rebuildBuffersFromCurrentChapter();
         populateChapterSelect();
         populateWaveSelect();
+        placementMode = 'enemy';
+        const prEnemy = document.getElementById('stgFormationPlacementEnemy');
+        const prBeacon = document.getElementById('stgFormationPlacementBeacon');
+        if (prEnemy) prEnemy.checked = true;
+        if (prBeacon) prBeacon.checked = false;
+        const brushHint = document.getElementById('stgFormationBrushHint');
+        if (brushHint) brushHint.textContent = '（敌人种类）';
         buildBrushOptions();
         currentWaveIndex = parseInt(waveSelectEl.value, 10) || 0;
         syncMetaInputsFromBuffer();
@@ -768,7 +1088,8 @@
                 stgFormation: {
                     top: f.top.map((row) => row.slice()),
                     left: f.left.map((row) => row.slice()),
-                    right: f.right.map((row) => row.slice())
+                    right: f.right.map((row) => row.slice()),
+                    main: f.main.map((row) => row.slice())
                 },
                 enemies
             });
@@ -788,7 +1109,7 @@
         console.log('[阵型] 已保存：共', fullDoc.chapters.length, '章；当前第', currentChapterIndex + 1, '章', waves.length, '波');
         alert(
             '已保存到本地波次配置（含多章节）。\n' +
-                '种类与数量仅由「三棋盘」格子决定；STG 出怪顺序与阵型遍历顺序一致（同类型会合并为连续组）。\n' +
+                '敌人仅摆在上/左/右扩展棋盘；移动信标可摆在上/左/右/主四块棋盘（局内不显示）。STG 出怪顺序与扩展格遍历一致。\n' +
                 '每波「敌人血量倍率」已写入；全局随波次公式当前不参与计算（见面板说明）。'
         );
         close();
@@ -857,14 +1178,41 @@
         enemyFireStopRowInp = document.getElementById('stgFormationEnemyFireStopRow');
         postUpgradeDelayInp = document.getElementById('stgFormationPostUpgradeSpawnDelaySec');
         upgradeMomentsInp = document.getElementById('stgFormationUpgradeMomentsInput');
+        waveLegendEl = document.getElementById('stgFormationWaveLegend');
         grids.top = document.getElementById('stgFormationGridTop');
         grids.left = document.getElementById('stgFormationGridLeft');
         grids.right = document.getElementById('stgFormationGridRight');
+        grids.main = document.getElementById('stgFormationGridMain');
         if (!panelEl) return;
 
         bindGridContainer(grids.top);
         bindGridContainer(grids.left);
         bindGridContainer(grids.right);
+        bindGridContainer(grids.main);
+
+        const prEnemy = document.getElementById('stgFormationPlacementEnemy');
+        const prBeacon = document.getElementById('stgFormationPlacementBeacon');
+        const brushHint = document.getElementById('stgFormationBrushHint');
+        function applyPlacementModeFromUi() {
+            placementMode = prBeacon && prBeacon.checked ? 'beacon' : 'enemy';
+            if (brushHint) {
+                brushHint.textContent = placementMode === 'beacon' ? '（移动信标）' : '（敌人种类）';
+            }
+            buildBrushOptions();
+            syncFormationBoardInactiveState();
+        }
+        if (prEnemy) {
+            prEnemy.addEventListener('change', () => {
+                applyPlacementModeFromUi();
+                refreshAllGrids();
+            });
+        }
+        if (prBeacon) {
+            prBeacon.addEventListener('change', () => {
+                applyPlacementModeFromUi();
+                refreshAllGrids();
+            });
+        }
 
         const openBtn = document.getElementById('stgOpenWaveFormationBtn');
         const openBtnLegacy = document.getElementById('stgOpenWaveConfigBtn');
@@ -883,11 +1231,51 @@
         if (applyBtn) applyBtn.addEventListener('click', applyAllToWaves);
         const exportWaveBtn = document.getElementById('stgFormationExportWaveConfigBtn');
         if (exportWaveBtn) exportWaveBtn.addEventListener('click', downloadWaveConfigJsonForSharing);
-        const clearBtn = document.getElementById('stgFormationClearBoardBtn');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', () => {
-                if (!confirm('清空当前波在三个棋盘上的所有放置？')) return;
-                formationBuffers[currentWaveIndex] = createEmptyFormation();
+        const clearEnemyBtn = document.getElementById('stgFormationClearEnemyGridsBtn');
+        if (clearEnemyBtn) {
+            clearEnemyBtn.addEventListener('click', () => {
+                if (!confirm('清空当前波在上/左/右扩展棋盘上的所有敌人？（各格内移动信标保留）')) return;
+                const buf = formationBuffers[currentWaveIndex];
+                if (!buf) return;
+                ['top', 'left', 'right'].forEach((k) => {
+                    const g = buf[k];
+                    if (!g || !Array.isArray(g)) return;
+                    for (let r = 0; r < rows; r++) {
+                        if (!g[r] || !Array.isArray(g[r])) continue;
+                        for (let c = 0; c < cols; c++) {
+                            const raw = g[r][c];
+                            const { beacons } = splitExtensionCellParts(raw);
+                            g[r][c] = beacons.join('|');
+                        }
+                    }
+                });
+                refreshAllGrids();
+            });
+        }
+        const clearMainBtn = document.getElementById('stgFormationClearMainBtn');
+        if (clearMainBtn) {
+            clearMainBtn.addEventListener('click', () => {
+                if (!confirm('清空当前波四块棋盘上所有移动信标？（扩展格上的敌人种类保留）')) return;
+                const buf = formationBuffers[currentWaveIndex];
+                if (!buf) return;
+                if (buf.main && Array.isArray(buf.main)) {
+                    for (let r = 0; r < rows; r++) {
+                        if (!buf.main[r] || !Array.isArray(buf.main[r])) continue;
+                        for (let c = 0; c < cols; c++) buf.main[r][c] = '';
+                    }
+                }
+                ['top', 'left', 'right'].forEach((k) => {
+                    const g = buf[k];
+                    if (!g || !Array.isArray(g)) return;
+                    for (let r = 0; r < rows; r++) {
+                        if (!g[r] || !Array.isArray(g[r])) continue;
+                        for (let c = 0; c < cols; c++) {
+                            const raw = g[r][c];
+                            const { enemies } = splitExtensionCellParts(raw);
+                            g[r][c] = enemies.join('|');
+                        }
+                    }
+                });
                 refreshAllGrids();
             });
         }
@@ -952,6 +1340,11 @@
         formationToEnemiesOrdered,
         migrateWaveForRuntime,
         setChapterCount,
+        /** BOSS 编辑器保存后调用，刷新「摆放：敌人」笔刷下的 BOSS 列表 */
+        refreshBrushSelect: function () {
+            if (!brushSelectEl) return;
+            buildBrushOptions();
+        },
         getChapterCount: function () {
             return fullDoc && fullDoc.chapters ? fullDoc.chapters.length : 1;
         },

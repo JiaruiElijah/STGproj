@@ -71,7 +71,7 @@ server.listen(PORT, () => {
     console.log(`访问地址: http://localhost:${PORT}/game_demo/index.html`);
     console.log(`项目根目录: ${ROOT_DIR}`);
     console.log('='.repeat(60));
-    console.log('按 Ctrl+C 停止服务器');
+    console.log('停止服务：直接关闭本命令行窗口即可');
     console.log('='.repeat(60));
 });
 

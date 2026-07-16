@@ -1,5 +1,173 @@
 # 开发记录
 
+## [2026-03-27] 文档：STG Unity 移植用开发说明
+
+- **类型**：新增功能（文档）
+- **涉及文件**：`STG游戏_Unity移植开发说明.md`（玩法、操作、构筑/大招/波次/阵型/存档键/移植建议）、`RECORD.md`
+- **说明**：供将 Web STG 迁到 Unity 的程序员阅读；与 `stgMode.js`、策划目录对照，并注明池子与策划可能差异。
+
+## [2026-03-27] STG：大招每充满一格 — 自机下「大招就绪」飘字 1s
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`pushStgUltReadyHintOneSecond` / `applyStgUltChargeMeterOverflowAndHints`；擦弹球与充能点拾取共用溢出逻辑；`draw` 在自机下缘下绘制跟随文案；`resetStgRun` 清空计时）、`game_demo/stgUiI18n.js`（`hud.ultReadyBelow` 中/英）、`game_demo/index.html`（`stgMode.js`/`stgUiI18n.js` 缓存）、`RECORD.md`
+- **说明**：每折算满一大招格追加 1 秒显示窗口，同帧多格则时长累加；开局初始格不触发（仅在 meter 溢出时推提示）。文案随语言切换。
+
+## [2026-03-27] STG：多段移动 — 同队列跳过机体互斥推挤
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`resolveStgWaypointEnemySeparation` 在 `stgWaypointQueueId` 相同的两只之间 `continue`）、`game_demo/index.html`（`stgMode.js?v=20260327h`）、`RECORD.md`
+- **说明**：信标同步会把同队拉到同坐标，原圆形互斥会在同帧把机体推开，造成异常侧移；同队列不再对推，不同队列/无队列的多段敌机仍互斥。
+
+## [2026-03-27] STG：多段移动 — 阵型「相邻同队列」信标同步
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`getStgFormationNeighborCellKeys` / `assignStgWaypointFormationQueues` / `cmpStgWaypointQueueProgress` / `applyStgWaypointQueueBeaconSync`；`spawnEnemyFromRaw` 写入 `stgFormationCellKey`；`spawnFormationEntriesImmediate` 出兵后分组；`StgEnemy` 增加 `stgFormationCellKey`、`stgWaypointQueueId`）、`game_demo/index.html`（阵型说明一句、`stgMode.js?v=20260327g`）、`RECORD.md`
+- **说明**：扩展棋盘同板四邻接格上的多段移动（A 或 B 组）敌机归为同一队列；每帧位移后若队列内最前者已抵达某信标（含停留），其余成员复制其路径状态，避免有人落单。非多段或非同组不相并。
+
+## [2026-03-27] STG：多段移动 — 修复路径参数 u 重复乘 dtSec（无法及时到达 a1）
+
+- **类型**：Bug 修复
+- **涉及文件**：`game_demo/stgMode.js`（`updateStgEnemyPosition` 中 `waypoint_a`/`waypoint_b` 段内 `u += sp/segLen`）、`game_demo/index.html`（`stgMode.js?v=20260327f`）、`RECORD.md`
+- **说明**：`sp` 已为 `speed*dtSec`（本帧位移），原写法 `u += (sp*dtSec)/segLen` 使 u 推进约为正确值的 `~dtSec` 倍（约 60 倍过慢），表现为长时间走不到首段信标。改为 `u += sp/segLen` 与 `speed` 语义一致。
+
+## [2026-03-27] STG：玩家属性「P 点吸引范围」+ 编辑器
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`mergeStgPlayerEditorIntoPlayer` 写入 `pPickupAttractRadius`；拾取物循环内在碰撞判定前按判定点圆域牵引非充能类 P 点）、`game_demo/stgPlayerEditorPanel.js`（默认 0、读写存档）、`game_demo/index.html`（等级与经验槽表单项；`stgMode.js`/`stgPlayerEditorPanel.js` `?v=20260327e`）、`RECORD.md`
+- **说明**：0=关闭；半径内以 340px/s 拉向判定点；充能点仍仅靠接触拾取。
+
+## [2026-03-27] STG：可选环境检测脚本 + 启动 bat 支持 py 启动器
+
+- **类型**：修改功能（仅本地启动工具链，不涉及 `game_demo` 游戏代码）
+- **涉及文件**：`server/stg-env-check.ps1`（检测 python/py/node；可选 winget 安装 Python 或打开官网）、`一键启动STG.bat` / `server/双击启动HTTP服务.bat`（增加 `py -3` 回退；失败时提示运行环境脚本）、`启动说明.md`、`RECORD.md`
+- **说明**：方便无 Python/Node 的用户；不自动静默安装，与项目内开发无关。
+
+## [2026-03-27] STG：局内构筑池与《道具列表》对齐（移除废弃/未立项项）
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`STG_UPGRADE_POOL` 去掉狂怒 M–P、水晶 J/K/L、`ult_seal_economy`、全部 `stat_*`；`isStgUpgradeEligible`/`validateStgBuildGrantMutEx`/左侧已选图标过滤同步）、`game_demo/stgBuildInventoryPanel.js`（目录分组与互斥、删除狂怒表单）、`game_demo/index.html`（构筑说明文案、`stgMode.js`/`stgBuildInventoryPanel.js` `?v=20260327d`）、`RECORD.md`
+- **说明**：四选一随机池与策划文档 `新模式玩法开发/道具列表` 一致；不含注释中已废弃的狂怒分支及未写入文档的阵内经济、通用属性卡。
+
+## [2026-03-27] STG：多段移动 — 路径速率曲线、信标停留、机体互斥
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`normalizeStgWaypointSpeedCurve` / `parseStgWaypointDwellMsFromDef` / `applyStgWaypointCurveT`；多段位移改为段内参数 u + 曲线映射；信标停留；`resolveStgWaypointEnemySeparation`；`mergeEnemyTypes` 合并新字段）、`game_demo/monsterEditorPanel.js`（多段移动面板：速率下拉、信标1～4停留 ms；`buildDataFromDom` 存 `stgWaypointSpeedCurve` / `stgWaypointDwellMs`）、`game_demo/index.html`（`?v=20260327c`）、`RECORD.md`
+- **说明**：速率含直线匀速、两端缓动(中间快)、缓入、缓出；沿信标直线弦插值。多段移动敌机按碰撞半径两两推挤，避免重叠。
+
+## [2026-03-27] STG：阵型编辑器排版 — 上居中一行、左主右一行、图例缩至笔刷右侧
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/index.html`（棋盘区改为 `board-row--top` + `board-row--lmr` 左｜主｜右；笔刷与图例同条 `stg-formation-brush-legend-row`）、`game_demo/styles.css`（`stg-formation-board-row`、`wave-legend-wrap--inline` 缩小图例、`styles.css?v=20260327b`）、`RECORD.md`
+- **说明**：上棋盘单独一行居中；左、主、右三块同一行（窄屏纵向堆叠）；本波种类图例缩小并置于笔刷与清空按钮右侧。
+
+## [2026-03-27] STG：阵型编辑器 — 移动信标可摆四块棋盘
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgWaveFormationPanel.js`（去掉信标仅主棋盘限制、`normalizeFormation` 保留扩展格信标、`paintCell` 扩展格敌人/信标笔刷与既有格合并、右键整格清空、`清空扩展棋盘` 仅清敌人保留信标、`清空全部信标` 清四棋盘信标）、`game_demo/index.html`（说明与按钮文案、`stgWaveFormationPanel.js?v=20260327a`）、`game_demo/stgMode.js`（`extractStgFormationBeacons` 注释与四棋盘信标一致）、`RECORD.md`
+- **说明**：摆放信标模式下上/左/右/主均可编辑；扩展格可与敌人混写 `type|__beacon_*`；应用保存提示同步更新。
+
+## [2026-04-03] STG：阵型编辑器布局 — 主棋盘单独底行，左/右并排
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/index.html`（`.stg-formation-board-row-lr` 包裹左/右；主棋盘移到底部全宽）、`game_demo/styles.css`（`stg-formation-boards-wrap` 纵向 flex；`?v=20260403k`）、`RECORD.md`
+- **说明**：由上 → 左|右 → 主棋盘三行排列，避免左中主右挤一行。
+
+## [2026-04-03] STG：阵型编辑器独立主棋盘 + 摆放敌人/信标分轨笔刷
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgWaveFormationPanel.js`（`stgFormation.main`、normalize 时剥离扩展格内旧信标、`placementMode`、`buildBrushOptions` 分轨、主棋盘 `renderGrid`、`buildWavesPayload` 写入 `main`）、`game_demo/stgMode.js`（`extractStgFormationBeacons` 扫描 `main` 且主棋盘用 `getMainGridCellCenter`、`stgBeaconSlotToWorld`）、`game_demo/index.html`（四棋盘布局与摆放单选）、`game_demo/styles.css`（网格布局与信标格样式）、`?v=20260403j`
+- **说明**：信标仅保存在主棋盘格；扩展格只摆敌人；切换「摆放：敌人/信标」后笔刷与可点区域联动，未激活区域半透明且不可点。
+
+## [2026-04-03] STG：波次移动信标 a1–b4 + 多段移动（waypoint A/B）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/stgMode.js`（`STG_FORMATION_BEACON_PREFIX`、`extractStgFormationBeacons`、`buildStgWaypointWorldListFromBeacons`、`waypoint_a`/`waypoint_b` 位移、`applyWaveFlattenResult(fr,wave)` 注入信标表、`StgMode.isFormationBeaconToken`）、`game_demo/stgWaveFormationPanel.js`（笔刷信标 optgroup、展平与图例排除信标、格内显示 a1 等）、`game_demo/monsterEditorPanel.js`（移动方式两项）、`game_demo/index.html`（说明文案与 `?v=20260403i`）、`RECORD.md`
+- **说明**：阵型格可写 `__beacon_a1`…`__beacon_b4`（不出兵、局内不绘制）；怪物种类选「多段移动 · A/B 组」时按序途经对应信标格心，未放置的信标跳过，无信标则回退 `homing_legacy`。
+
+## [2026-04-03] STG：扩散 G 拆射速/威力/连杀、伏魔针通用接线、封魔阵牵引拾取与式神援护
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/stgMode.js`（`spread_rof`/`spread_might`/`spread_kill_haste`、`focus_*` 接线；站桩蓄能；封魔阵期间拾取牵引；擦弹反击；针芒迟滞；式神援护；左侧已选构筑含 `focus_misc`）、`game_demo/stgUiI18n.js`（`UPGRADE_EN` 与 `upgrade.weapon.focusMisc`）、`game_demo/stgBuildInventoryPanel.js`（构筑表单 `spread_rof`/`spread_might`、分区「伏魔针 · 通用」）、`game_demo/styles.css`（`focus-misc` 配色）、`game_demo/index.html`（`?v=20260403h`）、`RECORD.md`
+- **说明**：原「扩散暴击」改为射速/威力与连杀叠层；伏魔针通用五卡逻辑与 UI 顶栏/侧栏对齐；封魔阵持续时牵引屏上掉落物；试做型封魔阵与无敌等既有设计保持不变。
+
+## [2026-04-03] 波次阵型编辑器：本波种类图例（图标 + 全称 + id）
+
+- **类型**：新增功能
+- **涉及文件**：`game_demo/index.html`（`#stgFormationWaveLegend` 图例区）、`game_demo/stgWaveFormationPanel.js`（`getEnemyTypeMetaMap`、`collectUniqueTypeIdsInWaveOrder`、`refreshWaveLegend`；`refreshAllGrids` 末尾刷新）、`game_demo/styles.css`（`.stg-formation-wave-legend-*` 等）、`?v=20260403g`
+- **说明**：按出怪顺序列出当前波唯一种类；名称与 emoji 取自 `tower_defense_enemy_types`（与怪物编辑器一致），便于对照小格与简称。
+
+## [2026-04-03] STG：屏外且从未入场敌机超时清除，修复波次/HUD「剩余敌」卡死
+
+- **类型**：Bug 修复
+- **涉及文件**：`game_demo/stgMode.js`（`STG_ENEMY_OFFSCREEN_NO_ENTRY_STUCK_MS`、`stgSpawnClockMs`、敌人循环中在「从未 overlaps 主画布且长期完全在屏外」时 `markStgWaveEnemyResolved` 并移除）、`game_demo/index.html`（`?v=20260403f`）
+- **说明**：离场原要求先 `stgHasEnteredPlayfield`；`lock_y`/`anchor` 等停在左右扩展格时可能永不对画布矩形重叠，导致 `enemies.length` 不降、`tryStgAutoStartNextWave` 因 `canStgAdvanceWaveNow` 失败而倒计时在 1s 附近反复重试。
+
+## [2026-04-03] 启动说明：双平台「确保双击启动」清单；文档去掉 Ctrl+C 相关强调
+
+- **类型**：文档
+- **涉及文件**：`启动说明.md`（新增「如何保证双击就能一键启动」分 Windows/macOS 步骤；速查表；停止服务统一为「关窗口」）、`README_开发服务器.md`（顶部补充 RunStgLauncher、停止服务表述简化）、`server/启动HTTP服务-PowerShell版.ps1`（停止提示去掉 Ctrl+C 句）
+- **说明**：集中写清前置条件、`.bat` 关联异常、macOS `chmod`/首次打开；不再反复强调 Ctrl+C 与复制键混淆。
+
+## [2026-04-03] 启动说明 + RunStgLauncher.vbs：修复 .bat 被关联为编辑器导致无法一键启动
+
+- **类型**：文档 / 辅助脚本
+- **涉及文件**：`RunStgLauncher.vbs`（新建，纯 ASCII；枚举根目录唯一 `.bat` 并用 `cmd` 执行）、`启动说明.md`（表格与常见问题：说明现象与改默认应用 / 使用 vbs）
+- **说明**：部分环境双击 `.bat` 会用 Cursor 等打开源码而不执行；提供旁路启动与系统设置指引。
+
+## [2026-04-03] STG 主界面：属性加成置左，生命/经验与攻击构筑置棋盘右侧
+
+- **类型**：修改功能
+- **涉及文件**：`game_demo/index.html`（`.stg-body-row` 子元素顺序：左 `stgPlayerAside`、中棋盘、右 `stgRightColumn` 含 `stgPriorityHud`+`stgAttackBuildPanel`）、`game_demo/styles.css`（`.stg-left-column` 更名为 `.stg-right-column`；注释与窄屏 `order`：棋盘→属性→右栏）
+- **说明**：桌面三栏从左到右为「博丽灵梦 · 属性加成 | 对局区 | 生命·经验·大招与攻击构筑」；窄屏纵向顺序与上述一致。
+
+## [2026-04-03] STG：升级时刻（经验银行为 0）与四选一打不开时不再卡波次
+
+- **类型**：Bug 修复
+- **涉及文件**：`game_demo/stgMode.js`（`tryStgAutoStartNextWave` 银行 0 直接 `tryStgAdvanceWaveOrFinishChapter` 并 `return true`、`finalizeStgUpgradeMomentSessionComplete`、`openStgUpgradeModal` 返回布尔值、播报结束后若未打开 UI 则收尾并延迟出波）、`game_demo/index.html`（`?v=20260403d`）
+- **说明**：避免「该升级却无四选一」导致 `upgrade_announce` 或倒计时死循环；DOM 缺失时跳过并衔接波次。
+
+## [2026-04-03] 一键启动STG.bat 再次精简（去中文路径 echo、去括号块、ping 延时）
+
+- **类型**：Bug 修复
+- **涉及文件**：`一键启动STG.bat`
+- **说明**：上一版 `echo` 仍含 `README_开发服务器.md` 等非 ASCII，GBK 下会拆行；改为全英文、无 `if (...)` 括号块（避免 `%errorlevel%` 解析问题）、`timeout` 改为 `ping` 延时、CRLF 换行。
+
+## [2026-04-03] 一键启动STG.bat 改为纯 ASCII（修复 cmd 乱码无法执行）
+
+- **类型**：Bug 修复
+- **涉及文件**：`一键启动STG.bat`、`启动说明.md`（窗口标题与编码说明）
+- **说明**：UTF-8/中文写入 bat 时，Windows CMD 默认按系统代码页解析会导致乱码与「不是内部或外部命令」；已去掉 chcp 与全部中文 echo，窗口标题改为 `STG-HTTP-Server`。
+
+## [2026-04-03] 一键启动器：根目录 bat / macOS command 起服务并打开浏览器
+
+- **类型**：新增功能 / 文档
+- **涉及文件**：`一键启动STG.bat`、`一键启动STG.command`、`启动说明.md`、`README_开发服务器.md`
+- **说明**：Windows 用 `start /D` 在 `server` 目录启动 Python 或 Node，延时后 `start` 默认浏览器；macOS 用 `osascript` 开终端运行服务并 `open` URL。
+
+## [2026-04-03] Bug 修复：stgBundledLocalStorage 自动导入不再每次刷新覆盖本地存档
+
+- **类型**：Bug 修复
+- **涉及文件**：`game_demo/stgBundledStorage.js`（`hasAnyBundledLocalStorageData`、有存档则跳过自动导入；`?forceBundle=1` 强制覆盖）、`game_demo/数据与分享说明.md`、`game_demo/index.html`（`?v=20260403c`）
+- **说明**：此前每次打开页面都会从 `stgBundledLocalStorage.json` 写回 localStorage，导致编辑器保存后刷新被旧包覆盖；现仅在本地尚无相关键时自动导入。
+
+## [2026-04-03] 文档：启动说明（Windows / macOS 分平台）
+
+- **类型**：文档
+- **涉及文件**：`启动说明.md`（新建）、`README_开发服务器.md`（顶部指向 `启动说明.md`）
+- **说明**：为 Windows（双击 bat、命令行、常见问题）与 macOS（终端、python3/node、常见问题）分别编写启动步骤与排错表。
+
+## [2026-04-03] server：启动脚本重命名区分 bat/ps1 + 停止说明改为关窗口
+
+- **类型**：修改功能 / 文档
+- **涉及文件**：`server/双击启动HTTP服务.bat`（原 `启动服务器.bat`）、`server/启动HTTP服务-PowerShell版.ps1`（原 `启动服务器.ps1`）、`server/server.py`、`server/server.js`、`server.py`、`server.js`、`README_开发服务器.md`
+- **说明**：两脚本中文名相同易混淆，改为标明「双击 / PowerShell」；控制台提示与文档不再推荐用 Ctrl+C 结束服务，改为直接关闭窗口。
+
+## [2026-04-03] STG：「全部导出」一键写入文件夹 + stgBundledLocalStorage.json 随包自动导入
+
+- **类型**：新增功能 / 体验
+- **涉及文件**：`game_demo/stgBundledStorage.js`（键列表、`exportStgBundledLocalStorageAll` 选目录或下载、`applyStgBundledLocalStorageFromFetch`）、`game_demo/game.js`（DOMContentLoaded 最先 await 导入）、`game_demo/index.html`（顶栏按钮、`?v=20260403b`）、`game_demo/.gitignore`、`game_demo/数据与分享说明.md`
+- **说明**：网页无法静默写磁盘；用 File System Access API 选 `game_demo` 文件夹写入主包与 wave/enemy 镜像；否则下载单文件。对方将 `stgBundledLocalStorage.json` 放同目录后自动 fetch 覆盖 localStorage。
+
 ## [2026-04-03] STG：打包分享数据说明 + 导出 waveConfig / enemyTypesBundled + 运行时加载合并
 
 - **类型**：文档 / 新增功能

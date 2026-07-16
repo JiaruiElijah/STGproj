@@ -1,6 +1,6 @@
-# PowerShell脚本 - 启动HTTP服务器
+# PowerShell 脚本：仅使用 Python 启动 HTTP 服务（与「双击启动HTTP服务.bat」区分）
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "正在启动HTTP服务器..." -ForegroundColor Green
+Write-Host "正在启动 HTTP 服务器（Python）..." -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -20,9 +20,9 @@ Write-Host ""
 Write-Host "服务器启动后，请在浏览器访问：" -ForegroundColor Yellow
 Write-Host "http://localhost:8765/game_demo/index.html" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "按 Ctrl+C 可停止服务器" -ForegroundColor Yellow
+Write-Host "停止服务：请直接关闭本窗口。" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# 启动服务器（从server目录运行，会自动切换到项目根目录）
+# 启动服务器（从 server 目录运行，会自动切换到项目根目录）
 python server.py

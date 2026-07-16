@@ -1920,8 +1920,41 @@ body {
 .monster-stg-bullet-speed-row.hidden,
 .monster-stg-bullet-props-wrap.hidden,
 .monster-stg-homing-row.hidden,
-.monster-stg-burst-section.hidden {
+.monster-stg-burst-section.hidden,
+.boss-stg-main-dir-wrap.hidden,
+.boss-stg-cooldown-details.hidden,
+.boss-stg-homing-details.hidden,
+.boss-stg-split-params.hidden {
     display: none !important;
+}
+
+/* BOSS 弹幕方案：条件参数用 details 折叠 */
+.boss-fire-pattern-card details.boss-stg-cond-details {
+    width: 100%;
+    box-sizing: border-box;
+}
+.boss-fire-pattern-card details.boss-stg-cond-details > summary {
+    list-style-position: outside;
+    padding: 2px 0 4px;
+    cursor: pointer;
+}
+.boss-fire-pattern-card details.boss-stg-cond-details > summary.boss-stg-cond-summary {
+    font-size: 10px;
+    font-weight: 700;
+    color: #1a5276;
+}
+.boss-fire-pattern-card .boss-stg-cond-hint {
+    font-weight: 400;
+    color: #7f8c8d;
+    font-size: 9px;
+}
+.boss-fire-pattern-card .boss-stg-cond-body {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 4px 0 6px 4px;
+    border-left: 2px solid rgba(26, 82, 118, 0.12);
+    margin: 0 0 4px 6px;
 }
 
 /* 玩家强化物品栏（从池设置持有数） */
@@ -3243,7 +3276,7 @@ body {
     width: 100%;
 }
 
-/** STG 主行：横向 flex 三栏（左构筑 / 中棋盘 / 右属性），与网格方案相比更不易把侧栏压成细条 */
+/** STG 主行：横向 flex 三栏（左属性加成 / 中棋盘 / 右生命经验与攻击构筑），与网格方案相比更不易把侧栏压成细条 */
 .stg-body-row {
     display: flex;
     flex-direction: row;
@@ -3254,8 +3287,8 @@ body {
     flex: 1;
     min-height: 0;
 }
-/** STG 左侧：顶部核心数值（生命/经验/大招格）+ 下方攻击构筑 */
-.stg-left-column {
+/** STG 棋盘右侧：顶部核心数值（生命/经验/大招格）+ 下方攻击构筑 */
+.stg-right-column {
     flex: 0 0 300px;
     width: 300px;
     max-width: 100%;
@@ -3596,6 +3629,13 @@ body {
 .stg-attack-up-icon--focus-rage:hover {
     background: rgba(231, 76, 60, 0.24);
 }
+.stg-attack-up-icon--focus-misc {
+    background: rgba(142, 68, 173, 0.14);
+    border-color: rgba(142, 68, 173, 0.45);
+}
+.stg-attack-up-icon--focus-misc:hover {
+    background: rgba(142, 68, 173, 0.24);
+}
 .stg-attack-up-icon--ult-seal {
     background: rgba(30, 132, 73, 0.14);
     border-color: rgba(30, 132, 73, 0.48);
@@ -3772,19 +3812,20 @@ body {
         flex-direction: column;
         align-items: stretch;
     }
-    .stg-left-column {
-        flex: 1 1 auto;
-        width: 100%;
-        max-height: 38vh;
-        order: 2;
-    }
     .stg-center-column {
         order: 1;
     }
+    /** 窄屏：棋盘在上，其下先属性加成再生命/经验与构筑，与桌面从左到右的阅读顺序一致 */
     .stg-player-aside {
         flex: 1 1 auto;
         width: 100%;
         max-height: 40vh;
+        order: 2;
+    }
+    .stg-right-column {
+        flex: 1 1 auto;
+        width: 100%;
+        max-height: 38vh;
         order: 3;
     }
 }
@@ -3899,16 +3940,199 @@ body {
     border: 1px solid #aac;
     font-size: 13px;
 }
-.stg-formation-boards-wrap {
+/** 波次编辑器：本波已放置种类的图示 + 全称（数据来自怪物编辑器 localStorage） */
+.stg-formation-wave-legend-wrap {
+    margin: 8px 0 12px;
+    padding: 10px 12px 12px;
+    background: linear-gradient(180deg, rgba(232, 242, 252, 0.98), rgba(251, 252, 254, 0.99));
+    border: 1px solid rgba(41, 128, 185, 0.28);
+    border-radius: 10px;
+    box-sizing: border-box;
+}
+/** 与笔刷同一行：缩小边距与字号，避免挤占纵向空间 */
+.stg-formation-wave-legend-wrap--inline {
+    margin: 0;
+    padding: 6px 8px 8px;
+    flex: 1 1 220px;
+    min-width: 0;
+    max-width: min(420px, 100%);
+}
+.stg-formation-wave-legend-wrap--inline .stg-formation-wave-legend-title {
+    font-size: 11px;
+    margin: 0 0 2px;
+}
+.stg-formation-wave-legend-wrap--inline .stg-formation-wave-legend-hint {
+    font-size: 10px;
+    margin: 0 0 6px;
+    line-height: 1.35;
+}
+.stg-formation-wave-legend-wrap--inline .stg-formation-wave-legend {
+    gap: 4px 6px;
+}
+.stg-formation-wave-legend-wrap--inline .stg-formation-legend-item {
+    padding: 3px 6px;
+    gap: 4px;
+    border-radius: 6px;
+}
+.stg-formation-wave-legend-wrap--inline .stg-formation-legend-icon {
+    font-size: 15px;
+}
+.stg-formation-wave-legend-wrap--inline .stg-formation-legend-name {
+    font-size: 11px;
+}
+.stg-formation-wave-legend-wrap--inline .stg-formation-legend-id {
+    font-size: 9px;
+}
+.stg-formation-wave-legend-wrap--inline .stg-formation-wave-legend-empty {
+    font-size: 10px;
+}
+/** 笔刷 + 清空按钮 与 图例 同一行（窄屏自动换行） */
+.stg-formation-brush-legend-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px 14px;
+}
+.stg-formation-brush-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 14px;
+    align-items: center;
+    gap: 8px 12px;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+.stg-formation-wave-legend-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1a5276;
+    margin: 0 0 4px;
+}
+.stg-formation-wave-legend-hint {
+    font-size: 11px;
+    color: #5d6d7e;
+    margin: 0 0 10px;
+    line-height: 1.45;
+}
+.stg-formation-wave-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    align-items: stretch;
+}
+.stg-formation-wave-legend-empty {
+    margin: 0;
+    font-size: 12px;
+    color: #7f8c8d;
+}
+.stg-formation-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(52, 152, 219, 0.38);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    max-width: 100%;
+    box-sizing: border-box;
+}
+.stg-formation-legend-icon {
+    font-size: 22px;
+    line-height: 1;
+    flex-shrink: 0;
+    width: 1.2em;
+    text-align: center;
+}
+.stg-formation-legend-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    min-width: 0;
+}
+.stg-formation-legend-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #2c3e50;
+    line-height: 1.25;
+    word-break: break-word;
+}
+.stg-formation-legend-id {
+    font-size: 11px;
+    color: #85929e;
+    font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    font-weight: 500;
+}
+
+/** 阵型棋盘：上单独一行居中 → 下一行左｜主｜右 */
+.stg-formation-boards-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+    width: 100%;
+}
+.stg-formation-board-row {
+    display: flex;
+    width: 100%;
     justify-content: center;
     align-items: flex-start;
-    margin-bottom: 12px;
+    box-sizing: border-box;
+}
+.stg-formation-board-row--top {
+    flex-direction: row;
+}
+.stg-formation-board-row--top .stg-formation-board-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.stg-formation-board-row--lmr {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 14px 16px;
+    max-width: min(1100px, 100%);
+    justify-content: center;
+}
+.stg-formation-board-row--lmr .stg-formation-board-block {
+    flex: 0 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+@media (max-width: 900px) {
+    .stg-formation-board-row--lmr {
+        flex-direction: column;
+        align-items: center;
+    }
 }
 .stg-formation-board-block {
     flex: 0 0 auto;
+}
+.stg-formation-board-block--inactive {
+    opacity: 0.4;
+    pointer-events: none;
+    filter: grayscale(0.2);
+}
+.stg-formation-placement-row {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+}
+.stg-formation-placement-label {
+    font-weight: 700;
+    color: #1a5276;
+    margin-right: 4px;
+}
+.stg-formation-radio-label {
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+}
+.stg-formation-brush-hint {
+    font-weight: 500;
+    color: #566573;
 }
 .stg-formation-board-title {
     font-size: 12px;
@@ -3951,6 +4175,10 @@ body {
 .stg-formation-cell.has-type {
     background: linear-gradient(180deg, #fdebd0, #f5cba7);
     font-weight: 700;
+}
+.stg-formation-cell.stg-formation-cell--beacon.has-type {
+    background: linear-gradient(180deg, #e8daef, #d7bde2);
+    color: #4a235a;
 }
 .stg-main {
     display: flex;
@@ -4326,6 +4554,13 @@ body {
 .stg-upgrade-card.stg-upgrade-card--focus-rage:hover {
     box-shadow: 0 8px 22px rgba(231, 76, 60, 0.28);
 }
+.stg-upgrade-card.stg-upgrade-card--focus-misc {
+    border-color: rgba(142, 68, 173, 0.82);
+    background: linear-gradient(180deg, #f4ecf7, #fff);
+}
+.stg-upgrade-card.stg-upgrade-card--focus-misc:hover {
+    box-shadow: 0 8px 22px rgba(142, 68, 173, 0.26);
+}
 /** 试做型封魔阵：绿色系（与左侧 ult·seal 一致） */
 .stg-upgrade-card.stg-upgrade-card--ult-seal {
     border-color: rgba(30, 132, 73, 0.9);
@@ -4387,6 +4622,11 @@ body {
     color: #78281f;
     border-color: rgba(231, 76, 60, 0.35);
 }
+.stg-up-weapon--focus-misc {
+    background: linear-gradient(135deg, #d7bde2 0%, #ebdef0 100%);
+    color: #4a235a;
+    border-color: rgba(142, 68, 173, 0.38);
+}
 .stg-up-weapon--ult-seal {
     background: linear-gradient(135deg, #abebc6 0%, #d5f5e3 100%);
     color: #145a32;
@@ -4419,6 +4659,9 @@ body {
 }
 .stg-upgrade-card--focus-rage .stg-up-title {
     color: #78281f;
+}
+.stg-upgrade-card--focus-misc .stg-up-title {
+    color: #4a235a;
 }
 .stg-upgrade-card--ult-seal .stg-up-title {
     color: #145a32;
@@ -4476,6 +4719,36 @@ body {
 .stg-texture-global-row input {
     margin-top: 3px;
 }
+.stg-boss-bullet-pool-block {
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    background: rgba(93, 64, 55, 0.06);
+    border: 1px solid rgba(141, 110, 99, 0.25);
+    border-radius: 8px;
+}
+.stg-boss-bullet-pool-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #5d4037;
+    margin-bottom: 6px;
+}
+.stg-boss-bullet-pool-ta {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 12px;
+    padding: 8px 10px;
+    border: 1px solid #cfd8dc;
+    border-radius: 6px;
+    resize: vertical;
+    min-height: 72px;
+}
+.stg-boss-bullet-pool-hint {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.45;
+}
 .stg-texture-editor-list {
     flex: 1;
     min-height: 0;
@@ -4521,4 +4794,234 @@ body {
 }
 .stg-tex-preview.stg-tex-preview--empty {
     opacity: 0.35;
+}
+
+/* BOSS 编辑器 */
+.boss-editor-inner {
+    max-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+}
+.boss-editor-list {
+    flex: 1;
+    min-height: 120px;
+    max-height: min(72vh, 900px);
+    overflow-y: auto;
+}
+.boss-editor-base {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    margin-bottom: 8px;
+    align-items: flex-end;
+}
+.boss-editor-base label {
+    font-size: 12px;
+    color: #444;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.boss-fsm-hint {
+    font-size: 12px;
+    color: #555;
+    margin: 4px 0 12px;
+    line-height: 1.45;
+}
+.boss-state-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+.boss-state-card {
+    border: 1px solid rgba(44, 62, 80, 0.18);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.72);
+}
+.boss-state-card--fire {
+    grid-column: 1 / -1;
+}
+.boss-state-title {
+    margin: 0 0 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #2c3e50;
+}
+.boss-state-card label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+    color: #555;
+    margin-bottom: 8px;
+}
+.boss-state-card input[type="number"],
+.boss-state-card select {
+    max-width: 100%;
+}
+.boss-fire-patterns-toolbar {
+    margin: 8px 0 4px;
+}
+.boss-fire-patterns-list {
+    max-height: 50vh;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+.boss-fire-pattern-card {
+    border: 1px dashed rgba(44, 62, 80, 0.25);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-top: 10px;
+    background: rgba(255, 255, 255, 0.88);
+}
+.boss-pattern-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+.boss-pattern-card-head .boss-pattern-label {
+    min-width: 120px;
+    padding: 4px 8px;
+    border: 1px solid #bdc3c7;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.boss-module-card .boss-mod-move-beacon-wrap.hidden,
+.boss-module-card .boss-mod-move-norm-wrap.hidden {
+    display: none !important;
+}
+
+.boss-module-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 12px;
+    padding: 8px 10px;
+    background: rgba(44, 62, 80, 0.06);
+    border-radius: 8px;
+    font-size: 13px;
+}
+.boss-module-toolbar-label {
+    font-weight: 600;
+    color: #2c3e50;
+}
+.boss-modules-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.boss-module-details {
+    margin: 0;
+    border: 1px solid rgba(44, 62, 80, 0.2);
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.78);
+}
+.boss-module-details > .boss-module-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 8px 10px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    font-size: 12px;
+    background: linear-gradient(180deg, rgba(245, 247, 248, 0.96), rgba(238, 241, 243, 0.92));
+    border-bottom: 1px solid rgba(44, 62, 80, 0.08);
+}
+.boss-module-details > .boss-module-summary::-webkit-details-marker {
+    display: none;
+}
+.boss-module-details[open] > .boss-module-summary .boss-module-chevron {
+    transform: rotate(90deg);
+}
+.boss-module-chevron {
+    display: inline-block;
+    font-size: 10px;
+    color: #546e7a;
+    transition: transform 0.15s ease;
+    flex-shrink: 0;
+}
+.boss-mod-summary-line {
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    color: #455a64;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.boss-module-details .boss-module-card {
+    border: none;
+    border-radius: 0;
+    padding: 10px 12px;
+    background: transparent;
+}
+.boss-module-card {
+    border: 1px solid rgba(44, 62, 80, 0.2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.78);
+}
+.boss-module-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin-bottom: 8px;
+}
+.boss-module-type-badge {
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: #5c6bc0;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+.boss-module-card[data-module-type="move"] .boss-module-type-badge {
+    background: #00897b;
+}
+.boss-module-card[data-module-type="attack"] .boss-module-type-badge {
+    background: #c62828;
+}
+.boss-module-label-wrap,
+.boss-module-dur-wrap {
+    font-size: 11px;
+    color: #555;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.boss-module-label-wrap input,
+.boss-module-dur-wrap input {
+    max-width: 140px;
+}
+.boss-module-card-actions {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+.boss-module-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 12px;
+    color: #444;
+}
+.boss-module-card-body label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.boss-module-hint {
+    margin: 0;
+    font-size: 12px;
+    color: #666;
 }
